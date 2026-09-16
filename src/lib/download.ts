@@ -1,18 +1,31 @@
 import JSZip from 'jszip'
-import { FINALS_BUCKET } from './supabase'
 import { getSignedUrl } from './signedUrls'
-import { stripExt, type Job } from './types'
 
-export function finalFileName(job: Job): string {
-  return `${stripExt(job.original_name)}_final.png`
+/** One private object to fetch, plus the file name it should get on the designer's disk. */
+export interface DownloadItem {
+  bucket: string
+  path: string
+  filename: string
 }
 
-function safeZipName(name: string): string {
-  const cleaned = name.replace(/[\\/:*?"<>|]+/g, '-').trim()
-  return `${cleaned || 'batch'}.zip`
+export function stripExt(name: string): string {
+  const i = name.lastIndexOf('.')
+  return i > 0 ? name.slice(0, i) : name
 }
 
-function saveBlob(blob: Blob, filename: string) {
+export function extOf(name: string): string {
+  const i = name.lastIndexOf('.')
+  const ext = i >= 0 ? name.slice(i + 1).toLowerCase() : ''
+  return ext || 'bin'
+}
+
+/** Strips characters that are illegal in file names on macOS/Windows. */
+export function safeFileName(name: string, fallback = 'file'): string {
+  const cleaned = name.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim()
+  return cleaned || fallback
+}
+
+export function saveBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -25,18 +38,17 @@ function saveBlob(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }
 
-async function fetchFinalBlob(job: Job): Promise<Blob> {
-  if (!job.final_path) throw new Error(`${job.original_name} has no final file yet`)
-  const url = await getSignedUrl(FINALS_BUCKET, job.final_path)
+export async function fetchBlob(bucket: string, path: string): Promise<Blob> {
+  const url = await getSignedUrl(bucket, path)
   const res = await fetch(url)
-  if (!res.ok) throw new Error(`Download failed (${res.status}) for ${job.original_name}`)
+  if (!res.ok) throw new Error(`Download failed (${res.status}) for ${path}`)
   return res.blob()
 }
 
-/** Download a single finished job as `<original name>_final.png`. */
-export async function downloadJob(job: Job): Promise<void> {
-  const blob = await fetchFinalBlob(job)
-  saveBlob(blob, finalFileName(job))
+/** Download one private object under `item.filename`. */
+export async function downloadFile(item: DownloadItem): Promise<void> {
+  const blob = await fetchBlob(item.bucket, item.path)
+  saveBlob(blob, item.filename)
 }
 
 export interface ZipProgress {
@@ -47,42 +59,43 @@ export interface ZipProgress {
 }
 
 /**
- * Fetch each job's final image sequentially, zip them client-side, and save as `<zipName>.zip`.
- * Files that fail to fetch are skipped and reported in the returned `failed` list.
+ * Fetch each item sequentially, zip them client-side and save as `<zipName>.zip`.
+ * Items that fail to fetch are skipped and reported in `failed` (by filename).
  */
-export async function downloadJobsAsZip(
-  jobs: Job[],
+export async function downloadAsZip(
+  items: DownloadItem[],
   zipName: string,
   onProgress?: (p: ZipProgress) => void,
 ): Promise<{ failed: string[] }> {
   const zip = new JSZip()
   const usedNames = new Set<string>()
   const failed: string[] = []
-  const total = jobs.length
+  const total = items.length
 
-  for (let i = 0; i < jobs.length; i++) {
-    const job = jobs[i]
-    onProgress?.({ done: i, total, current: job.original_name, phase: 'fetching' })
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+    onProgress?.({ done: i, total, current: item.filename, phase: 'fetching' })
     try {
-      const blob = await fetchFinalBlob(job)
-      let name = finalFileName(job)
+      const blob = await fetchBlob(item.bucket, item.path)
+      let name = item.filename
       // De-duplicate names inside the archive.
       if (usedNames.has(name)) {
-        let n = 2
         const base = stripExt(name)
-        while (usedNames.has(`${base} (${n}).png`)) n++
-        name = `${base} (${n}).png`
+        const ext = extOf(name)
+        let n = 2
+        while (usedNames.has(`${base} (${n}).${ext}`)) n++
+        name = `${base} (${n}).${ext}`
       }
       usedNames.add(name)
       zip.file(name, blob)
     } catch (e) {
-      failed.push(job.original_name)
+      failed.push(item.filename)
       console.error(e)
     }
   }
 
   onProgress?.({ done: total, total, phase: 'zipping' })
   const out = await zip.generateAsync({ type: 'blob', compression: 'STORE' })
-  saveBlob(out, safeZipName(zipName))
+  saveBlob(out, `${safeFileName(zipName, 'download')}.zip`)
   return { failed }
 }

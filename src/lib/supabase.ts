@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import type { Database } from './database.types'
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
@@ -9,11 +10,23 @@ if (!url || !anonKey) {
   )
 }
 
-export const supabase = createClient(url, anonKey, {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+/** Typed Supabase client. Publishable (anon) key only; RLS does the rest. */
+export const supabase = createClient<Database>(url, anonKey, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
   realtime: { params: { eventsPerSecond: 10 } },
 })
 
-export const ORIGINALS_BUCKET = 'fin-originals'
-export const FINALS_BUCKET = 'fin-finals'
-export const PREP_BUCKET = 'fin-prep'
+/** Client references: `<client_id>/<card_id>/<n>.<ext>` (anon upload after start_brief, staff read). */
+export const REFS_BUCKET = 'refs'
+/** Generated images: `<card_id>/<generation_id>.png`; masks `<card_id>/<generation_id>-mask.png`. */
+export const GENS_BUCKET = 'gens'
+/** Print-ready finals: `<card_id>/<generation_id>-final.png`. */
+export const FINALS_BUCKET = 'finals'
+
+/** Path helpers so every page spells storage keys the same way. */
+export const storagePaths = {
+  reference: (clientId: string, cardId: string, n: number, ext: string) => `${clientId}/${cardId}/${n}.${ext}`,
+  generation: (cardId: string, generationId: string) => `${cardId}/${generationId}.png`,
+  mask: (cardId: string, generationId: string) => `${cardId}/${generationId}-mask.png`,
+  final: (cardId: string, generationId: string) => `${cardId}/${generationId}-final.png`,
+}

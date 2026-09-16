@@ -1,26 +1,11 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AlertCircle, CheckCircle2, Info, X } from 'lucide-react'
-
-type ToastKind = 'error' | 'success' | 'info'
+import { ToastContext, type ToastApi, type ToastKind } from './useToast'
 
 interface Toast {
   id: number
   kind: ToastKind
   message: string
-}
-
-interface ToastApi {
-  toast: (message: string, kind?: ToastKind) => void
-  error: (message: string) => void
-  success: (message: string) => void
-}
-
-const ToastContext = createContext<ToastApi | null>(null)
-
-export function useToast(): ToastApi {
-  const ctx = useContext(ToastContext)
-  if (!ctx) throw new Error('useToast must be used inside <ToastProvider>')
-  return ctx
 }
 
 const ICON: Record<ToastKind, ReactNode> = {

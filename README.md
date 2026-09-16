@@ -1,58 +1,87 @@
-# DM Finisher
+# DM Studio
 
-Single-page app for batch image finishing (upscale → background removal → finish). Vite + React 18 + TypeScript + Tailwind v3. Supabase (Auth, Postgres, Storage, Realtime) is the entire backend — there is no server in this repo.
+Design Musketeer's studio board: client brief → AI generation → designer review → print-ready PNG. Vite + React 18 + TypeScript + Tailwind v3 + react-router-dom v7. Supabase (Auth, Postgres, Storage, Realtime) is the entire backend; n8n workers do the generating and finishing. There is no server in this repo.
+
+Product SOP and the frontend contract live in `docs-frontend-spec.md`.
 
 ## Run locally
 
 ```bash
-cp .env.example .env   # already contains the project URL + anon key
+cp .env.example .env   # VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY (publishable key only, never service-role)
 npm install
-npm run dev            # http://localhost:3000
+npm run dev            # http://localhost:3100
 ```
 
-Other scripts: `npm run build` (type-check + production bundle to `dist/`), `npm run preview`.
+Other scripts: `npm run build` (type-check + production bundle to `dist/`), `npm run lint` (oxlint), `npm run preview`.
 
-## Deploy to Vercel
+Type-check on its own: `npx tsc --noEmit -p tsconfig.app.json`.
 
-1. Push this folder to a Git repo and **Import** it in Vercel (framework preset: Vite).
-2. In *Project → Settings → Environment Variables* add:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-3. Deploy. Build command `npm run build`, output directory `dist` (Vercel detects these automatically).
+## Routes
 
-## Supabase Auth redirect URLs (required)
+| Route | Page | Who |
+| --- | --- | --- |
+| `/login` | `components/Login.tsx` | public (password only) |
+| `/brief/:token` | `pages/BriefFormPage.tsx` | public, no Header (client form) |
+| `/`, `/board` | `pages/BoardPage.tsx` | staff |
+| `/card/:id` | `pages/CardPage.tsx` | staff |
+| `/completed` | `pages/CompletedPage.tsx` | staff |
+| `/clients` | `pages/ClientsPage.tsx` | staff |
+| `/clients/:id/style` | `pages/StyleCardPage.tsx` | staff |
+| `/settings` | `pages/SettingsPage.tsx` | lead only (others see "Lead only") |
 
-Magic links redirect back to the app, so Supabase must know the allowed origins. In the Supabase dashboard go to **Authentication → URL Configuration** and make sure **Redirect URLs** (and ideally *Site URL*) include:
-
-- `http://localhost:3000`
-- your deployed URL, e.g. `https://dm-finisher.vercel.app`
-
-Without this the magic link will land on the wrong origin and the session will not be established.
-
-## How it works
-
-- Drop images → one `fin_batches` row is created, each file is uploaded to the private `fin-originals` bucket at `<user id>/<job id>.<ext>` (max 4 concurrent uploads), then a `fin_jobs` row is inserted with `status = 'queued'`.
-- Processing is fully server-side; the UI just watches `fin_jobs` via Realtime (plus a 20 s polling fallback).
-- Finished images live in the private `fin-finals` bucket; the Completed panel signs 1-hour URLs, and downloads (single or zipped with JSZip) are done client-side.
+`src/App.tsx` owns routing, the auth gate (no session → `/login`, remembering where you were) and the staff layout (Header + `<main>`).
 
 ## Project layout
 
 ```
 src/
-  lib/supabase.ts       client + bucket names
-  lib/types.ts          row types + status helpers
-  lib/signedUrls.ts     memoised 1h signed URLs
-  lib/download.ts       single download + zip
-  lib/toast.tsx         tiny toast system
-  hooks/useAuth.ts      session state
-  hooks/useJobs.ts      batches/jobs, realtime + polling, retry
-  hooks/useUpload.ts    drop → batch → upload → insert pipeline
-  components/           Login, Header, Dropzone, JobTile, CompletedPanel
+  main.tsx                 React root
+  App.tsx                  routes, auth gate, lead guard, layout
+  lib/
+    database.types.ts      generated from Supabase (do not edit; regenerate with the MCP generate_typescript_types tool)
+    supabase.ts            typed client, REFS_BUCKET / GENS_BUCKET / FINALS_BUCKET, storagePaths
+    types.ts               row aliases (Card, Generation, FinJob, Client, StyleCard, Settings, …), enums, print_text helpers
+    api.ts                 typed wrapper for every RPC; throws Error(postgres message)
+    stage.ts               STAGES in SOP order, labels, badge classes, isAutomated, ageLabel, isOverdue
+    session.tsx            SessionProvider (session + profile, loaded once)
+    useAuth.ts             { session, user, loading, signOut }
+    useProfile.ts          { userId, profile, isLead, displayName, loading }
+    useSettings.ts         settings row (id=1), 20 s poll, update()
+    useQueueCounts.ts      generations / fin_jobs queued+working (realtime + poll)
+    useRealtimeTable.ts    generic postgres_changes subscription with 20 s poll fallback
+    signedUrls.ts          memoised 1 h signed URLs per bucket+path
+    useSignedUrl.ts        hook form of the above for <img src>
+    download.ts            single download + zip (jszip)
+    toast.tsx              ToastProvider (useToast lives in useToast.ts)
+  components/
+    Header.tsx             nav, queue indicator, paused banner, sign out
+    Login.tsx              password sign-in
+    DeleteButton.tsx       trash button with inline confirm (from DM Finisher)
+    card/, style/          page-owned component folders
+  pages/                   one file per route (see table above)
+docs/reference/            DM Finisher's CompletedPanel, kept as a pattern reference (not compiled or linted)
 ```
 
-## Backend wiring (n8n)
-Processing is fully automatic: each `fin_jobs` insert fires a Postgres trigger → n8n dispatcher → up to 5 parallel workers.
-The n8n workflow to use is in `n8n/README.md` (import file for workflow `Vi8LELQs076uE7jD`).
+## Backend facts
 
-## Test account
-`finisher-test@dmteam.local` / `FinisherTest#2026`. Delete this user in Supabase → Authentication when no longer needed.
+- Supabase project ref `voatrqhfsdfjomyajovi`. RLS on every table; the app only ever uses the publishable key.
+- Stage changes go through RPCs only (`approve_card`, `move_card`, `retry_card`, …); a trigger blocks direct updates of `cards.stage`. Wrappers live in `src/lib/api.ts`.
+- Storage buckets (private): `refs` (`<client_id>/<card_id>/<n>.<ext>`), `gens` (`<card_id>/<generation_id>.png`, masks `-mask.png`), `finals` (`<card_id>/<generation_id>-final.png`). Staff read through signed URLs (1 h).
+- Realtime publication: `cards`, `generations`, `fin_jobs`. Everything else polls.
+- Public form: `start_brief(token)` opens a 15-minute anon upload grant, `submit_brief(...)` finalises the card.
+
+## Deploy to Vercel
+
+1. Import the repo in Vercel (framework preset: Vite). `vercel.json` already rewrites every path to `index.html` for the router.
+2. Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` under *Project → Settings → Environment Variables*.
+3. Deploy. Build command `npm run build`, output directory `dist`.
+
+Password login does not need redirect URLs. If magic links are ever enabled, add the deployed origin under **Authentication → URL Configuration** in Supabase.
+
+## Test accounts
+
+- Staff (lead): `studio-test@dmteam.local` / `StudioTest#2026`
+- Client form token: `0570536095895eb6f05ed21a73a8624d` → `/brief/0570536095895eb6f05ed21a73a8624d`
+
+Delete the test user in Supabase → Authentication when no longer needed.
+
