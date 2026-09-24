@@ -41,8 +41,9 @@ const pollNote = sticky(
   '## DM Studio · WF-5 Poll (sub-workflow)\n' +
   'Called by WF-2 (and later WF-3) through Execute Workflow with inputs **taskId** (Kie job id), optional **url** (full status URL; defaults to Kie jobs/recordInfo?taskId=…), **interval** (seconds, floor 6, default 10) and **timeout** (seconds, default 1800 = the 30-minute cap).\n\n' +
   'Loop: Poll Vendor → Eval Poll → Route Poll. `wait` re-enters Wait Interval; `success` returns one item `{ taskId, state, resultUrls, resultUrl, creditsConsumed, raw }`; `fail` (vendor state fail, non-retryable HTTP code, or timeout) throws so the caller\'s Execute Workflow node takes its error output.\n\n' +
-  'The timeout is measured from Poll Config.startedAt (execution data survives Wait nodes). Auth: Kie Header Auth credential **GPT Image 2 [DM-Kie]** (w0sDpl2nll4HkF6h). A caller cannot pass a credential at runtime, so a different vendor needs its own copy of this workflow bound to that credential.',
-  { color: 4, width: 380, height: 520, position: [-440, 120] }
+  'The timeout is measured from Poll Config.startedAt (execution data survives Wait nodes).\n\n' +
+  '**Config convention:** this is the one studio workflow that does NOT run Load Config (WF-0 Studio Config) - it talks only to Kie and touches no Supabase or studio secret, so it needs no config item and no Secret OK? gate (it is reachable only through Execute Workflow, never through a webhook). Kie stays on the existing n8n Header Auth credential **GPT Image 2 [DM-Kie]** (bound by id w0sDpl2nll4HkF6h). **What to paste where:** nothing here; create this workflow right after WF-0 and paste its id into the callers\' SDK const pollWorkflowId (WF-2 Poll Until Done, later WF-3). A caller cannot pass a credential at runtime, so a different vendor needs its own copy of this workflow bound to that credential.',
+  { color: 4, width: 380, height: 640, position: [-440, 120] }
 );
 
 const pollTrigger = trigger({

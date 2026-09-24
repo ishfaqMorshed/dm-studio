@@ -1,14 +1,13 @@
 import { workflow, node, trigger, sticky, placeholder, newCredential, ifElse, switchCase, merge, splitInBatches, nextBatch, languageModel, memory, tool, outputParser, embedding, embeddings, vectorStore, retriever, documentLoader, textSplitter, reranker, fromAi, expr } from '@n8n/workflow-sdk';
 
 const supabaseUrl = 'https://voatrqhfsdfjomyajovi.supabase.co';
-const supabasePublishableKey = 'sb_publishable_shDVoGzgpaS2L9OTmzyRGA_JOx52p0I';
 const n8nBaseUrl = 'https://n8n.srv1202488.hstgr.cloud';
 
-const workerSecretCredential = newCredential('DM Studio Worker Secret');
-const ideogramCredential = newCredential('Ideogram API');
-const imgbbCredential = newCredential('imgbb API');
+const configWorkflowId = 'vbyjWhK4ZRN9uZUM';
 
 const looseOptions = { caseSensitive: true, leftValue: '', typeValidation: 'loose', version: 1 };
+const sampleConfig = { sbUrl: supabaseUrl, anonKey: 'sb_publishable_redacted', n8nBaseUrl, studioSecret: 'redacted', ideogramKey: 'redacted', imgbbKey: 'redacted', mlKey: 'redacted', upscaleModel: 'ultra_resolution', upscaleScale: 4 };
+const sampleRejected = { rejected: true, reason: 'x-studio-secret header missing or wrong' };
 
 const sampleJobId = '6f1d2c3b-4a5e-4f60-9a7b-8c9d0e1f2a3b';
 const sampleCardId = '1a2b3c4d-5e6f-4a70-8b91-0c1d2e3f4a5b';
@@ -32,13 +31,13 @@ const sampleJob = {
 };
 
 const finisherNote = sticky(
-  '## DM Studio · WF-4 Finisher (Supabase ⇄ n8n)\n' +
-  'Supabase project voatrqhfsdfjomyajovi. Auth on every Supabase call: publishable key as apikey + the x-studio-secret header injected by the n8n credential **DM Studio Worker Secret** (no Authorization header, no service-role key anywhere). Both webhooks validate that same header.\n\n' +
-  '**Dispatcher branch** (Dispatch Webhook ← pg_cron every 5 min / Worker pings): fin_claim_jobs → fire one Worker call per claimed job (batch 1 / 300 ms). pg_cron also requeues stale jobs, so there is no schedule trigger in this workflow.\n\n' +
-  '**Worker branch** (one job): Get Job (+ generations.image_path) → fin_job_update working → download the original from Storage bucket gens → Vendor Config → Fit 1024 → ImgBB → ModelsLab ultra_resolution x4 (poll 6 s / resubmit on rate limit / 10-min cap) → event upscaled → Ideogram RemoveBG → event bg_removed → Fetch Result PNG → Set 300 DPI → upload to Storage finals/<card_id>/<generation_id>-final.png → fin_job_update done → ping Dispatcher. Any failure → fin_job_update failed (message ≤ 500 chars) → ping. Every status change goes through the fin_job_update RPC, which also writes fin_job_events and moves the card.\n\n' +
-  '**Do not reorder:** Status → bg_removed is deliberately recorded BEFORE Fetch Result PNG. An HTTP Request node does not pass input binary through, so the RPC call must never sit between the PNG download and Set 300 DPI (the binary would be lost and the job stranded in working).\n\n' +
-  '**Credentials to create in n8n:** DM Studio Worker Secret (Header Auth, name x-studio-secret; used by both Webhook triggers and every Supabase / webhook call), Ideogram API (Header Auth, name Api-Key), imgbb API (Query Auth, name key). ModelsLab key: paste it into Vendor Config → mlKey (ModelsLab needs it inside the JSON body).',
-  { color: 4, width: 380, height: 760, position: [-440, 120] }
+  '## DM Studio · WF-4 Finisher (Supabase ⇄ n8n ⇄ imgbb / ModelsLab / Ideogram)\n' +
+  '**Config convention (no n8n credentials in this workflow).** Both triggers first run **Load Config** / **Load Dispatch Config** = Execute Workflow → *DM Studio · WF-0 Studio Config* (SDK const configWorkflowId = vbyjWhK4ZRN9uZUM, substituted with the WF-0 id at create time). WF-0 returns one item { sbUrl, anonKey, n8nBaseUrl, studioSecret, ideogramKey, imgbbKey, mlKey, upscaleModel, upscaleScale } and every downstream node reads $(\'Load Config\').first().json.<field> (dispatcher branch: $(\'Load Dispatch Config\')). **Secret OK?** / **Dispatch Secret OK?** compare the incoming x-studio-secret header with config.studioSecret and are the only webhook auth (both Webhook nodes: authentication none); a mismatch ends in the no-op Set *Rejected* / *Dispatch Rejected*. Every Supabase REST / RPC / Storage call sends headers apikey = anonKey and x-studio-secret = studioSecret (no Authorization header, no service-role key anywhere); Fire Worker and Ping Dispatcher send the same secret header and use config.n8nBaseUrl.\n\n' +
+  '**Vendor keys from the same config item:** ImgBB Upload → query param key = imgbbKey; Build Upscale Req / Eval Upscale → body key = mlKey, model_id = upscaleModel (ultra_resolution), scale = upscaleScale (4); Ideogram RemoveBG → header Api-Key = ideogramKey. **What to paste where:** nothing here - paste studioSecret (private.secrets key studio_secret), ideogramKey, imgbbKey and mlKey once in WF-0 Studio Config → Set node *Studio Config*. Create WF-0 first, paste its id into configWorkflowId, then create this workflow and set WF-6 as its error workflow. Never publish from code.\n\n' +
+  '**Dispatcher branch** (Dispatch Webhook finisher-dispatch ← accept_generation trigger / pg_cron every 5 min / Worker pings): Load Dispatch Config → Dispatch Secret OK? → fin_claim_jobs → fire one Worker call per claimed job (batch 1 / 300 ms). pg_cron also requeues stale jobs, so there is no schedule trigger in this workflow.\n\n' +
+  '**Worker branch** (Worker Webhook finisher-worker; one job): Load Config → Secret OK? → Job Config (jobId) → Get Job (+ generations.image_path) → fin_job_update working → download the original from Storage bucket gens → Fit 1024 → ImgBB → ModelsLab ultra_resolution x4 (poll 6 s / resubmit on rate limit / 10-min cap) → event upscaled → Ideogram RemoveBG → event bg_removed → Fetch Result PNG → Set 300 DPI → upload to Storage finals/<card_id>/<generation_id>-final.png → fin_job_update done → ping Dispatcher. Any failure → Fail Message → fin_job_update failed (message ≤ 500 chars) → ping. Every status change goes through the fin_job_update RPC, which also writes fin_job_events and moves the card.\n\n' +
+  '**Do not reorder:** Status → bg_removed is deliberately recorded BEFORE Fetch Result PNG. An HTTP Request node does not pass input binary through, so the RPC call must never sit between the PNG download and Set 300 DPI (the binary would be lost and the job stranded in working). Set 300 DPI is the owner\'s frozen code (byte-identical to the previous version).',
+  { color: 4, width: 460, height: 1040, position: [-1000, 120] }
 );
 
 const dispatchWebhook = trigger({
@@ -49,14 +48,68 @@ const dispatchWebhook = trigger({
     parameters: {
       httpMethod: 'POST',
       path: 'finisher-dispatch',
-      authentication: 'headerAuth',
       responseMode: 'onReceived',
       options: {}
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
+    position: [-480, 704]
+  },
+  output: [{ headers: { 'content-type': 'application/json', 'x-studio-secret': 'redacted' }, params: {}, query: {}, body: { event: 'WORKER_DONE', job_id: sampleJobId }, webhookUrl: n8nBaseUrl + '/webhook/finisher-dispatch', executionMode: 'production' }]
+});
+
+const loadDispatchConfig = node({
+  type: 'n8n-nodes-base.executeWorkflow',
+  version: 1.2,
+  config: {
+    name: 'Load Dispatch Config',
+    parameters: {
+      workflowId: { __rl: true, mode: 'id', value: configWorkflowId, cachedResultName: 'DM Studio · WF-0 Studio Config' },
+      mode: 'once',
+      options: { waitForSubWorkflow: true }
+    },
+    executeOnce: true,
+    position: [-240, 704]
+  },
+  output: [sampleConfig]
+});
+
+const dispatchSecretOk = ifElse({
+  version: 2.2,
+  config: {
+    name: 'Dispatch Secret OK?',
+    parameters: {
+      conditions: {
+        options: looseOptions,
+        conditions: [
+          { id: 'ds1', leftValue: expr("{{ $('Dispatch Webhook').first().json.headers?.['x-studio-secret'] ?? '' }}"), operator: { type: 'string', operation: 'equals' }, rightValue: expr("{{ $('Load Dispatch Config').first().json.studioSecret }}") }
+        ],
+        combinator: 'and'
+      },
+      options: {}
+    },
     position: [0, 704]
   },
-  output: [{ headers: { 'content-type': 'application/json' }, params: {}, query: {}, body: { event: 'WORKER_DONE', job_id: sampleJobId }, webhookUrl: n8nBaseUrl + '/webhook/finisher-dispatch', executionMode: 'production' }]
+  output: [sampleConfig]
+});
+
+const dispatchRejected = node({
+  type: 'n8n-nodes-base.set',
+  version: 3.4,
+  config: {
+    name: 'Dispatch Rejected',
+    parameters: {
+      mode: 'manual',
+      assignments: {
+        assignments: [
+          { id: 'dr1', name: 'rejected', type: 'boolean', value: true },
+          { id: 'dr2', name: 'reason', type: 'string', value: 'x-studio-secret header missing or wrong' }
+        ]
+      },
+      includeOtherFields: false,
+      options: {}
+    },
+    position: [240, 896]
+  },
+  output: [sampleRejected]
 });
 
 const claimJobs = node({
@@ -66,13 +119,12 @@ const claimJobs = node({
     name: 'Claim Jobs',
     parameters: {
       method: 'POST',
-      url: supabaseUrl + '/rest/v1/rpc/fin_claim_jobs',
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Dispatch Config').first().json.sbUrl }}/rest/v1/rpc/fin_claim_jobs"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: supabasePublishableKey },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Dispatch Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Dispatch Config').first().json.anonKey }}") },
           { name: 'Content-Type', value: 'application/json' }
         ]
       },
@@ -81,7 +133,6 @@ const claimJobs = node({
       jsonBody: '{}',
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     executeOnce: true,
     onError: 'continueRegularOutput',
     position: [480, 704]
@@ -116,12 +167,11 @@ const fireWorker = node({
     name: 'Fire Worker',
     parameters: {
       method: 'POST',
-      url: n8nBaseUrl + '/webhook/finisher-worker',
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Dispatch Config').first().json.n8nBaseUrl }}/webhook/finisher-worker"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
+          { name: 'x-studio-secret', value: expr("{{ $('Load Dispatch Config').first().json.studioSecret }}") },
           { name: 'Content-Type', value: 'application/json' }
         ]
       },
@@ -133,7 +183,6 @@ const fireWorker = node({
         timeout: 10000
       }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     onError: 'continueRegularOutput',
     position: [960, 704]
   },
@@ -148,14 +197,68 @@ const workerWebhook = trigger({
     parameters: {
       httpMethod: 'POST',
       path: 'finisher-worker',
-      authentication: 'headerAuth',
       responseMode: 'onReceived',
       options: {}
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
+    position: [-480, 208]
+  },
+  output: [{ headers: { 'content-type': 'application/json', 'x-studio-secret': 'redacted' }, params: {}, query: {}, body: { job_id: sampleJobId }, webhookUrl: n8nBaseUrl + '/webhook/finisher-worker', executionMode: 'production' }]
+});
+
+const loadConfig = node({
+  type: 'n8n-nodes-base.executeWorkflow',
+  version: 1.2,
+  config: {
+    name: 'Load Config',
+    parameters: {
+      workflowId: { __rl: true, mode: 'id', value: configWorkflowId, cachedResultName: 'DM Studio · WF-0 Studio Config' },
+      mode: 'once',
+      options: { waitForSubWorkflow: true }
+    },
+    executeOnce: true,
+    position: [-240, 208]
+  },
+  output: [sampleConfig]
+});
+
+const secretOk = ifElse({
+  version: 2.2,
+  config: {
+    name: 'Secret OK?',
+    parameters: {
+      conditions: {
+        options: looseOptions,
+        conditions: [
+          { id: 's1', leftValue: expr("{{ $('Worker Webhook').first().json.headers?.['x-studio-secret'] ?? '' }}"), operator: { type: 'string', operation: 'equals' }, rightValue: expr("{{ $('Load Config').first().json.studioSecret }}") }
+        ],
+        combinator: 'and'
+      },
+      options: {}
+    },
     position: [0, 208]
   },
-  output: [{ headers: { 'content-type': 'application/json' }, params: {}, query: {}, body: { job_id: sampleJobId }, webhookUrl: n8nBaseUrl + '/webhook/finisher-worker', executionMode: 'production' }]
+  output: [sampleConfig]
+});
+
+const rejected = node({
+  type: 'n8n-nodes-base.set',
+  version: 3.4,
+  config: {
+    name: 'Rejected',
+    parameters: {
+      mode: 'manual',
+      assignments: {
+        assignments: [
+          { id: 'x1', name: 'rejected', type: 'boolean', value: true },
+          { id: 'x2', name: 'reason', type: 'string', value: 'x-studio-secret header missing or wrong' }
+        ]
+      },
+      includeOtherFields: false,
+      options: {}
+    },
+    position: [240, 400]
+  },
+  output: [sampleRejected]
 });
 
 const jobConfig = node({
@@ -167,17 +270,15 @@ const jobConfig = node({
       mode: 'manual',
       assignments: {
         assignments: [
-          { id: 'c1', name: 'sbUrl', type: 'string', value: supabaseUrl },
-          { id: 'c2', name: 'anonKey', type: 'string', value: supabasePublishableKey },
-          { id: 'c5', name: 'jobId', type: 'string', value: expr('{{ $json.body?.job_id ?? "" }}') }
+          { id: 'c5', name: 'jobId', type: 'string', value: expr('{{ $(\'Worker Webhook\').first().json.body?.job_id ?? "" }}') }
         ]
       },
-      includeOtherFields: true,
+      includeOtherFields: false,
       options: {}
     },
     position: [240, 208]
   },
-  output: [{ sbUrl: supabaseUrl, anonKey: 'sb_publishable_redacted', jobId: sampleJobId, body: { job_id: sampleJobId } }]
+  output: [{ jobId: sampleJobId }]
 });
 
 const getJob = node({
@@ -187,18 +288,16 @@ const getJob = node({
     name: 'Get Job',
     parameters: {
       method: 'GET',
-      url: expr("{{ $('Job Config').first().json.sbUrl }}/rest/v1/fin_jobs?id=eq.{{ $('Job Config').first().json.jobId }}&select=*,generations(image_path)"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/fin_jobs?id=eq.{{ $('Job Config').first().json.jobId }}&select=*,generations(image_path)"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Job Config').first().json.anonKey }}") }
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") }
         ]
       },
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     onError: 'continueErrorOutput',
     position: [480, 208]
   },
@@ -212,13 +311,12 @@ const statusWorking = node({
     name: 'Status → working',
     parameters: {
       method: 'POST',
-      url: expr("{{ $('Job Config').first().json.sbUrl }}/rest/v1/rpc/fin_job_update"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/rpc/fin_job_update"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Job Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
           { name: 'Content-Type', value: 'application/json' }
         ]
       },
@@ -227,7 +325,6 @@ const statusWorking = node({
       jsonBody: expr("{{ JSON.stringify({ p_job_id: $('Get Job').first().json.id, p_status: 'working', p_fields: { n8n_execution_id: String($execution.id) }, p_event: 'working', p_ok: true, p_message: 'worker started' }) }}"),
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     onError: 'continueRegularOutput',
     alwaysOutputData: true,
     position: [720, 208]
@@ -242,13 +339,12 @@ const downloadOriginal = node({
     name: 'Download Original',
     parameters: {
       method: 'GET',
-      url: expr("{{ $('Job Config').first().json.sbUrl }}/storage/v1/object/gens/{{ $('Get Job').first().json.generations?.image_path ?? '' }}"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/storage/v1/object/gens/{{ $('Get Job').first().json.generations?.image_path ?? '' }}"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Job Config').first().json.anonKey }}") }
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") }
         ]
       },
       options: {
@@ -256,7 +352,6 @@ const downloadOriginal = node({
         timeout: 120000
       }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     retryOnFail: true,
     maxTries: 2,
     waitBetweenTries: 3000,
@@ -266,27 +361,6 @@ const downloadOriginal = node({
   output: [{ json: {}, binary: { data: { fileName: 'original.png', mimeType: 'image/png', fileExtension: 'png' } } }]
 });
 
-const vendorConfig = node({
-  type: 'n8n-nodes-base.set',
-  version: 3.4,
-  config: {
-    name: 'Vendor Config',
-    parameters: {
-      mode: 'manual',
-      assignments: {
-        assignments: [
-          { id: 'u2', name: 'mlKey', type: 'string', value: placeholder('Paste your ModelsLab API key') },
-          { id: 'u3', name: 'upscaleModel', type: 'string', value: 'ultra_resolution' },
-          { id: 'u4', name: 'upscaleScale', type: 'number', value: 4 }
-        ]
-      },
-      includeOtherFields: true,
-      options: {}
-    },
-    position: [1200, 208]
-  },
-  output: [{ json: { mlKey: 'redacted', upscaleModel: 'ultra_resolution', upscaleScale: 4 }, binary: { data: { fileName: 'original.png', mimeType: 'image/png', fileExtension: 'png' } } }]
-});
 
 const fit1024 = node({
   type: 'n8n-nodes-base.editImage',
@@ -303,7 +377,7 @@ const fit1024 = node({
     onError: 'continueErrorOutput',
     position: [1440, 208]
   },
-  output: [{ json: { mlKey: 'redacted', upscaleModel: 'ultra_resolution', upscaleScale: 4 }, binary: { data: { fileName: 'original.png', mimeType: 'image/png', fileExtension: 'png' } } }]
+  output: [{ json: {}, binary: { data: { fileName: 'original.png', mimeType: 'image/png', fileExtension: 'png' } } }]
 });
 
 const imgbbUpload = node({
@@ -314,11 +388,10 @@ const imgbbUpload = node({
     parameters: {
       method: 'POST',
       url: 'https://api.imgbb.com/1/upload',
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpQueryAuth',
       sendQuery: true,
       queryParameters: {
         parameters: [
+          { name: 'key', value: expr("{{ $('Load Config').first().json.imgbbKey }}") },
           { name: 'expiration', value: '1800' }
         ]
       },
@@ -331,7 +404,6 @@ const imgbbUpload = node({
       },
       options: { timeout: 120000 }
     },
-    credentials: { httpQueryAuth: imgbbCredential },
     retryOnFail: true,
     maxTries: 2,
     waitBetweenTries: 3000,
@@ -348,7 +420,7 @@ const buildUpscaleReq = node({
     name: 'Build Upscale Req',
     parameters: {
       mode: 'runOnceForEachItem',
-      jsCode: "const cfg = $('Vendor Config').first().json;\nconst initUrl = ($json.data && ($json.data.url || ($json.data.image && $json.data.image.url))) || '';\nif (!initUrl) throw new Error('imgbb did not return a url: ' + JSON.stringify($json).slice(0, 200));\nconst body = { key: cfg.mlKey, init_image: initUrl, model_id: cfg.upscaleModel || 'ultra_resolution', scale: Number(cfg.upscaleScale) || 4, face_enhance: 'false', webhook: null, track_id: null };\nreturn { json: { body, initUrl, startedAt: Date.now() } };"
+      jsCode: "const cfg = $('Load Config').first().json;\nconst initUrl = ($json.data && ($json.data.url || ($json.data.image && $json.data.image.url))) || '';\nif (!initUrl) throw new Error('imgbb did not return a url: ' + JSON.stringify($json).slice(0, 200));\nconst body = { key: cfg.mlKey, init_image: initUrl, model_id: cfg.upscaleModel || 'ultra_resolution', scale: Number(cfg.upscaleScale) || 4, face_enhance: 'false', webhook: null, track_id: null };\nreturn { json: { body, initUrl, startedAt: Date.now() } };"
     },
     onError: 'continueErrorOutput',
     position: [1920, 208]
@@ -366,7 +438,7 @@ const mlUpscale = node({
       url: 'https://modelslab.com/api/v6/image_editing/super_resolution',
       sendBody: true,
       specifyBody: 'json',
-      jsonBody: expr("{{ JSON.stringify($json.body || $('Build Upscale Req').first().json.body) }}"),
+      jsonBody: expr("{{ JSON.stringify($('Build Upscale Req').first().json.body) }}"),
       options: { timeout: 120000 }
     },
     retryOnFail: true,
@@ -385,7 +457,7 @@ const evalUpscale = node({
     name: 'Eval Upscale',
     parameters: {
       mode: 'runOnceForEachItem',
-      jsCode: "const r = $json || {};\nconst cfg = $('Vendor Config').first().json;\nconst key = cfg.mlKey;\nconst BASE = 'https://modelslab.com/api/v6/image_editing/fetch/';\nconst LIMIT_MS = 10 * 60 * 1000;\nlet startedAt = 0; try { startedAt = Number($('Build Upscale Req').first().json.startedAt) || 0; } catch (e) {}\nconst elapsed = startedAt ? (Date.now() - startedAt) : 0;\nfunction fetchOf(x){ if (!x) return ''; if (x.fetch_result) return x.fetch_result; if (x.id !== undefined && x.id !== null && x.id !== '') return BASE + x.id; return ''; }\nlet orig = null; try { orig = $('ML Upscale').first().json; } catch (e) {}\nlet decision = 'fail', url = '', fetchUrl = '', error = '';\nif (r.status === 'success') {\n  const o = Array.isArray(r.output) ? r.output[0] : (typeof r.output === 'string' ? r.output : '');\n  if (o) { decision = 'done'; url = o; } else { error = 'upscale: success without output'; }\n} else if (r.status === 'processing' || r.status === 'queued') {\n  if (elapsed > LIMIT_MS) { error = 'upscale timed out'; }\n  else { decision = 'wait'; fetchUrl = fetchOf(r) || fetchOf(orig); if (!fetchUrl) { decision = 'fail'; error = 'upscale: lost the job id'; } }\n} else {\n  const msg = String(r.message || r.messege || (r.error && r.error.message) || r.error || 'ModelsLab error');\n  if (/rate ?limit/i.test(msg) && elapsed < LIMIT_MS) { decision = 'resubmit'; } else { error = 'upscale: ' + msg.slice(0, 220); }\n}\nreturn { json: { decision, url, fetchUrl, key, error } };"
+      jsCode: "const r = $json || {};\nconst cfg = $('Load Config').first().json;\nconst key = cfg.mlKey;\nconst BASE = 'https://modelslab.com/api/v6/image_editing/fetch/';\nconst LIMIT_MS = 10 * 60 * 1000;\nlet startedAt = 0; try { startedAt = Number($('Build Upscale Req').first().json.startedAt) || 0; } catch (e) {}\nconst elapsed = startedAt ? (Date.now() - startedAt) : 0;\nfunction fetchOf(x){ if (!x) return ''; if (x.fetch_result) return x.fetch_result; if (x.id !== undefined && x.id !== null && x.id !== '') return BASE + x.id; return ''; }\nlet orig = null; try { orig = $('ML Upscale').first().json; } catch (e) {}\nlet decision = 'fail', url = '', fetchUrl = '', error = '';\nif (r.status === 'success') {\n  const o = Array.isArray(r.output) ? r.output[0] : (typeof r.output === 'string' ? r.output : '');\n  if (o) { decision = 'done'; url = o; } else { error = 'upscale: success without output'; }\n} else if (r.status === 'processing' || r.status === 'queued') {\n  if (elapsed > LIMIT_MS) { error = 'upscale timed out'; }\n  else { decision = 'wait'; fetchUrl = fetchOf(r) || fetchOf(orig); if (!fetchUrl) { decision = 'fail'; error = 'upscale: lost the job id'; } }\n} else {\n  const msg = String(r.message || r.messege || (r.error && r.error.message) || r.error || 'ModelsLab error');\n  if (/rate ?limit/i.test(msg) && elapsed < LIMIT_MS) { decision = 'resubmit'; } else { error = 'upscale: ' + msg.slice(0, 220); }\n}\nreturn { json: { decision, url, fetchUrl, key, error } };"
     },
     position: [2400, 208]
   },
@@ -419,13 +491,12 @@ const statusUpscaled = node({
     name: 'Status → upscaled',
     parameters: {
       method: 'POST',
-      url: expr("{{ $('Job Config').first().json.sbUrl }}/rest/v1/rpc/fin_job_update"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/rpc/fin_job_update"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Job Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
           { name: 'Content-Type', value: 'application/json' }
         ]
       },
@@ -434,7 +505,6 @@ const statusUpscaled = node({
       jsonBody: expr("{{ JSON.stringify({ p_job_id: $('Get Job').first().json.id, p_status: 'working', p_fields: {}, p_event: 'upscaled', p_ok: true, p_message: String($('Eval Upscale').last().json.url || '') }) }}"),
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     onError: 'continueRegularOutput',
     alwaysOutputData: true,
     position: [2900, 208]
@@ -516,8 +586,12 @@ const ideogramRemoveBg = node({
     parameters: {
       method: 'POST',
       url: 'https://api.ideogram.ai/v1/remove-background',
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'Api-Key', value: expr("{{ $('Load Config').first().json.ideogramKey }}") }
+        ]
+      },
       sendBody: true,
       contentType: 'multipart-form-data',
       bodyParameters: {
@@ -527,7 +601,6 @@ const ideogramRemoveBg = node({
       },
       options: { timeout: 120000 }
     },
-    credentials: { httpHeaderAuth: ideogramCredential },
     retryOnFail: true,
     maxTries: 3,
     waitBetweenTries: 5000,
@@ -563,13 +636,12 @@ const statusBgRemoved = node({
     name: 'Status → bg_removed',
     parameters: {
       method: 'POST',
-      url: expr("{{ $('Job Config').first().json.sbUrl }}/rest/v1/rpc/fin_job_update"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/rpc/fin_job_update"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Job Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
           { name: 'Content-Type', value: 'application/json' }
         ]
       },
@@ -578,7 +650,6 @@ const statusBgRemoved = node({
       jsonBody: expr("{{ JSON.stringify({ p_job_id: $('Get Job').first().json.id, p_status: 'working', p_fields: {}, p_event: 'bg_removed', p_ok: true, p_message: String($('Ideogram RemoveBG').first().json.data?.[0]?.url ?? '') }) }}"),
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     onError: 'continueRegularOutput',
     alwaysOutputData: true,
     position: [3860, 208]
@@ -628,13 +699,12 @@ const uploadFinal = node({
     name: 'Upload Final',
     parameters: {
       method: 'POST',
-      url: expr("{{ $('Job Config').first().json.sbUrl }}/storage/v1/object/finals/{{ $('Get Job').first().json.card_id }}/{{ $('Get Job').first().json.generation_id }}-final.png"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/storage/v1/object/finals/{{ $('Get Job').first().json.card_id }}/{{ $('Get Job').first().json.generation_id }}-final.png"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Job Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
           { name: 'Content-Type', value: 'image/png' },
           { name: 'x-upsert', value: 'true' }
         ]
@@ -644,7 +714,6 @@ const uploadFinal = node({
       inputDataFieldName: 'data',
       options: { timeout: 180000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     retryOnFail: true,
     maxTries: 2,
     waitBetweenTries: 3000,
@@ -661,13 +730,12 @@ const statusDone = node({
     name: 'Status → done',
     parameters: {
       method: 'POST',
-      url: expr("{{ $('Job Config').first().json.sbUrl }}/rest/v1/rpc/fin_job_update"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/rpc/fin_job_update"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Job Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
           { name: 'Content-Type', value: 'application/json' }
         ]
       },
@@ -676,7 +744,6 @@ const statusDone = node({
       jsonBody: expr("{{ JSON.stringify({ p_job_id: $('Get Job').first().json.id, p_status: 'done', p_fields: { final_path: $('Get Job').first().json.card_id + '/' + $('Get Job').first().json.generation_id + '-final.png', metrics: { final_w: $('Set 300 DPI').first().json.final_w, final_h: $('Set 300 DPI').first().json.final_h, dpi: 300 } }, p_event: 'done', p_ok: true, p_message: 'final uploaded' }) }}"),
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     retryOnFail: true,
     maxTries: 3,
     waitBetweenTries: 3000,
@@ -687,6 +754,20 @@ const statusDone = node({
   output: [{ ...sampleJob, status: 'done', final_path: sampleCardId + '/' + sampleGenerationId + '-final.png', metrics: { final_w: 4096, final_h: 4096, dpi: 300 } }]
 });
 
+const failMessage = node({
+  type: 'n8n-nodes-base.code',
+  version: 2,
+  config: {
+    name: 'Fail Message',
+    parameters: {
+      mode: 'runOnceForEachItem',
+      jsCode: "const j = $json || {};\nconst text = (v) => (v === undefined || v === null || v === '' ? '' : (typeof v === 'object' ? String(v.message || v.description || JSON.stringify(v)) : String(v)));\nconst message = (text(j.error) || text(j.message) || text(j.detail) || 'unknown error').slice(0, 500);\nreturn { json: { message, jobId: $('Job Config').first().json.jobId } };"
+    },
+    position: [3380, 704]
+  },
+  output: [{ message: 'upscale: ModelsLab error', jobId: sampleJobId }]
+});
+
 const statusFailed = node({
   type: 'n8n-nodes-base.httpRequest',
   version: 4.2,
@@ -694,22 +775,20 @@ const statusFailed = node({
     name: 'Status → failed',
     parameters: {
       method: 'POST',
-      url: expr("{{ $('Job Config').first().json.sbUrl }}/rest/v1/rpc/fin_job_update"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/rpc/fin_job_update"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Job Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
           { name: 'Content-Type', value: 'application/json' }
         ]
       },
       sendBody: true,
       specifyBody: 'json',
-      jsonBody: expr("{{ JSON.stringify({ p_job_id: $('Job Config').first().json.jobId, p_status: 'failed', p_fields: {}, p_event: 'failed', p_ok: false, p_message: String($json.error?.message ?? $json.error ?? $json.message ?? $json.detail ?? 'unknown error').slice(0, 500) }) }}"),
+      jsonBody: expr("{{ JSON.stringify({ p_job_id: $('Job Config').first().json.jobId, p_status: 'failed', p_fields: {}, p_event: 'failed', p_ok: false, p_message: $json.message }) }}"),
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     retryOnFail: true,
     maxTries: 3,
     waitBetweenTries: 3000,
@@ -727,12 +806,11 @@ const pingDispatcher = node({
     name: 'Ping Dispatcher',
     parameters: {
       method: 'POST',
-      url: n8nBaseUrl + '/webhook/finisher-dispatch',
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.n8nBaseUrl }}/webhook/finisher-dispatch"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
           { name: 'Content-Type', value: 'application/json' }
         ]
       },
@@ -741,7 +819,6 @@ const pingDispatcher = node({
       jsonBody: expr("{{ JSON.stringify({ event: 'WORKER_DONE', job_id: $('Job Config').first().json.jobId }) }}"),
       options: { timeout: 10000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     executeOnce: true,
     onError: 'continueRegularOutput',
     position: [5060, 464]
@@ -752,29 +829,32 @@ const pingDispatcher = node({
 export default workflow('dm-studio-wf4-finisher', 'DM Studio · WF-4 Finisher')
   .add(finisherNote)
   .add(dispatchWebhook)
-  .to(claimJobs)
+  .to(loadDispatchConfig)
+  .to(dispatchSecretOk.onTrue(claimJobs).onFalse(dispatchRejected))
+  .add(claimJobs)
   .to(hasJobId)
   .to(fireWorker)
   .add(workerWebhook)
-  .to(jobConfig)
-  .to(getJob.onError(statusFailed))
+  .to(loadConfig)
+  .to(secretOk.onTrue(jobConfig).onFalse(rejected))
+  .add(jobConfig)
+  .to(getJob.onError(failMessage))
   .to(statusWorking)
-  .to(downloadOriginal.onError(statusFailed))
-  .to(vendorConfig)
-  .to(fit1024.onError(statusFailed))
-  .to(imgbbUpload.onError(statusFailed))
-  .to(buildUpscaleReq.onError(statusFailed))
-  .to(mlUpscale.onError(statusFailed))
+  .to(downloadOriginal.onError(failMessage))
+  .to(fit1024.onError(failMessage))
+  .to(imgbbUpload.onError(failMessage))
+  .to(buildUpscaleReq.onError(failMessage))
+  .to(mlUpscale.onError(failMessage))
   .to(evalUpscale)
-  .to(routeUpscale.onCase(0, statusUpscaled).onCase(1, wait6s).onCase(2, statusFailed).onCase(3, wait20s))
+  .to(routeUpscale.onCase(0, statusUpscaled).onCase(1, wait6s).onCase(2, failMessage).onCase(3, wait20s))
   .add(statusUpscaled)
-  .to(downloadUpscaled.onError(statusFailed))
+  .to(downloadUpscaled.onError(failMessage))
   .to(ideogramRemoveBg)
-  .to(gotTransparentPng.onTrue(statusBgRemoved).onFalse(statusFailed))
+  .to(gotTransparentPng.onTrue(statusBgRemoved).onFalse(failMessage))
   .add(statusBgRemoved)
-  .to(fetchResultPng.onError(statusFailed))
+  .to(fetchResultPng.onError(failMessage))
   .to(set300Dpi)
-  .to(uploadFinal.onError(statusFailed))
+  .to(uploadFinal.onError(failMessage))
   .to(statusDone)
   .to(pingDispatcher)
   .add(wait6s)
@@ -782,5 +862,6 @@ export default workflow('dm-studio-wf4-finisher', 'DM Studio · WF-4 Finisher')
   .to(evalUpscale)
   .add(wait20s)
   .to(mlUpscale)
-  .add(statusFailed)
+  .add(failMessage)
+  .to(statusFailed)
   .to(pingDispatcher);

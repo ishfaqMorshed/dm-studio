@@ -1,16 +1,17 @@
 import { workflow, node, trigger, sticky, placeholder, newCredential, ifElse, switchCase, merge, splitInBatches, nextBatch, languageModel, memory, tool, outputParser, embedding, embeddings, vectorStore, retriever, documentLoader, textSplitter, reranker, fromAi, expr } from '@n8n/workflow-sdk';
 
 const supabaseUrl = 'https://voatrqhfsdfjomyajovi.supabase.co';
-const supabasePublishableKey = 'sb_publishable_shDVoGzgpaS2L9OTmzyRGA_JOx52p0I';
 const n8nBaseUrl = 'https://n8n.srv1202488.hstgr.cloud';
 const kieBaseUrl = 'https://api.kie.ai';
-const pollWorkflowId = '3QD6HDEtWWcBYFbD'; // DM Studio · WF-5 Poll (created 2026-09-24 in folder QKT7A5gRiL349k8X)
+const configWorkflowId = 'vbyjWhK4ZRN9uZUM';
+const pollWorkflowId = '3Sr7H74AxZUu6QiW';
 
-const workerSecretCredential = newCredential('DM Studio Worker Secret');
 const kieImageCredential = newCredential('GPT Image 2 [DM-Kie]', 'w0sDpl2nll4HkF6h');
 const kieVisionCredential = newCredential('Gemini 3.1 Pro [DM-Kie]', '0l2nHQUQNnsCAfTR');
 
 const looseOptions = { caseSensitive: true, leftValue: '', typeValidation: 'loose', version: 1 };
+const sampleConfig = { sbUrl: supabaseUrl, anonKey: 'sb_publishable_redacted', n8nBaseUrl, studioSecret: 'redacted', ideogramKey: 'redacted', imgbbKey: 'redacted', mlKey: 'redacted', upscaleModel: 'ultra_resolution', upscaleScale: 4 };
+const sampleRejected = { rejected: true, reason: 'x-studio-secret header missing or wrong' };
 const uuidPattern = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
 
 const sampleCardId = '1a2b3c4d-5e6f-4a70-8b91-0c1d2e3f4a5b';
@@ -101,11 +102,12 @@ const sampleDecision = { regen: false, attempt: 1, needs_regen: false, score: 10
 
 const generateNote = sticky(
   '## DM Studio · WF-2 Generate (Supabase ⇄ n8n ⇄ Kie GPT Image 2.5)\n' +
-  '**Dispatcher** (Generate Webhook ← cards stage→approved trigger and the 5-min pg_cron sweep): claim_generations() → one Fire Worker call per claimed generation (Split In Batches size 1 / 300 ms). Concurrency (settings.max_active_generations) is enforced by the RPC.\n\n' +
-  '**Worker** (one generation per execution, so $execution.id, the Wait resume URL and WF-6 lookups are unambiguous): Get Generation (+card) → move_card(generating) → PATCH working + n8n_execution_id → Edge Function **prompt-engine** → List Input Paths (the engine\'s input_paths plan: card refs as style_reference, up to 3 library refs as client_look for tier ≥ 3; card reference_paths only as a fallback) → sign every planned path (bucket from the plan, 1 h) → Build Create Task (model/aspect/resolution from the engine, rendered_prompt as-is - it already carries the per-image role labels -, background opaque, callBackUrl = this execution\'s resume URL) → Kie jobs/createTask → PATCH vendor_job_id → **Wait For Callback** (resume on webhook, 15-min limit) → on callback OR timeout: **WF-5 Poll** sub-workflow (recordInfo every 10 s, 30-min cap) → download resultUrls[0] → upload gens/<card_id>/<generation_id>.png (x-upsert) → PATCH image_path + vendor_job_id + reference_urls → sign the PNG → Get QC Templates (prompt_templates slugs **qc_prompt**, **corrective_suffix**; never inlined, EXTRACT.md §3.8/§3.9 verbatim) → Vision QC (Kie gemini-3.1-pro; {{EXPECTED_TEXT}} = bare text lines inside the template\'s own triple quotes, whole EXPECTED line replaced by the (none ...) variant when the card has no text; Style Card JSON appended; image as image_url, JSON mode, fail-open) → Edge Function **qc-judge** → Decide Regen: needs_regen && attempt 1 → PATCH attempt 2 → corrective_suffix rendered ({{ISSUES}}, {{EXPECTED_TEXT}}, {{EXPECTED_TEXT_SPACED}}; no-text tail variant) and appended after exactly one blank line → Create Task once more (same Wait/Poll/upload path, same image_path) → PATCH done → set_current_generation → move_card(needs_review).\n\n' +
-  'Any failure → Fail Message → PATCH generation failed + last_error → move_card(failed, message). **Deploy checklist:** (1) WF-5 Poll must exist first and its workflow id is bound in Poll Until Done (pollWorkflowId in the SDK source); (2) set WF-6 as this workflow\'s error workflow; (3) credential DM Studio Worker Secret bound on every Supabase call and both webhooks.\n\n' +
-  'Auth: Supabase = publishable key as apikey + x-studio-secret from credential **DM Studio Worker Secret** (also validates both webhooks and the Fire Worker self-call); Kie images = **GPT Image 2 [DM-Kie]**; Kie vision = **Gemini 3.1 Pro [DM-Kie]**.',
-  { color: 4, width: 420, height: 900, position: [-480, 40] }
+  '**Config convention (no n8n credentials except Kie).** Both triggers first run **Load Config** / **Load Dispatch Config** = Execute Workflow → *DM Studio · WF-0 Studio Config* (SDK const configWorkflowId = vbyjWhK4ZRN9uZUM, substituted with the WF-0 id at create time). WF-0 returns one item { sbUrl, anonKey, n8nBaseUrl, studioSecret, ideogramKey, imgbbKey, mlKey, upscaleModel, upscaleScale } and every downstream node reads $(\'Load Config\').first().json.<field> (dispatcher branch: $(\'Load Dispatch Config\')). **Secret OK?** / **Dispatch Secret OK?** compare the incoming x-studio-secret header with config.studioSecret and are the only webhook auth (both Webhook nodes: authentication none); a mismatch ends in the no-op Set *Rejected* / *Dispatch Rejected*. Every Supabase REST / RPC / Storage / Edge Function call sends headers apikey = anonKey and x-studio-secret = studioSecret (no Authorization header, no service-role key anywhere); the Fire Worker self-call sends the same secret header and uses config.n8nBaseUrl.\n\n' +
+  '**What to paste where:** nothing in this workflow. All keys are pasted once in WF-0 Studio Config → Set node *Studio Config* (studioSecret = private.secrets key studio_secret, Ideogram / imgbb / ModelsLab keys). Kie stays on the existing n8n credentials bound by id: images **GPT Image 2 [DM-Kie]** (w0sDpl2nll4HkF6h) on Create Task, vision **Gemini 3.1 Pro [DM-Kie]** (0l2nHQUQNnsCAfTR) on Vision QC. Poll Until Done is bound to *DM Studio · WF-5 Poll* through the SDK const pollWorkflowId = 3Sr7H74AxZUu6QiW.\n\n' +
+  '**Dispatcher** (Generate Webhook studio-generate ← cards stage→approved trigger and the 5-min pg_cron sweep): Load Dispatch Config → Dispatch Secret OK? → claim_generations() → one Fire Worker call per claimed generation (Split In Batches size 1 / 300 ms). Concurrency (settings.max_active_generations) is enforced by the RPC.\n\n' +
+  '**Worker** (Worker Webhook studio-generate-worker; one generation per execution, so $execution.id, the Wait resume URL and WF-6 lookups are unambiguous; WF-3 regenerate rows arrive through the dispatcher, never by a direct POST here): Load Config → Secret OK? → Config (ids) → Get Generation (+card) → move_card(generating) → PATCH working + n8n_execution_id → Edge Function **prompt-engine** → List Input Paths (the engine\'s input_paths plan: card refs as style_reference, up to 3 library refs as client_look for tier ≥ 3; card reference_paths only as a fallback) → sign every planned path (bucket from the plan, 1 h) → Build Create Task (model/aspect/resolution from the engine, rendered_prompt as-is - it already carries the per-image role labels -, background opaque, callBackUrl = this execution\'s resume URL) → Kie jobs/createTask → PATCH vendor_job_id → **Wait For Callback** (resume on webhook, 8-min limit) → on callback OR timeout: **WF-5 Poll** sub-workflow (recordInfo every 10 s, 10-min cap; 8 + 10 min keeps every pass inside the 20-min requeue_stale() window, and PATCH attempt 2 re-stamps started_at so the corrective pass gets its own window) → download resultUrls[0] → upload gens/<card_id>/<generation_id>.png (x-upsert) → PATCH image_path + vendor_job_id + reference_urls → sign the PNG → Get QC Templates (prompt_templates slugs **qc_prompt**, **corrective_suffix**; never inlined, EXTRACT.md §3.8/§3.9 verbatim) → Vision QC (Kie gemini-3.1-pro; {{EXPECTED_TEXT}} = bare text lines inside the template\'s own triple quotes, whole EXPECTED line replaced by the (none ...) variant when the card has no text; Style Card JSON appended; image as image_url, JSON mode, fail-open) → Edge Function **qc-judge** → Decide Regen: needs_regen && attempt 1 → PATCH attempt 2 → corrective_suffix rendered ({{ISSUES}}, {{EXPECTED_TEXT}}, {{EXPECTED_TEXT_SPACED}}; no-text tail variant) and appended after exactly one blank line → Create Task once more (same Wait/Poll/upload path, same image_path) → PATCH done → PATCH cards.current_generation_id (set_current_generation is staff-only, the cards_worker_update policy allows the PATCH) → move_card(needs_review).\n\n' +
+  'Any failure → Fail Message → PATCH generation failed + last_error → move_card(failed, message). **Create order:** WF-0 Studio Config and WF-5 Poll first, then paste their ids into configWorkflowId / pollWorkflowId, create this workflow, then set WF-6 as its error workflow. Never publish from code.',
+  { color: 4, width: 460, height: 1180, position: [-1000, 40] }
 );
 
 const generateWebhook = trigger({
@@ -116,35 +118,68 @@ const generateWebhook = trigger({
     parameters: {
       httpMethod: 'POST',
       path: 'studio-generate',
-      authentication: 'headerAuth',
       responseMode: 'onReceived',
       options: {}
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
-    position: [0, 800]
+    position: [-480, 800]
   },
-  output: [{ headers: { 'content-type': 'application/json' }, params: {}, query: {}, body: { card_id: sampleCardId, generation_id: sampleGenerationId }, webhookUrl: n8nBaseUrl + '/webhook/studio-generate', executionMode: 'production' }]
+  output: [{ headers: { 'content-type': 'application/json', 'x-studio-secret': 'redacted' }, params: {}, query: {}, body: { card_id: sampleCardId, generation_id: sampleGenerationId }, webhookUrl: n8nBaseUrl + '/webhook/studio-generate', executionMode: 'production' }]
 });
 
-const dispatchConfig = node({
+const loadDispatchConfig = node({
+  type: 'n8n-nodes-base.executeWorkflow',
+  version: 1.2,
+  config: {
+    name: 'Load Dispatch Config',
+    parameters: {
+      workflowId: { __rl: true, mode: 'id', value: configWorkflowId, cachedResultName: 'DM Studio · WF-0 Studio Config' },
+      mode: 'once',
+      options: { waitForSubWorkflow: true }
+    },
+    executeOnce: true,
+    position: [-240, 800]
+  },
+  output: [sampleConfig]
+});
+
+const dispatchSecretOk = ifElse({
+  version: 2.2,
+  config: {
+    name: 'Dispatch Secret OK?',
+    parameters: {
+      conditions: {
+        options: looseOptions,
+        conditions: [
+          { id: 'ds1', leftValue: expr("{{ $('Generate Webhook').first().json.headers?.['x-studio-secret'] ?? '' }}"), operator: { type: 'string', operation: 'equals' }, rightValue: expr("{{ $('Load Dispatch Config').first().json.studioSecret }}") }
+        ],
+        combinator: 'and'
+      },
+      options: {}
+    },
+    position: [0, 800]
+  },
+  output: [sampleConfig]
+});
+
+const dispatchRejected = node({
   type: 'n8n-nodes-base.set',
   version: 3.4,
   config: {
-    name: 'Dispatch Config',
+    name: 'Dispatch Rejected',
     parameters: {
       mode: 'manual',
       assignments: {
         assignments: [
-          { id: 'd1', name: 'sbUrl', type: 'string', value: supabaseUrl },
-          { id: 'd2', name: 'anonKey', type: 'string', value: supabasePublishableKey }
+          { id: 'dr1', name: 'rejected', type: 'boolean', value: true },
+          { id: 'dr2', name: 'reason', type: 'string', value: 'x-studio-secret header missing or wrong' }
         ]
       },
-      includeOtherFields: true,
+      includeOtherFields: false,
       options: {}
     },
-    position: [240, 800]
+    position: [240, 992]
   },
-  output: [{ sbUrl: supabaseUrl, anonKey: 'sb_publishable_redacted', body: { card_id: sampleCardId, generation_id: sampleGenerationId } }]
+  output: [sampleRejected]
 });
 
 const claimGenerations = node({
@@ -154,13 +189,12 @@ const claimGenerations = node({
     name: 'Claim Generations',
     parameters: {
       method: 'POST',
-      url: expr("{{ $('Dispatch Config').first().json.sbUrl }}/rest/v1/rpc/claim_generations"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Dispatch Config').first().json.sbUrl }}/rest/v1/rpc/claim_generations"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Dispatch Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Dispatch Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Dispatch Config').first().json.anonKey }}") },
           { name: 'Content-Type', value: 'application/json' }
         ]
       },
@@ -169,7 +203,6 @@ const claimGenerations = node({
       jsonBody: '{}',
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     executeOnce: true,
     onError: 'continueRegularOutput',
     position: [480, 800]
@@ -221,12 +254,11 @@ const fireWorker = node({
     name: 'Fire Worker',
     parameters: {
       method: 'POST',
-      url: n8nBaseUrl + '/webhook/studio-generate-worker',
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Dispatch Config').first().json.n8nBaseUrl }}/webhook/studio-generate-worker"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
+          { name: 'x-studio-secret', value: expr("{{ $('Load Dispatch Config').first().json.studioSecret }}") },
           { name: 'Content-Type', value: 'application/json' }
         ]
       },
@@ -238,7 +270,6 @@ const fireWorker = node({
         timeout: 10000
       }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     onError: 'continueRegularOutput',
     position: [1200, 896]
   },
@@ -253,14 +284,68 @@ const workerWebhook = trigger({
     parameters: {
       httpMethod: 'POST',
       path: 'studio-generate-worker',
-      authentication: 'headerAuth',
       responseMode: 'onReceived',
       options: {}
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
+    position: [-480, 208]
+  },
+  output: [{ headers: { 'content-type': 'application/json', 'x-studio-secret': 'redacted' }, params: {}, query: {}, body: { generation_id: sampleGenerationId, card_id: sampleCardId }, webhookUrl: n8nBaseUrl + '/webhook/studio-generate-worker', executionMode: 'production' }]
+});
+
+const loadConfig = node({
+  type: 'n8n-nodes-base.executeWorkflow',
+  version: 1.2,
+  config: {
+    name: 'Load Config',
+    parameters: {
+      workflowId: { __rl: true, mode: 'id', value: configWorkflowId, cachedResultName: 'DM Studio · WF-0 Studio Config' },
+      mode: 'once',
+      options: { waitForSubWorkflow: true }
+    },
+    executeOnce: true,
+    position: [-240, 208]
+  },
+  output: [sampleConfig]
+});
+
+const secretOk = ifElse({
+  version: 2.2,
+  config: {
+    name: 'Secret OK?',
+    parameters: {
+      conditions: {
+        options: looseOptions,
+        conditions: [
+          { id: 's1', leftValue: expr("{{ $('Worker Webhook').first().json.headers?.['x-studio-secret'] ?? '' }}"), operator: { type: 'string', operation: 'equals' }, rightValue: expr("{{ $('Load Config').first().json.studioSecret }}") }
+        ],
+        combinator: 'and'
+      },
+      options: {}
+    },
     position: [0, 208]
   },
-  output: [{ headers: { 'content-type': 'application/json' }, params: {}, query: {}, body: { generation_id: sampleGenerationId, card_id: sampleCardId }, webhookUrl: n8nBaseUrl + '/webhook/studio-generate-worker', executionMode: 'production' }]
+  output: [sampleConfig]
+});
+
+const rejected = node({
+  type: 'n8n-nodes-base.set',
+  version: 3.4,
+  config: {
+    name: 'Rejected',
+    parameters: {
+      mode: 'manual',
+      assignments: {
+        assignments: [
+          { id: 'x1', name: 'rejected', type: 'boolean', value: true },
+          { id: 'x2', name: 'reason', type: 'string', value: 'x-studio-secret header missing or wrong' }
+        ]
+      },
+      includeOtherFields: false,
+      options: {}
+    },
+    position: [240, 400]
+  },
+  output: [sampleRejected]
 });
 
 const config = node({
@@ -272,12 +357,10 @@ const config = node({
       mode: 'manual',
       assignments: {
         assignments: [
-          { id: 'c1', name: 'sbUrl', type: 'string', value: supabaseUrl },
-          { id: 'c2', name: 'anonKey', type: 'string', value: supabasePublishableKey },
-          { id: 'c3', name: 'generationId', type: 'string', value: expr('{{ $json.body?.generation_id ?? "" }}') },
-          { id: 'c4', name: 'cardId', type: 'string', value: expr('{{ $json.body?.card_id ?? "" }}') },
+          { id: 'c3', name: 'generationId', type: 'string', value: expr('{{ $(\'Worker Webhook\').first().json.body?.generation_id ?? "" }}') },
+          { id: 'c4', name: 'cardId', type: 'string', value: expr('{{ $(\'Worker Webhook\').first().json.body?.card_id ?? "" }}') },
           { id: 'c5', name: 'executionId', type: 'string', value: expr('{{ String($execution.id) }}') },
-          { id: 'c6', name: 'imagePath', type: 'string', value: expr('{{ ($json.body?.card_id ?? "") + "/" + ($json.body?.generation_id ?? "") + ".png" }}') }
+          { id: 'c6', name: 'imagePath', type: 'string', value: expr('{{ ($(\'Worker Webhook\').first().json.body?.card_id ?? "") + "/" + ($(\'Worker Webhook\').first().json.body?.generation_id ?? "") + ".png" }}') }
         ]
       },
       includeOtherFields: false,
@@ -285,7 +368,7 @@ const config = node({
     },
     position: [240, 208]
   },
-  output: [{ sbUrl: supabaseUrl, anonKey: 'sb_publishable_redacted', generationId: sampleGenerationId, cardId: sampleCardId, executionId: sampleExecutionId, imagePath: sampleImagePath }]
+  output: [{ generationId: sampleGenerationId, cardId: sampleCardId, executionId: sampleExecutionId, imagePath: sampleImagePath }]
 });
 
 const getGeneration = node({
@@ -295,19 +378,17 @@ const getGeneration = node({
     name: 'Get Generation',
     parameters: {
       method: 'GET',
-      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/generations?id=eq.{{ $('Config').first().json.generationId }}&select=*,cards(id,client_id,print_text,garment_color,placement,reference_paths,similarity_tier,brief_text,style_card_id)"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/generations?id=eq.{{ $('Config').first().json.generationId }}&select=*,cards!generations_card_id_fkey(id,client_id,print_text,garment_color,placement,reference_paths,similarity_tier,brief_text,style_card_id)"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
           { name: 'Accept', value: 'application/vnd.pgrst.object+json' }
         ]
       },
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     retryOnFail: true,
     maxTries: 2,
     waitBetweenTries: 2000,
@@ -324,13 +405,12 @@ const cardGenerating = node({
     name: 'Card → generating',
     parameters: {
       method: 'POST',
-      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/rpc/move_card"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/rpc/move_card"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
           { name: 'Content-Type', value: 'application/json' }
         ]
       },
@@ -339,7 +419,6 @@ const cardGenerating = node({
       jsonBody: expr("{{ JSON.stringify({ p_card_id: $('Config').first().json.cardId, p_stage: 'generating', p_note: 'generation ' + $('Config').first().json.generationId + ' started' }) }}"),
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     onError: 'continueRegularOutput',
     alwaysOutputData: true,
     position: [720, 208]
@@ -354,13 +433,12 @@ const generationWorking = node({
     name: 'Generation → working',
     parameters: {
       method: 'PATCH',
-      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/generations?id=eq.{{ $('Config').first().json.generationId }}"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/generations?id=eq.{{ $('Config').first().json.generationId }}"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
           { name: 'Content-Type', value: 'application/json' },
           { name: 'Prefer', value: 'return=representation' }
         ]
@@ -370,7 +448,6 @@ const generationWorking = node({
       jsonBody: expr("{{ JSON.stringify({ status: 'working', n8n_execution_id: $('Config').first().json.executionId, started_at: $now.toISO(), last_error: null }) }}"),
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     onError: 'continueRegularOutput',
     alwaysOutputData: true,
     position: [960, 208]
@@ -385,13 +462,12 @@ const promptEngine = node({
     name: 'Prompt Engine',
     parameters: {
       method: 'POST',
-      url: expr("{{ $('Config').first().json.sbUrl }}/functions/v1/prompt-engine"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/functions/v1/prompt-engine"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
           { name: 'Content-Type', value: 'application/json' }
         ]
       },
@@ -400,7 +476,6 @@ const promptEngine = node({
       jsonBody: expr("{{ JSON.stringify({ generation_id: $('Config').first().json.generationId }) }}"),
       options: { timeout: 90000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     retryOnFail: true,
     maxTries: 2,
     waitBetweenTries: 5000,
@@ -431,13 +506,12 @@ const signInput = node({
     name: 'Sign Input',
     parameters: {
       method: 'POST',
-      url: expr("{{ $('Config').first().json.sbUrl }}/storage/v1/object/sign/{{ $json.bucket }}/{{ $json.path }}"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/storage/v1/object/sign/{{ $json.bucket }}/{{ $json.path }}"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
           { name: 'Content-Type', value: 'application/json' }
         ]
       },
@@ -446,7 +520,6 @@ const signInput = node({
       jsonBody: '{"expiresIn":3600}',
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     retryOnFail: true,
     maxTries: 2,
     waitBetweenTries: 2000,
@@ -462,7 +535,7 @@ const buildCreateTask = node({
   config: {
     name: 'Build Create Task',
     parameters: {
-      jsCode: "const cfg = $('Config').first().json;\nconst pe = $('Prompt Engine').first().json;\nconst plan = $('List Input Paths').all().map((i) => i.json);\nconst urls = $input.all().map((i) => cfg.sbUrl + '/storage/v1' + String(i.json.signedURL || ''));\nif (urls.length !== plan.length || urls.some((u) => !/token=/.test(u))) throw new Error('could not sign every input reference (' + urls.length + '/' + plan.length + ')');\nconst prompt = String(pe.final_prompt || pe.rendered_prompt || '').trim();\nif (!prompt) throw new Error('prompt-engine returned an empty final_prompt');\n// the engine already renders the per-image role labels into rendered_prompt; roles are kept for the record only\nconst roles = plan.map((p) => p.role).filter(Boolean);\nconst body = { model: pe.model || 'gpt-image-2-5-sunburst-image-to-image', callBackUrl: $execution.resumeUrl, input: { prompt: prompt.slice(0, 20000), input_urls: urls, aspect_ratio: pe.aspect_ratio || '1:1', resolution: pe.resolution || '2K', background: 'opaque' } };\nreturn { json: { body, attempt: 1, input_roles: roles } };"
+      jsCode: "const cfg = $('Config').first().json;\nconst pe = $('Prompt Engine').first().json;\nconst plan = $('List Input Paths').all().map((i) => i.json);\nconst urls = $input.all().map((i) => $('Load Config').first().json.sbUrl + '/storage/v1' + String(i.json.signedURL || ''));\nif (urls.length !== plan.length || urls.some((u) => !/token=/.test(u))) throw new Error('could not sign every input reference (' + urls.length + '/' + plan.length + ')');\nconst prompt = String(pe.final_prompt || pe.rendered_prompt || '').trim();\nif (!prompt) throw new Error('prompt-engine returned an empty final_prompt');\n// the engine already renders the per-image role labels into rendered_prompt; roles are kept for the record only\nconst roles = plan.map((p) => p.role).filter(Boolean);\nconst body = { model: pe.model || 'gpt-image-2-5-sunburst-image-to-image', callBackUrl: $execution.resumeUrl, input: { prompt: prompt.slice(0, 20000), input_urls: urls, aspect_ratio: pe.aspect_ratio || '1:1', resolution: pe.resolution || '2K', background: 'opaque' } };\nreturn { json: { body, attempt: 1, input_roles: roles } };"
     },
     onError: 'continueErrorOutput',
     position: [1920, 208]
@@ -528,13 +601,12 @@ const saveVendorJob = node({
     name: 'Save Vendor Job',
     parameters: {
       method: 'PATCH',
-      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/generations?id=eq.{{ $('Config').first().json.generationId }}"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/generations?id=eq.{{ $('Config').first().json.generationId }}"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
           { name: 'Content-Type', value: 'application/json' },
           { name: 'Prefer', value: 'return=representation' }
         ]
@@ -544,7 +616,6 @@ const saveVendorJob = node({
       jsonBody: expr("{{ JSON.stringify({ vendor_job_id: $('Create Task').first().json.data.taskId, vendor: 'kie', status: 'working' }) }}"),
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     onError: 'continueRegularOutput',
     alwaysOutputData: true,
     position: [2640, 208]
@@ -562,7 +633,7 @@ const waitForCallback = node({
       httpMethod: 'POST',
       limitWaitTime: true,
       limitType: 'afterTimeInterval',
-      resumeAmount: 15,
+      resumeAmount: 8,
       resumeUnit: 'minutes',
       options: {}
     },
@@ -584,7 +655,7 @@ const pollUntilDone = node({
           taskId: expr("{{ $('Create Task').first().json.data.taskId }}"),
           url: expr("{{ '" + kieBaseUrl + "/api/v1/jobs/recordInfo?taskId=' + $('Create Task').first().json.data.taskId }}"),
           interval: 10,
-          timeout: 1800
+          timeout: 600
         },
         matchingColumns: [],
         schema: [
@@ -634,13 +705,12 @@ const uploadToGens = node({
     name: 'Upload To Gens',
     parameters: {
       method: 'POST',
-      url: expr("{{ $('Config').first().json.sbUrl }}/storage/v1/object/gens/{{ $('Config').first().json.imagePath }}"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/storage/v1/object/gens/{{ $('Config').first().json.imagePath }}"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
           { name: 'Content-Type', value: 'image/png' },
           { name: 'x-upsert', value: 'true' }
         ]
@@ -650,7 +720,6 @@ const uploadToGens = node({
       inputDataFieldName: 'data',
       options: { timeout: 180000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     retryOnFail: true,
     maxTries: 2,
     waitBetweenTries: 3000,
@@ -667,13 +736,12 @@ const saveImagePath = node({
     name: 'Save Image Path',
     parameters: {
       method: 'PATCH',
-      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/generations?id=eq.{{ $('Config').first().json.generationId }}"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/generations?id=eq.{{ $('Config').first().json.generationId }}"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
           { name: 'Content-Type', value: 'application/json' },
           { name: 'Prefer', value: 'return=representation' },
           { name: 'Accept', value: 'application/vnd.pgrst.object+json' }
@@ -684,7 +752,6 @@ const saveImagePath = node({
       jsonBody: expr("{{ JSON.stringify({ image_path: $('Config').first().json.imagePath, vendor_job_id: $('Create Task').first().json.data.taskId, vendor: 'kie', reference_urls: $('List Input Paths').all().map((i) => i.json) }) }}"),
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     retryOnFail: true,
     maxTries: 3,
     waitBetweenTries: 3000,
@@ -701,13 +768,12 @@ const signResult = node({
     name: 'Sign Result',
     parameters: {
       method: 'POST',
-      url: expr("{{ $('Config').first().json.sbUrl }}/storage/v1/object/sign/gens/{{ $('Config').first().json.imagePath }}"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/storage/v1/object/sign/gens/{{ $('Config').first().json.imagePath }}"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
           { name: 'Content-Type', value: 'application/json' }
         ]
       },
@@ -716,7 +782,6 @@ const signResult = node({
       jsonBody: '{"expiresIn":3600}',
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     retryOnFail: true,
     maxTries: 2,
     waitBetweenTries: 2000,
@@ -733,18 +798,16 @@ const getQcTemplates = node({
     name: 'Get QC Templates',
     parameters: {
       method: 'GET',
-      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/prompt_templates?slug=in.(qc_prompt,corrective_suffix)&active=is.true&select=slug,version,body&order=version.desc"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/prompt_templates?slug=in.(qc_prompt,corrective_suffix)&active=is.true&select=slug,version,body&order=version.desc"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") }
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") }
         ]
       },
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     executeOnce: true,
     retryOnFail: true,
     maxTries: 2,
@@ -761,7 +824,7 @@ const buildQcRequest = node({
   config: {
     name: 'Build QC Request',
     parameters: {
-      jsCode: "const cfg = $('Config').first().json;\nconst gen = $('Get Generation').first().json;\nconst rows = $input.all().map((i) => i.json);\nconst tpl = rows.find((r) => r.slug === 'qc_prompt');\nif (!tpl || !tpl.body) throw new Error('prompt_templates: no active qc_prompt template');\nconst src = (gen.brief_snapshot && Array.isArray(gen.brief_snapshot.print_text)) ? gen.brief_snapshot.print_text : ((gen.cards && gen.cards.print_text) || []);\nconst lines = src.map((t) => String((t && t.text) || '').trim()).filter(Boolean);\nconst styleCard = gen.style_card_snapshot || {};\nconst imageUrl = cfg.sbUrl + '/storage/v1' + String($('Sign Result').first().json.signedURL || '');\nconst vars = { EXPECTED_TEXT: lines.join('\\n'), TEXT_LINES: lines.length ? lines.join('\\n') : 'NONE', TEXT_LINES_JSON: JSON.stringify(lines), STYLE_CARD_JSON: JSON.stringify(styleCard), PALETTE_JSON: JSON.stringify(styleCard.palette || []), GARMENT_COLOR: (gen.cards && gen.cards.garment_color) || '' };\nlet text = String(tpl.body).replace(/\\{\\{\\s*([A-Z_]+)\\s*\\}\\}/g, (m, k) => (k in vars ? vars[k] : m));\n// EXTRACT.md section 3.8: the template wraps {{EXPECTED_TEXT}} in triple quotes itself; with no text the WHOLE line is replaced\nif (!lines.length) text = text.replace(/EXPECTED ON-DESIGN TEXT: \"\"\"[\\s\\S]*?\"\"\"/, 'EXPECTED ON-DESIGN TEXT: (none - the image must contain NO text at all)');\nif (!/STYLE_CARD_JSON|PALETTE_JSON/.test(tpl.body)) text += '\\n\\nSTYLE CARD (locked JSON for this client - report any palette or style violation):\\n' + vars.STYLE_CARD_JSON;\nif (!/EXPECTED_TEXT|TEXT_LINES/.test(tpl.body)) text += '\\n\\nEXACT TEXT LINES (each must appear verbatim, exactly once):\\n' + vars.TEXT_LINES;\nconst body = { messages: [{ role: 'user', content: [{ type: 'text', text }, { type: 'image_url', image_url: { url: imageUrl } }] }], response_format: { type: 'json_object' } };\nreturn { json: { body, text_lines: lines, expected_text: lines.join('\\n'), image_url: imageUrl, template_version: tpl.version } };"
+      jsCode: "const cfg = $('Config').first().json;\nconst gen = $('Get Generation').first().json;\nconst rows = $input.all().map((i) => i.json);\nconst tpl = rows.find((r) => r.slug === 'qc_prompt');\nif (!tpl || !tpl.body) throw new Error('prompt_templates: no active qc_prompt template');\nconst src = (gen.brief_snapshot && Array.isArray(gen.brief_snapshot.print_text)) ? gen.brief_snapshot.print_text : ((gen.cards && gen.cards.print_text) || []);\nconst lines = src.map((t) => String((t && t.text) || '').trim()).filter(Boolean);\nconst styleCard = gen.style_card_snapshot || {};\nconst imageUrl = $('Load Config').first().json.sbUrl + '/storage/v1' + String($('Sign Result').first().json.signedURL || '');\nconst vars = { EXPECTED_TEXT: lines.join('\\n'), TEXT_LINES: lines.length ? lines.join('\\n') : 'NONE', TEXT_LINES_JSON: JSON.stringify(lines), STYLE_CARD_JSON: JSON.stringify(styleCard), PALETTE_JSON: JSON.stringify(styleCard.palette || []), GARMENT_COLOR: (gen.cards && gen.cards.garment_color) || '' };\nlet text = String(tpl.body).replace(/\\{\\{\\s*([A-Z_]+)\\s*\\}\\}/g, (m, k) => (k in vars ? vars[k] : m));\n// EXTRACT.md section 3.8: the template wraps {{EXPECTED_TEXT}} in triple quotes itself; with no text the WHOLE line is replaced\nif (!lines.length) text = text.replace(/EXPECTED ON-DESIGN TEXT: \"\"\"[\\s\\S]*?\"\"\"/, 'EXPECTED ON-DESIGN TEXT: (none - the image must contain NO text at all)');\nif (!/STYLE_CARD_JSON|PALETTE_JSON/.test(tpl.body)) text += '\\n\\nSTYLE CARD (locked JSON for this client - report any palette or style violation):\\n' + vars.STYLE_CARD_JSON;\nif (!/EXPECTED_TEXT|TEXT_LINES/.test(tpl.body)) text += '\\n\\nEXACT TEXT LINES (each must appear verbatim, exactly once):\\n' + vars.TEXT_LINES;\nconst body = { messages: [{ role: 'user', content: [{ type: 'text', text }, { type: 'image_url', image_url: { url: imageUrl } }] }], response_format: { type: 'json_object' } };\nreturn { json: { body, text_lines: lines, expected_text: lines.join('\\n'), image_url: imageUrl, template_version: tpl.version } };"
     },
     onError: 'continueErrorOutput',
     position: [4560, 208]
@@ -808,13 +871,12 @@ const qcJudge = node({
     name: 'QC Judge',
     parameters: {
       method: 'POST',
-      url: expr("{{ $('Config').first().json.sbUrl }}/functions/v1/qc-judge"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/functions/v1/qc-judge"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
           { name: 'Content-Type', value: 'application/json' }
         ]
       },
@@ -823,7 +885,6 @@ const qcJudge = node({
       jsonBody: expr("{{ JSON.stringify({ generation_id: $('Config').first().json.generationId, qc_raw: ($json.choices?.[0]?.message?.content ?? JSON.stringify($json)), exact_text_lines: $('Build QC Request').first().json.text_lines, attempt: $('Build Create Task').first().json.attempt }) }}"),
       options: { timeout: 60000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     retryOnFail: true,
     maxTries: 2,
     waitBetweenTries: 3000,
@@ -873,23 +934,21 @@ const markAttempt2 = node({
     name: 'Mark Attempt 2',
     parameters: {
       method: 'PATCH',
-      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/generations?id=eq.{{ $('Config').first().json.generationId }}"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/generations?id=eq.{{ $('Config').first().json.generationId }}"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
           { name: 'Content-Type', value: 'application/json' },
           { name: 'Prefer', value: 'return=representation' }
         ]
       },
       sendBody: true,
       specifyBody: 'json',
-      jsonBody: expr("{{ JSON.stringify({ attempt: 2, status: 'working', needs_regen: true }) }}"),
+      jsonBody: expr("{{ JSON.stringify({ attempt: 2, status: 'working', needs_regen: true, started_at: $now.toISO() }) }}"),
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     onError: 'continueRegularOutput',
     alwaysOutputData: true,
     position: [5760, 400]
@@ -919,13 +978,12 @@ const generationDone = node({
     name: 'Generation → done',
     parameters: {
       method: 'PATCH',
-      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/generations?id=eq.{{ $('Config').first().json.generationId }}"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/generations?id=eq.{{ $('Config').first().json.generationId }}"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
           { name: 'Content-Type', value: 'application/json' },
           { name: 'Prefer', value: 'return=representation' }
         ]
@@ -935,7 +993,6 @@ const generationDone = node({
       jsonBody: expr("{{ JSON.stringify({ status: 'done', finished_at: $now.toISO(), last_error: null }) }}"),
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     retryOnFail: true,
     maxTries: 3,
     waitBetweenTries: 3000,
@@ -952,23 +1009,22 @@ const setCurrentGeneration = node({
   config: {
     name: 'Set Current Generation',
     parameters: {
-      method: 'POST',
-      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/rpc/set_current_generation"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      method: 'PATCH',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/cards?id=eq.{{ $('Config').first().json.cardId }}"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
-          { name: 'Content-Type', value: 'application/json' }
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
+          { name: 'Content-Type', value: 'application/json' },
+          { name: 'Prefer', value: 'return=representation' }
         ]
       },
       sendBody: true,
       specifyBody: 'json',
-      jsonBody: expr("{{ JSON.stringify({ p_generation_id: $('Config').first().json.generationId }) }}"),
+      jsonBody: expr("{{ JSON.stringify({ current_generation_id: $('Config').first().json.generationId }) }}"),
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     retryOnFail: true,
     maxTries: 3,
     waitBetweenTries: 3000,
@@ -986,13 +1042,12 @@ const cardNeedsReview = node({
     name: 'Card → needs_review',
     parameters: {
       method: 'POST',
-      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/rpc/move_card"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/rpc/move_card"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
           { name: 'Content-Type', value: 'application/json' }
         ]
       },
@@ -1001,7 +1056,6 @@ const cardNeedsReview = node({
       jsonBody: expr("{{ JSON.stringify({ p_card_id: $('Config').first().json.cardId, p_stage: 'needs_review', p_note: 'generation ' + $('Config').first().json.generationId + ' ready (QC score ' + String($('Decide Regen').first().json.score ?? 'n/a') + ', attempt ' + String($('Decide Regen').first().json.attempt) + ')' }) }}"),
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     retryOnFail: true,
     maxTries: 3,
     waitBetweenTries: 3000,
@@ -1033,13 +1087,12 @@ const generationFailed = node({
     name: 'Generation → failed',
     parameters: {
       method: 'PATCH',
-      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/generations?id=eq.{{ $('Config').first().json.generationId }}"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/generations?id=eq.{{ $('Config').first().json.generationId }}"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
           { name: 'Content-Type', value: 'application/json' },
           { name: 'Prefer', value: 'return=representation' }
         ]
@@ -1049,7 +1102,6 @@ const generationFailed = node({
       jsonBody: expr("{{ JSON.stringify({ status: 'failed', last_error: $json.message, finished_at: $now.toISO() }) }}"),
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     retryOnFail: true,
     maxTries: 3,
     waitBetweenTries: 3000,
@@ -1067,13 +1119,12 @@ const cardFailed = node({
     name: 'Card → failed',
     parameters: {
       method: 'POST',
-      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/rpc/move_card"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/rpc/move_card"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
           { name: 'Content-Type', value: 'application/json' }
         ]
       },
@@ -1082,7 +1133,6 @@ const cardFailed = node({
       jsonBody: expr("{{ JSON.stringify({ p_card_id: $('Config').first().json.cardId, p_stage: 'failed', p_note: $('Fail Message').first().json.message, p_force: true }) }}"),
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     retryOnFail: true,
     maxTries: 3,
     waitBetweenTries: 3000,
@@ -1096,14 +1146,17 @@ const cardFailed = node({
 export default workflow('dm-studio-wf2-generate', 'DM Studio · WF-2 Generate')
   .add(generateNote)
   .add(generateWebhook)
-  .to(dispatchConfig)
-  .to(claimGenerations)
+  .to(loadDispatchConfig)
+  .to(dispatchSecretOk.onTrue(claimGenerations).onFalse(dispatchRejected))
+  .add(claimGenerations)
   .to(hasGenerationId)
   .to(eachGeneration
     .onDone(dispatchComplete)
     .onEachBatch(fireWorker.to(nextBatch(eachGeneration))))
   .add(workerWebhook)
-  .to(config)
+  .to(loadConfig)
+  .to(secretOk.onTrue(config).onFalse(rejected))
+  .add(config)
   .to(getGeneration.onError(failMessage))
   .to(cardGenerating)
   .to(generationWorking)

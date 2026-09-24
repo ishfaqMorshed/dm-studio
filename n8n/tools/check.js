@@ -10,7 +10,7 @@ const { parseWorkflowCodeToBuilder, validateWorkflowBuilder } = require('@n8n/wo
 const argv = process.argv.slice(2);
 const credFlag = argv.indexOf('--worker-cred-id');
 const workerCredId = credFlag >= 0 ? argv[credFlag + 1] : '';
-const fileArgs = argv.filter((a, i) => a !== '--worker-cred-id' && i !== credFlag + 1);
+const fileArgs = argv.filter((a, i) => a !== '--worker-cred-id' && !(credFlag >= 0 && i === credFlag + 1));
 
 const dir = path.resolve(__dirname, '..');
 const files = fileArgs.length

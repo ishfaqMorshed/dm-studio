@@ -30,7 +30,17 @@ Kie.ai keeps its EXISTING credentials (bind by id): images "GPT Image 2 [DM-Kie]
 7. Ideogram: header Api-Key = ideogramKey. imgbb: query key = imgbbKey. ModelsLab: key inside JSON body = mlKey.
 8. No Code node over 20 lines except the owner's frozen "Set 300 DPI" and the two verbatim ModelsLab evaluators.
 9. Sub-workflow ids: WF-5 Poll id → const `pollWorkflowId` (placeholder REPLACE_WITH_WF5_POLL_ID); WF-2's worker webhook path is
-   `studio-generate-worker`; WF-3 re-uses it for regenerate by POSTing {generation_id} there.
+   `studio-generate-worker` and ONLY WF-2's dispatcher (Fire Worker) calls it. WF-3 regenerate POSTs the dispatcher
+   `/webhook/studio-generate` instead (decided 2026-09-24 review): request_edit inserts the row as status queued, so a direct worker POST
+   raced claim_generations() (fired by every other approval and the 5-min sweep) and could start two workers for one generation; going
+   through claim_generations() is atomic and honours settings.max_active_generations.
+10. Worker time budget: Wait For Callback 8 min + WF-5 Poll timeout 600 s (10 min) per pass, and the attempt-2 PATCH re-stamps
+   generations.started_at, so every pass stays inside public.requeue_stale()'s 20-min window (status dispatched/working,
+   coalesce(started_at, updated_at) < now()-20 min → requeued). Do not raise these without adding a started_at heartbeat.
+11. PostgREST embeds from generations to cards must name the FK (`cards!generations_card_id_fkey(...)`): two relationships exist
+   (generations_card_id_fkey and cards_current_generation_fk), and an unnamed embed answers 300 PGRST201. The response key stays `cards`.
+12. cards.current_generation_id is written by an HTTP PATCH on cards (policy cards_worker_update, anon + studio_secret_ok()), not by rpc
+   set_current_generation, which is staff-only (is_staff()) and returns 42501 to the worker.
 
 ## Workflow set and create order (all in folder QKT7A5gRiL349k8X, projectId i0N36mu4STExMeN4, never publish from code)
 WF-0 Studio Config → WF-5 Poll → WF-2 Generate → WF-3 Edit → WF-1 Intake → WF-1b Style Draft → WF-4 Finisher → WF-6 Error → WF-7 Lessons
@@ -46,12 +56,12 @@ Retry → retry_card requeues the generation / fin_job → same webhooks
 
 ## WF-3 Edit (new, file n8n/wf3-edit.sdk.js)
 Webhook studio-edit {generation_id, card_id, kind} → Load Config → Secret OK? → Get Generation(+card) → branch on kind:
-- regenerate: POST <n8nBaseUrl>/webhook/studio-generate-worker {generation_id} (WF-2 worker does prompt-engine → Kie → QC) and stop.
+- regenerate: POST <n8nBaseUrl>/webhook/studio-generate (WF-2 dispatcher; claim_generations() hands the queued row to one worker, which does prompt-engine → Kie → QC) and stop. See item 9.
 - edit_text / edit_region: PATCH generation working → prompt-engine (returns rendered_prompt for the edit, input_paths: previous_version + optional mask)
   → sign the parent image (gens) and the mask if present → Kie createTask model 'google/nano-banana-edit' (request shape from docs/tshirt-engine/EXTRACT.md
   "tweak" path: input image URLs + prompt; add the mask as a second input and say in the prompt that only the white region may change)
-  → WF-5 Poll → download result → upload gens/<card_id>/<generation_id>.png → PATCH image_path/vendor_job_id → Gemini QC (qc_prompt) → qc-judge
-  → PATCH status done, cards.current_generation_id → move_card(needs_review). Failure → PATCH failed + move_card(failed).
+  → WF-5 Poll (timeout 600 s) → download result → upload gens/<card_id>/<generation_id>.png → PATCH image_path/vendor_job_id → Gemini QC (qc_prompt) → qc-judge
+  → PATCH status done → PATCH cards.current_generation_id (item 12) → move_card(needs_review). Failure → PATCH failed + move_card(failed).
   (drift_pct pixel diff is out of scope for v1; leave the column null.)
 
 ## WF-7 Lessons (new, file n8n/wf7-lessons.sdk.js)

@@ -1,10 +1,9 @@
 import { workflow, node, trigger, sticky, placeholder, newCredential, ifElse, switchCase, merge, splitInBatches, nextBatch, languageModel, memory, tool, outputParser, embedding, embeddings, vectorStore, retriever, documentLoader, textSplitter, reranker, fromAi, expr } from '@n8n/workflow-sdk';
 
 const supabaseUrl = 'https://voatrqhfsdfjomyajovi.supabase.co';
-const supabasePublishableKey = 'sb_publishable_shDVoGzgpaS2L9OTmzyRGA_JOx52p0I';
 const n8nBaseUrl = 'https://n8n.srv1202488.hstgr.cloud';
 
-const workerSecretCredential = newCredential('DM Studio Worker Secret');
+const configWorkflowId = 'vbyjWhK4ZRN9uZUM';
 const slackCredential = newCredential('DM HR', 'kZQVG6uMHQ7Xxu2B');
 
 const looseOptions = { caseSensitive: true, leftValue: '', typeValidation: 'loose', version: 1 };
@@ -14,6 +13,8 @@ const sampleGenerationId = '9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b';
 const sampleClientId = '7c6d5e4f-3a2b-4c1d-9e8f-0a1b2c3d4e5f';
 const sampleExecutionId = '48211';
 const sampleMessage = '[DM Studio · WF-2 Generate / Create Task] Kie createTask returned 402 insufficient credits';
+
+const sampleConfig = { sbUrl: supabaseUrl, anonKey: 'sb_publishable_redacted', n8nBaseUrl: n8nBaseUrl, studioSecret: 'redacted', ideogramKey: 'redacted', imgbbKey: 'redacted', mlKey: 'redacted', upscaleModel: 'ultra_resolution', upscaleScale: 4 };
 
 const sampleContext = {
   executionId: sampleExecutionId,
@@ -31,8 +32,8 @@ const errorNote = sticky(
   '## DM Studio · WF-6 Error workflow\n' +
   'Set this workflow as the **Error workflow** (workflow settings) of WF-1 Intake, WF-1b Style Draft, WF-2 Generate and WF-4 Finisher. It runs only for unhandled failures; the studio workflows handle their own expected failures inline.\n\n' +
   'Flow: Error Trigger → Failure Context (message, execution id, ids found in the error payload) → Find Card / Find Generation by **n8n_execution_id** (WF-1 and WF-2 tag their rows with the execution id as their first step) → Resolve Ids → PATCH generations status failed + last_error (when a generation is known) → move_card(failed, note) (when a card is known) → Slack #dm-studio.\n\n' +
-  'Auth on every Supabase call: publishable key as apikey + the x-studio-secret header injected by the credential **DM Studio Worker Secret**. Slack uses the existing credential **DM HR** (kZQVG6uMHQ7Xxu2B); the Slack node is continue-on-error so a Slack outage never masks the database write.',
-  { color: 4, width: 380, height: 520, position: [-440, 120] }
+  '**Config convention (no credentials except Kie/Slack):** first node **Load Config** runs the sub-workflow WF-0 Studio Config (paste its id into `const configWorkflowId` before creating this workflow); every later node reads `$(\'Load Config\').first().json.<field>`. The Error Trigger carries no header, so there is no Secret OK? node here. Every Supabase REST/RPC call sends headers apikey = anonKey and x-studio-secret = studioSecret from config, no credential attached. Slack keeps the existing credential **DM HR** (kZQVG6uMHQ7Xxu2B); the Slack node is continue-on-error so a Slack outage never masks the database write. Nothing to paste in this workflow: all keys live in WF-0.',
+  { color: 4, width: 380, height: 640, position: [-440, 120] }
 );
 
 const errorTrigger = trigger({
@@ -52,25 +53,21 @@ const errorTrigger = trigger({
   }]
 });
 
-const errorConfig = node({
-  type: 'n8n-nodes-base.set',
-  version: 3.4,
+const loadConfig = node({
+  type: 'n8n-nodes-base.executeWorkflow',
+  version: 1.2,
   config: {
-    name: 'Config',
+    name: 'Load Config',
     parameters: {
-      mode: 'manual',
-      assignments: {
-        assignments: [
-          { id: 'c1', name: 'sbUrl', type: 'string', value: supabaseUrl },
-          { id: 'c2', name: 'anonKey', type: 'string', value: supabasePublishableKey }
-        ]
-      },
-      includeOtherFields: true,
-      options: {}
+      workflowId: { __rl: true, mode: 'id', value: configWorkflowId, cachedResultName: 'DM Studio · WF-0 Studio Config' },
+      workflowInputs: { mappingMode: 'defineBelow', value: {}, matchingColumns: [], schema: [], attemptToConvertTypes: false, convertFieldsToString: true },
+      mode: 'once',
+      options: { waitForSubWorkflow: true }
     },
+    executeOnce: true,
     position: [240, 304]
   },
-  output: [{ sbUrl: supabaseUrl, anonKey: 'sb_publishable_redacted', execution: { id: sampleExecutionId }, workflow: { name: 'DM Studio · WF-2 Generate' } }]
+  output: [sampleConfig]
 });
 
 const failureContext = node({
@@ -94,18 +91,16 @@ const findCard = node({
     name: 'Find Card',
     parameters: {
       method: 'GET',
-      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/cards?n8n_execution_id=eq.{{ $json.executionId }}&select=id,client_id,stage&limit=1"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/cards?n8n_execution_id=eq.{{ $json.executionId }}&select=id,client_id,stage&limit=1"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") }
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") }
         ]
       },
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     onError: 'continueRegularOutput',
     alwaysOutputData: true,
     position: [720, 304]
@@ -120,18 +115,16 @@ const findGeneration = node({
     name: 'Find Generation',
     parameters: {
       method: 'GET',
-      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/generations?n8n_execution_id=eq.{{ $('Failure Context').first().json.executionId }}&status=in.(dispatched,working)&select=id,card_id,status&order=created_at.desc&limit=1"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/generations?n8n_execution_id=eq.{{ $('Failure Context').first().json.executionId }}&status=in.(dispatched,working)&select=id,card_id,status&order=created_at.desc&limit=1"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") }
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") }
         ]
       },
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     onError: 'continueRegularOutput',
     alwaysOutputData: true,
     position: [960, 304]
@@ -179,13 +172,12 @@ const generationFailed = node({
     name: 'Generation → failed',
     parameters: {
       method: 'PATCH',
-      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/generations?id=eq.{{ $('Resolve Ids').first().json.generation_id }}"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/generations?id=eq.{{ $('Resolve Ids').first().json.generation_id }}"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
           { name: 'Content-Type', value: 'application/json' },
           { name: 'Prefer', value: 'return=representation' }
         ]
@@ -195,7 +187,6 @@ const generationFailed = node({
       jsonBody: expr("{{ JSON.stringify({ status: 'failed', last_error: $('Resolve Ids').first().json.message, finished_at: $now.toISO() }) }}"),
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     retryOnFail: true,
     maxTries: 3,
     waitBetweenTries: 3000,
@@ -232,13 +223,12 @@ const cardFailed = node({
     name: 'Card → failed',
     parameters: {
       method: 'POST',
-      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/rpc/move_card"),
-      authentication: 'genericCredentialType',
-      genericAuthType: 'httpHeaderAuth',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/rpc/move_card"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
-          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
           { name: 'Content-Type', value: 'application/json' }
         ]
       },
@@ -247,7 +237,6 @@ const cardFailed = node({
       jsonBody: expr("{{ JSON.stringify({ p_card_id: $('Resolve Ids').first().json.card_id, p_stage: 'failed', p_note: $('Resolve Ids').first().json.message, p_force: true }) }}"),
       options: { timeout: 15000 }
     },
-    credentials: { httpHeaderAuth: workerSecretCredential },
     retryOnFail: true,
     maxTries: 3,
     waitBetweenTries: 3000,
@@ -282,7 +271,7 @@ const notifySlack = node({
 export default workflow('dm-studio-wf6-error', 'DM Studio · WF-6 Error')
   .add(errorNote)
   .add(errorTrigger)
-  .to(errorConfig)
+  .to(loadConfig)
   .to(failureContext)
   .to(findCard)
   .to(findGeneration)
