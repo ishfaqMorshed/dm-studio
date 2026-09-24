@@ -7,6 +7,7 @@ import { cardTitle, clientName, finalFileName, pickFinal, type DeliveredCard } f
 import { useDeliveredCards } from '../components/completed/useDeliveredCards'
 import { downloadAsZip, downloadFile, type DownloadItem, type ZipProgress } from '../lib/download'
 import { FINALS_BUCKET } from '../lib/supabase'
+import { useClientScope } from '../lib/useClientScope'
 import { useToast } from '../lib/useToast'
 import { errorMessage } from '../lib/types'
 
@@ -29,10 +30,11 @@ function todayStamp(): string {
 
 export default function CompletedPage() {
   const toast = useToast()
-  const { rows, loading, error, refresh, removeLocal } = useDeliveredCards()
+  const { selectedClientId, selectedClient, inScope } = useClientScope()
+  const { rows: allRows, loading, error, refresh, removeLocal } = useDeliveredCards(selectedClientId)
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [clientFilter, setClientFilter] = useState('')
+  const [localClientFilter, setClientFilter] = useState('')
   const [query, setQuery] = useState('')
   const [zipProgress, setZipProgress] = useState<ZipProgress | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
@@ -43,6 +45,11 @@ export default function CompletedPage() {
     const t = window.setInterval(() => setNow(Date.now()), AGE_TICK_MS)
     return () => window.clearInterval(t)
   }, [])
+
+  // The hook already queries by client; this guard hides rows of the previous scope until the refetch lands.
+  const rows = useMemo(() => allRows.filter((c) => inScope(c.client_id)), [allRows, inScope])
+  // With a client in the header the page-level client select is redundant and hidden.
+  const clientFilter = selectedClientId ? '' : localClientFilter
 
   const finals = useMemo(() => new Map(rows.map((c) => [c.id, pickFinal(c)])), [rows])
 
@@ -151,7 +158,8 @@ export default function CompletedPage() {
   )
 
   const zipName = (suffix: string) => {
-    const who = clientFilter ? (clients.find((c) => c.id === clientFilter)?.name ?? 'client') : 'DM Studio'
+    const who =
+      selectedClient?.name ?? (clientFilter ? (clients.find((c) => c.id === clientFilter)?.name ?? 'client') : 'DM Studio')
     return `${who} finals ${suffix} ${todayStamp()}`
   }
 
@@ -213,7 +221,9 @@ export default function CompletedPage() {
             </span>
           </h1>
           <p className="text-sm text-neutral-500">
-            Print-ready PNGs from the finisher. Download what the client needs, then delete to clear the storage.
+            {selectedClient
+              ? `Print-ready PNGs for ${selectedClient.name}. Choose “All clients” in the header to see every delivery.`
+              : 'Print-ready PNGs from the finisher. Download what the client needs, then delete to clear the storage.'}
           </p>
         </div>
         <button type="button" onClick={() => void refresh()} className={secondaryBtn} title="Reload the list now">
@@ -253,17 +263,19 @@ export default function CompletedPage() {
               />
             </span>
           </label>
-          <label className="text-xs sm:w-64">
-            <span className="sr-only">Filter by client</span>
-            <select value={clientFilter} onChange={(e) => setClientFilter(e.target.value)} className={`${field} w-full`}>
-              <option value="">All clients</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          {!selectedClientId && (
+            <label className="text-xs sm:w-64">
+              <span className="sr-only">Filter by client</span>
+              <select value={clientFilter} onChange={(e) => setClientFilter(e.target.value)} className={`${field} w-full`}>
+                <option value="">All clients</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -343,7 +355,9 @@ export default function CompletedPage() {
       ) : visible.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-neutral-300 px-6 py-16 text-center text-sm text-neutral-500 dark:border-neutral-700">
           {rows.length === 0
-            ? 'Nothing delivered yet. Finished PNGs land here once the finisher moves a card to Delivered.'
+            ? selectedClient
+              ? `Nothing delivered for ${selectedClient.name} yet. Finished PNGs land here once the finisher moves a card to Delivered.`
+              : 'Nothing delivered yet. Finished PNGs land here once the finisher moves a card to Delivered.'
             : 'No delivered card matches this filter.'}
         </div>
       ) : (

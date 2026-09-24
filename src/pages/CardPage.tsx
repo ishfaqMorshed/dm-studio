@@ -34,6 +34,7 @@ import { GenerationStrip } from '../components/card/GenerationStrip'
 import { Preview } from '../components/card/Preview'
 import { QcReportPanel } from '../components/card/QcReportPanel'
 import { MagicPromptEditor } from '../components/card/MagicPromptEditor'
+import { RenderedPromptPanel } from '../components/card/RenderedPromptPanel'
 import { ActionBar } from '../components/card/ActionBar'
 import { ApproveDialog } from '../components/card/ApproveDialog'
 import { AcceptDialog } from '../components/card/AcceptDialog'
@@ -432,29 +433,32 @@ function CardView({ cardId }: { cardId: string }) {
           )}
           <Preview viewed={viewed} previous={previous} isCurrent={viewed !== null && viewed.id === current?.id} fileBase={fileBase} now={now} />
           <QcReportPanel generation={viewed} />
-          <Panel
-            title="Magic prompt"
-            subtitle={
-              current
-                ? viewed && viewed.id !== current.id
-                  ? 'Prompt of the current generation — Regenerate builds on it, not on the one you are viewing'
-                  : 'Edit any section before Regenerate; the engine re-renders the paragraph'
-                : 'Appears once the first generation is queued'
-            }
-          >
-            <MagicPromptEditor
-              sections={draft.sections}
-              onChange={setSections}
-              onReset={resetSections}
-              dirty={promptDirty}
-              disabled={busy !== null}
-              emptyText={
+          <div className="grid gap-4 2xl:grid-cols-2 2xl:items-start">
+            <Panel
+              title="Magic prompt"
+              subtitle={
                 current
-                  ? 'No prompt stored on the current generation yet — the engine writes it when the job starts.'
-                  : 'Approve the card to build the first prompt.'
+                  ? viewed && viewed.id !== current.id
+                    ? 'Prompt of the current generation — Regenerate builds on it, not on the one you are viewing'
+                    : 'Edit any section before Regenerate; the engine re-renders the paragraph'
+                  : 'Appears once the first generation is queued'
               }
-            />
-          </Panel>
+            >
+              <MagicPromptEditor
+                sections={draft.sections}
+                onChange={setSections}
+                onReset={resetSections}
+                dirty={promptDirty}
+                disabled={busy !== null}
+                emptyText={
+                  current
+                    ? 'No prompt stored on the current generation yet — the engine writes it when the job starts.'
+                    : 'Approve the card to build the first prompt.'
+                }
+              />
+            </Panel>
+            <RenderedPromptPanel generation={current} viewingOther={viewed !== null && current !== null && viewed.id !== current.id} />
+          </div>
         </div>
       </div>
 
@@ -463,6 +467,8 @@ function CardView({ cardId }: { cardId: string }) {
           card={card}
           styleCard={styleCardState.styleCard}
           price={price}
+          model={settings?.generation_model ?? null}
+          resolution={settings?.generation_resolution ?? null}
           busy={busy === 'approve'}
           onClose={closeDialog}
           onConfirm={onApprove}

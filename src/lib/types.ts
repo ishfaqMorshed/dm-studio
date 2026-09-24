@@ -8,6 +8,12 @@ export type CardUpdate = TablesUpdate<'cards'>
 export type Client = Tables<'clients'>
 export type ClientInsert = TablesInsert<'clients'>
 export type ClientUpdate = TablesUpdate<'clients'>
+/** One image in a client's reference library (refs bucket `<client_id>/library/<uuid>.<ext>`). */
+export type ClientReference = Tables<'client_references'>
+export type ClientReferenceInsert = TablesInsert<'client_references'>
+/** A "Draft Style Card from library" job; insert → pg_net → n8n WF-1b → style_draft_update. */
+export type StyleDraftRequest = Tables<'style_draft_requests'>
+export type StyleDraftRequestInsert = TablesInsert<'style_draft_requests'>
 export type Generation = Tables<'generations'>
 export type FinJob = Tables<'fin_jobs'>
 export type FinJobEvent = Tables<'fin_job_events'>
@@ -33,6 +39,28 @@ export type { Json }
 
 /** A job/generation that still occupies a worker slot. */
 export const ACTIVE_JOB_STATUSES: readonly JobStatus[] = ['queued', 'dispatched', 'working']
+
+/** `cards.source` is plain text in the DB; these are the values the RPCs write. */
+export const CARD_SOURCES = ['form', 'designer', 'duplicate'] as const
+export type CardSource = (typeof CARD_SOURCES)[number]
+
+export const CARD_SOURCE_LABEL: Record<CardSource, string> = {
+  form: 'Client form',
+  designer: 'Created by designer',
+  duplicate: 'Duplicated',
+}
+
+export function isCardSource(v: unknown): v is CardSource {
+  return typeof v === 'string' && (CARD_SOURCES as readonly string[]).includes(v)
+}
+
+/** `settings.generation_resolution` options offered in Settings (Kie GPT Image 2.5). */
+export const GENERATION_RESOLUTIONS = ['1K', '2K', '4K'] as const
+export type GenerationResolution = (typeof GENERATION_RESOLUTIONS)[number]
+
+export function isGenerationResolution(v: unknown): v is GenerationResolution {
+  return typeof v === 'string' && (GENERATION_RESOLUTIONS as readonly string[]).includes(v)
+}
 
 export const GENERATION_KIND_LABEL: Record<GenerationKind, string> = {
   generate: 'Generate',
@@ -116,6 +144,44 @@ export function parsePrintText(json: Json | null | undefined): PrintTextLine[] {
 export function firstPrintLine(json: Json | null | undefined): string | null {
   const lines = parsePrintText(json)
   return lines.length ? lines[0].text : null
+}
+
+/**
+ * `generations.reference_urls` is written by the worker: the images attached to the
+ * engine call (`input_urls`) with the role label the prompt gives each one
+ * (e.g. "Image 1–3: style/subject references", "Image 4–6: client's established look").
+ * Shape is `[{url, role, path?, index?}]` but tolerate strings and partial objects.
+ */
+export interface ReferenceUrl {
+  /** Signed URL the worker attached (may be expired by the time a designer looks). */
+  url: string
+  /** Role label as rendered in the prompt, or null when the worker did not record one. */
+  role: string | null
+  /** Storage path (bucket-relative) when recorded, so the app can re-sign it. */
+  path: string | null
+  /** 1-based position in `input_urls` when recorded. */
+  index: number | null
+}
+
+export function parseReferenceUrls(json: Json | null | undefined): ReferenceUrl[] {
+  if (!Array.isArray(json)) return []
+  const out: ReferenceUrl[] = []
+  json.forEach((item, i) => {
+    if (typeof item === 'string') {
+      if (item.trim()) out.push({ url: item, role: null, path: null, index: i + 1 })
+    } else if (isRecord(item)) {
+      const url = typeof item.url === 'string' ? item.url : typeof item.signed_url === 'string' ? item.signed_url : ''
+      const path = typeof item.path === 'string' ? item.path : null
+      if (!url && !path) return
+      out.push({
+        url,
+        role: typeof item.role === 'string' ? item.role : typeof item.label === 'string' ? item.label : null,
+        path,
+        index: typeof item.index === 'number' && Number.isFinite(item.index) ? item.index : i + 1,
+      })
+    }
+  })
+  return out
 }
 
 /** `fin_jobs.metrics` is written by the finisher; shape is `{w, h, dpi, alpha}` but tolerate anything. */

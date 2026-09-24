@@ -9,11 +9,16 @@ function placementLabel(p: string | null): string {
   return (PLACEMENT_LABEL as Record<string, string>)[p as Placement] ?? p
 }
 
-/** Confirms the one designer step that spends money: shows the fixed per-card price. */
+/**
+ * Confirms the one designer step that spends money: shows the fixed per-card price and
+ * the engine model + resolution from Settings that the queued generation will use.
+ */
 export function ApproveDialog({
   card,
   styleCard,
   price,
+  model,
+  resolution,
   busy,
   onClose,
   onConfirm,
@@ -21,11 +26,17 @@ export function ApproveDialog({
   card: CardRow
   styleCard: StyleCard | null
   price: string | null
+  /** settings.generation_model, or null while settings are loading. */
+  model: string | null
+  /** settings.generation_resolution, or null while settings are loading. */
+  resolution: string | null
   busy: boolean
   onClose: () => void
   onConfirm: () => void
 }) {
   const lines = parsePrintText(card.print_text)
+  const modelName = model?.trim() || null
+  const resolutionName = resolution?.trim() || null
   return (
     <Dialog
       open
@@ -49,6 +60,17 @@ export function ApproveDialog({
         <dd>{card.clients?.name ?? '—'}</dd>
         <dt className="text-neutral-500">Cost</dt>
         <dd>{price ? `${price} per card` : 'Price not loaded — ask the lead to check Settings'}</dd>
+        <dt className="text-neutral-500">Engine</dt>
+        <dd>
+          {modelName ? (
+            <>
+              Will generate with <code className="rounded bg-neutral-100 px-1 text-xs dark:bg-neutral-800">{modelName}</code>
+              {resolutionName ? ` at ${resolutionName}` : ''}
+            </>
+          ) : (
+            'Model not loaded — ask the lead to check Settings'
+          )}
+        </dd>
         <dt className="text-neutral-500">Style Card</dt>
         <dd>{styleCard ? `v${styleCard.version} (locked)` : 'None locked'}</dd>
         <dt className="text-neutral-500">Text to print</dt>

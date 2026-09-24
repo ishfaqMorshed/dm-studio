@@ -2,13 +2,11 @@ import { Loader2, RotateCcw, User } from 'lucide-react'
 import { STAGES, STAGE_ACCENT_CLASS, STAGE_LABEL } from '../../lib/stage'
 import type { CardStage } from '../../lib/types'
 import { isDefaultFilters, type BoardFilters as Filters } from './filters'
-import type { ClientOption } from './types'
 
 interface Props {
   filters: Filters
   onChange: (next: Filters) => void
-  clients: ClientOption[]
-  /** Cards per stage after the client and "mine" filters, so the chips say what a column holds. */
+  /** Cards per stage after the scope and "mine" filters, so the chips say what a column holds. */
   countsByStage: Record<CardStage, number>
   visibleCount: number
   totalCount: number
@@ -22,19 +20,12 @@ const CHIP_OFF =
   'border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800'
 const CHIP_ON = 'border-neutral-900 bg-neutral-900 text-white dark:border-white dark:bg-white dark:text-neutral-900'
 
-/** Client select, stage chips (each toggles a column), "Mine", reset and a refresh button. */
-export function BoardFilters({
-  filters,
-  onChange,
-  clients,
-  countsByStage,
-  visibleCount,
-  totalCount,
-  refreshing,
-  onRefresh,
-}: Props) {
+/**
+ * Stage chips (each toggles a column), "Mine", reset and a refresh button.
+ * The client lives in the header's scope selector, not here.
+ */
+export function BoardFilters({ filters, onChange, countsByStage, visibleCount, totalCount, refreshing, onRefresh }: Props) {
   const allStages = filters.stages.size === STAGES.length
-  const clientKnown = !filters.clientId || clients.some((c) => c.id === filters.clientId)
 
   function toggleStage(stage: CardStage) {
     const next = new Set(filters.stages)
@@ -55,23 +46,6 @@ export function BoardFilters({
   return (
     <div className="mb-3 space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-2 text-sm">
-          <span className="sr-only">Client</span>
-          <select
-            value={clientKnown ? (filters.clientId ?? '') : ''}
-            onChange={(e) => onChange({ ...filters, clientId: e.target.value || null })}
-            className={`max-w-[14rem] rounded-lg border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-950 ${RING}`}
-          >
-            <option value="">All clients</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-                {c.active ? '' : ' (inactive)'}
-              </option>
-            ))}
-          </select>
-        </label>
-
         <button
           type="button"
           aria-pressed={filters.mine}
@@ -88,7 +62,7 @@ export function BoardFilters({
         {!isDefaultFilters(filters) && (
           <button
             type="button"
-            onClick={() => onChange({ clientId: null, stages: new Set(STAGES), mine: false })}
+            onClick={() => onChange({ stages: new Set(STAGES), mine: false })}
             className={`inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100 ${RING}`}
           >
             <RotateCcw className="h-3.5 w-3.5" />

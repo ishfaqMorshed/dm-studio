@@ -26,6 +26,9 @@ export const textareaCls = `${inputCls} min-h-[80px] resize-y leading-relaxed`
 
 export const selectCls = inputCls
 
+/** Select that sits inline in a flex row: same look as selectCls, no `w-full` so a fixed width (e.g. `w-28`) wins. */
+export const inlineSelectCls = inputCls.replace('w-full ', '')
+
 export const panelCls = 'rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900'
 
 /** Transparent-PNG checkerboard behind previews and thumbnails. */

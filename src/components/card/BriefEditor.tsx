@@ -16,7 +16,7 @@ import {
 } from '../../lib/types'
 import { JsonTree } from './JsonTree'
 import { formatDateTime } from './format'
-import { btnGhost, btnPrimary, btnSecondary, btnSmall, inputCls, selectCls, textareaCls } from './styles'
+import { btnGhost, btnPrimary, btnSecondary, btnSmall, inlineSelectCls, inputCls, selectCls, textareaCls } from './styles'
 import { Field, Panel, Spinner } from './ui'
 import type { CardRow } from './useCardData'
 
@@ -161,7 +161,7 @@ export function BriefEditor({ card, locked, onSaved }: { card: CardRow; locked: 
                     aria-label={`Line ${i + 1} role`}
                     value={line.role}
                     onChange={(e) => setLine(i, { role: e.target.value as PrintTextRole })}
-                    className={`${selectCls} w-28 shrink-0`}
+                    className={`${inlineSelectCls} w-28 shrink-0`}
                   >
                     {PRINT_TEXT_ROLES.map((r) => (
                       <option key={r} value={r}>
@@ -173,7 +173,7 @@ export function BriefEditor({ card, locked, onSaved }: { card: CardRow; locked: 
                     aria-label={`Line ${i + 1} text`}
                     value={line.text}
                     onChange={(e) => setLine(i, { text: e.target.value })}
-                    className={inputCls}
+                    className={`${inputCls} min-w-0 flex-1`}
                     placeholder="Exact text"
                   />
                   <button
@@ -181,7 +181,7 @@ export function BriefEditor({ card, locked, onSaved }: { card: CardRow; locked: 
                     onClick={() => set({ lines: form.lines.filter((_, j) => j !== i) })}
                     aria-label={`Remove line ${i + 1}`}
                     title="Remove line"
-                    className={btnGhost}
+                    className={`${btnGhost} shrink-0`}
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>

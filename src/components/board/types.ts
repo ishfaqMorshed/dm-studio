@@ -15,10 +15,3 @@ export interface BoardCard extends Card {
   client?: { name: string } | null
   current_generation?: BoardGeneration | null
 }
-
-/** Client rows the filter select needs. */
-export interface ClientOption {
-  id: string
-  name: string
-  active: boolean
-}

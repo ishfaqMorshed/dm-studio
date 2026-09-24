@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useId, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, Check, Copy, Loader2, Pencil, Plus, RefreshCw, RotateCw } from 'lucide-react'
+import { AlertTriangle, Check, Copy, Loader2, PanelRight, Pencil, Plus, RefreshCw, RotateCw } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { errorMessage, type Client, type ClientInsert, type ClientUpdate } from '../lib/types'
+import { errorMessage, type Client } from '../lib/types'
 import { useProfile } from '../lib/useProfile'
 import { useToast } from '../lib/useToast'
-import { btnPrimary, btnSecondary, hintCls, iconBtn, inputCls, labelCls, panelCls } from '../components/style/classes'
+import { ClientDialog } from '../components/clientPanel/ClientDialog'
+import { formLink, freshFormToken } from '../components/clientPanel/links'
+import { btnPrimary, iconBtn, panelCls } from '../components/style/classes'
 import { ConfirmDialog } from '../components/style/ConfirmDialog'
-import { Modal } from '../components/style/Modal'
-import { TagInput } from '../components/style/TagInput'
 import { copyText } from '../components/style/clipboard'
 
 const POLL_MS = 30_000
@@ -19,17 +19,6 @@ interface ClientRow {
   cards: number | null
   /** Highest locked Style Card version, or null when none is locked. */
   lockedVersion: number | null
-}
-
-function formLink(token: string): string {
-  return `${window.location.origin}/brief/${token}`
-}
-
-/** 32 lowercase hex chars, same shape as the database default. */
-function freshFormToken(): string {
-  const bytes = new Uint8Array(16)
-  crypto.getRandomValues(bytes)
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 /** Clients (active first, then by name) with card counts and the highest locked version. Throws with the Postgres message. */
@@ -284,7 +273,13 @@ function ClientTableRow({
     <tr className={client.active ? '' : 'text-neutral-500'}>
       <td className="px-4 py-3 align-top">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-medium text-neutral-900 dark:text-neutral-100">{client.name}</span>
+          <Link
+            to={`/clients/${client.id}`}
+            className="rounded font-medium text-neutral-900 underline-offset-2 outline-none ring-neutral-900/10 hover:underline focus-visible:ring-4 dark:text-neutral-100 dark:ring-white/20"
+            title="Open the client panel: form link, reference library, Style Card, cards"
+          >
+            {client.name}
+          </Link>
           {!client.active && (
             <span className="rounded-full bg-neutral-200 px-2 py-0.5 text-[11px] font-medium text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200">
               Inactive
@@ -345,281 +340,39 @@ function ClientTableRow({
         )}
       </td>
       <td className="px-4 py-3 text-right align-top">
-        {isLead && (
-          <div className="inline-flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={onRotate}
-              aria-label={`Rotate form link for ${client.name}`}
-              title="Rotate form link (old link stops working)"
-              className={iconBtn}
-            >
-              <RotateCw className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={onEdit}
-              aria-label={`Edit ${client.name}`}
-              title="Edit client"
-              className={iconBtn}
-            >
-              <Pencil className="h-4 w-4" />
-            </button>
-          </div>
-        )}
+        <div className="inline-flex items-center gap-1.5">
+          <Link
+            to={`/clients/${client.id}`}
+            aria-label={`Open panel for ${client.name}`}
+            title="Open client panel"
+            className={iconBtn}
+          >
+            <PanelRight className="h-4 w-4" />
+          </Link>
+          {isLead && (
+            <>
+              <button
+                type="button"
+                onClick={onRotate}
+                aria-label={`Rotate form link for ${client.name}`}
+                title="Rotate form link (old link stops working)"
+                className={iconBtn}
+              >
+                <RotateCw className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={onEdit}
+                aria-label={`Edit ${client.name}`}
+                title="Edit client"
+                className={iconBtn}
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+            </>
+          )}
+        </div>
       </td>
     </tr>
-  )
-}
-
-/* ---------- Add / edit dialog (lead only; RLS enforces it too) ---------- */
-
-const TIERS = [
-  { value: 1, label: '1 · Style only, new subject' },
-  { value: 2, label: '2 · Loosely inspired by the references' },
-  { value: 3, label: '3 · Balanced (default)' },
-  { value: 4, label: '4 · Close to the references' },
-  { value: 5, label: '5 · As close as possible' },
-] as const
-
-const PX_MIN = 300
-const PX_MAX = 20_000
-
-interface ClientForm {
-  name: string
-  garment_colors: string[]
-  target_px_w: string
-  target_px_h: string
-  default_similarity_tier: number
-  active: boolean
-}
-
-function formFromClient(client: Client | null): ClientForm {
-  return client
-    ? {
-        name: client.name,
-        garment_colors: client.garment_colors,
-        target_px_w: String(client.target_px_w),
-        target_px_h: String(client.target_px_h),
-        default_similarity_tier: client.default_similarity_tier,
-        active: client.active,
-      }
-    : {
-        name: '',
-        garment_colors: ['black', 'white'],
-        target_px_w: '4500',
-        target_px_h: '5400',
-        default_similarity_tier: 3,
-        active: true,
-      }
-}
-
-function parsePx(s: string): number | null {
-  const n = Number(s.trim())
-  return Number.isInteger(n) && n >= PX_MIN && n <= PX_MAX ? n : null
-}
-
-function ClientDialog({
-  mode,
-  client,
-  onClose,
-  onSaved,
-}: {
-  mode: 'add' | 'edit'
-  client: Client | null
-  onClose: () => void
-  onSaved: (saved: Client, mode: 'add' | 'edit') => Promise<void>
-}) {
-  const [form, setForm] = useState<ClientForm>(() => formFromClient(client))
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const toast = useToast()
-  const ids = { name: useId(), colors: useId(), w: useId(), h: useId(), tier: useId(), active: useId(), form: useId() }
-
-  const name = form.name.trim()
-  const w = parsePx(form.target_px_w)
-  const h = parsePx(form.target_px_h)
-  const problems: string[] = []
-  if (!name) problems.push('Name is required.')
-  if (w === null || h === null) problems.push(`Target size must be whole pixels between ${PX_MIN} and ${PX_MAX.toLocaleString()}.`)
-  const canSubmit = problems.length === 0 && !busy
-
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault()
-    if (!canSubmit || w === null || h === null) return
-    setBusy(true)
-    setError(null)
-    try {
-      const values: ClientUpdate & ClientInsert = {
-        name,
-        garment_colors: form.garment_colors,
-        target_px_w: w,
-        target_px_h: h,
-        default_similarity_tier: form.default_similarity_tier,
-        active: form.active,
-      }
-      const res =
-        mode === 'add'
-          ? await supabase.from('clients').insert(values).select('*').single()
-          : await supabase.from('clients').update(values).eq('id', client!.id).select('*').single()
-      if (res.error) throw new Error(res.error.message)
-      await onSaved(res.data, mode)
-    } catch (e) {
-      const msg = errorMessage(e)
-      setError(msg)
-      toast.error(`${mode === 'add' ? 'Add client' : 'Save'} failed: ${msg}`)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      closeDisabled={busy}
-      title={mode === 'add' ? 'Add client' : `Edit ${client?.name ?? 'client'}`}
-      description={
-        mode === 'add'
-          ? 'A private brief form link is created with the client.'
-          : 'Changes apply to new briefs. The form link stays the same.'
-      }
-      footer={
-        <>
-          <button type="button" onClick={onClose} disabled={busy} className={btnSecondary}>
-            Cancel
-          </button>
-          <button
-            type="submit"
-            form={ids.form}
-            disabled={!canSubmit}
-            title={problems[0]}
-            className={btnPrimary}
-          >
-            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-            {mode === 'add' ? 'Add client' : 'Save changes'}
-          </button>
-        </>
-      }
-    >
-      <form id={ids.form} onSubmit={onSubmit} className="space-y-4">
-        <div>
-          <label htmlFor={ids.name} className={labelCls}>
-            Name
-          </label>
-          <input
-            id={ids.name}
-            data-autofocus
-            type="text"
-            required
-            value={form.name}
-            disabled={busy}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            placeholder="Client or brand name"
-            className={inputCls}
-          />
-        </div>
-
-        <div>
-          <label htmlFor={ids.colors} className={labelCls}>
-            Garment colours
-          </label>
-          <TagInput
-            id={ids.colors}
-            value={form.garment_colors}
-            onChange={(v) => setForm({ ...form, garment_colors: v })}
-            disabled={busy}
-            placeholder="black, white, heather"
-            ariaLabel="Garment colours"
-          />
-          <p className={hintCls}>
-            Offered as choices on the brief form, plus "other". Press Enter or comma after each colour.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label htmlFor={ids.w} className={labelCls}>
-              Target width (px)
-            </label>
-            <input
-              id={ids.w}
-              type="number"
-              inputMode="numeric"
-              min={PX_MIN}
-              max={PX_MAX}
-              step={1}
-              value={form.target_px_w}
-              disabled={busy}
-              onChange={(e) => setForm({ ...form, target_px_w: e.target.value })}
-              aria-invalid={w === null || undefined}
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label htmlFor={ids.h} className={labelCls}>
-              Target height (px)
-            </label>
-            <input
-              id={ids.h}
-              type="number"
-              inputMode="numeric"
-              min={PX_MIN}
-              max={PX_MAX}
-              step={1}
-              value={form.target_px_h}
-              disabled={busy}
-              onChange={(e) => setForm({ ...form, target_px_h: e.target.value })}
-              aria-invalid={h === null || undefined}
-              className={inputCls}
-            />
-          </div>
-        </div>
-        <p className={`${hintCls} -mt-2`}>Finals are upscaled to this size at 300 DPI. 4500×5400 is a 15×18 in front print.</p>
-
-        <div>
-          <label htmlFor={ids.tier} className={labelCls}>
-            Default similarity tier
-          </label>
-          <select
-            id={ids.tier}
-            value={form.default_similarity_tier}
-            disabled={busy}
-            onChange={(e) => setForm({ ...form, default_similarity_tier: Number(e.target.value) })}
-            className={inputCls}
-          >
-            {TIERS.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-          <p className={hintCls}>How close new designs may sit to the client's references. Designers can change it per card.</p>
-        </div>
-
-        <label htmlFor={ids.active} className="flex items-start gap-2 text-sm">
-          <input
-            id={ids.active}
-            type="checkbox"
-            checked={form.active}
-            disabled={busy}
-            onChange={(e) => setForm({ ...form, active: e.target.checked })}
-            className="mt-0.5 h-4 w-4 accent-neutral-900 dark:accent-white"
-          />
-          <span>
-            <span className="font-medium">Active</span>
-            <span className="block text-xs text-neutral-500">
-              Inactive clients keep their history but the brief form refuses new submissions.
-            </span>
-          </span>
-        </label>
-
-        {error && (
-          <p role="alert" className="text-sm text-red-600 dark:text-red-400">
-            {error}
-          </p>
-        )}
-      </form>
-    </Modal>
   )
 }

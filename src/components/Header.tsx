@@ -1,6 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { LogOut, PauseCircle, Sparkles } from 'lucide-react'
+import { LogOut, PauseCircle, Sparkles, Users } from 'lucide-react'
 import { useAuth } from '../lib/useAuth'
+import { useClientScope } from '../lib/useClientScope'
 import { useProfile } from '../lib/useProfile'
 import { useSettings } from '../lib/useSettings'
 import { useQueueCounts, type QueueCount } from '../lib/useQueueCounts'
@@ -12,8 +13,8 @@ const NAV = [
 ] as const
 
 /**
- * Staff chrome: brand, nav, live queue indicator, paused banner, sign out.
- * Self-contained; reads session, profile, settings and queue counts from lib hooks.
+ * Staff chrome: brand, client scope selector, nav, live queue indicator, paused banner, sign out.
+ * Self-contained; reads session, profile, settings, scope and queue counts from lib hooks.
  */
 export function Header() {
   const navigate = useNavigate()
@@ -21,6 +22,7 @@ export function Header() {
   const { isLead, displayName } = useProfile()
   const { settings, paused } = useSettings()
   const queue = useQueueCounts()
+  const scope = useClientScope()
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `rounded-lg px-2.5 py-1.5 text-sm font-medium outline-none ring-neutral-900/10 focus-visible:ring-4 dark:ring-white/20 ${
@@ -43,6 +45,8 @@ export function Header() {
           </span>
           <span className="font-semibold">DM Studio</span>
         </NavLink>
+
+        <ClientSelector scope={scope} />
 
         <nav aria-label="Main" className="flex items-center gap-1">
           {NAV.map((n) => (
@@ -88,6 +92,43 @@ export function Header() {
         </div>
       )}
     </header>
+  )
+}
+
+/**
+ * The client scope: "All clients" or one active client. Every page (board, completed, card
+ * lists) filters through it; the choice is remembered (localStorage + ?client=).
+ */
+function ClientSelector({ scope }: { scope: ReturnType<typeof useClientScope> }) {
+  const { clients, selectedClientId, selectedClient, loading, setSelectedClientId } = scope
+  // A remembered client whose row has not arrived yet: keep it selected instead of snapping to All.
+  const pending = Boolean(selectedClientId) && !selectedClient
+  const title = selectedClient
+    ? `Showing only ${selectedClient.name}. Every page filters by this client.`
+    : 'Client scope: pick a client to filter every page to it'
+  return (
+    <label className="flex min-w-0 items-center gap-1.5" title={title}>
+      <Users className="h-4 w-4 shrink-0 text-neutral-400" aria-hidden="true" />
+      <span className="sr-only">Client scope</span>
+      <select
+        value={selectedClientId ?? ''}
+        onChange={(e) => setSelectedClientId(e.target.value || null)}
+        aria-label="Client scope"
+        className={`max-w-[11rem] truncate rounded-lg border bg-white px-2 py-1.5 text-sm outline-none ring-neutral-900/10 focus-visible:ring-4 dark:bg-neutral-950 dark:ring-white/20 sm:max-w-[14rem] ${
+          selectedClientId
+            ? 'border-neutral-900 font-medium dark:border-white'
+            : 'border-neutral-300 dark:border-neutral-700'
+        }`}
+      >
+        <option value="">All clients</option>
+        {pending && selectedClientId && <option value={selectedClientId}>{loading ? 'Loading…' : 'Selected client'}</option>}
+        {clients.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
+        ))}
+      </select>
+    </label>
   )
 }
 

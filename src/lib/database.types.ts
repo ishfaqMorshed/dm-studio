@@ -36,6 +36,7 @@ export type Database = {
           reference_analysis: Json | null
           reference_paths: string[]
           similarity_tier: number | null
+          source: string
           stage: Database["public"]["Enums"]["card_stage"]
           stage_entered_at: string
           stage_note: string | null
@@ -64,6 +65,7 @@ export type Database = {
           reference_analysis?: Json | null
           reference_paths?: string[]
           similarity_tier?: number | null
+          source?: string
           stage?: Database["public"]["Enums"]["card_stage"]
           stage_entered_at?: string
           stage_note?: string | null
@@ -92,6 +94,7 @@ export type Database = {
           reference_analysis?: Json | null
           reference_paths?: string[]
           similarity_tier?: number | null
+          source?: string
           stage?: Database["public"]["Enums"]["card_stage"]
           stage_entered_at?: string
           stage_note?: string | null
@@ -119,6 +122,41 @@ export type Database = {
             columns: ["style_card_id"]
             isOneToOne: false
             referencedRelation: "style_cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_references: {
+        Row: {
+          client_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          note: string | null
+          path: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string | null
+          path: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string | null
+          path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_references_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
             referencedColumns: ["id"]
           },
         ]
@@ -315,6 +353,7 @@ export type Database = {
       }
       generations: {
         Row: {
+          aspect_ratio: string | null
           attempt: number
           brief_snapshot: Json | null
           card_id: string
@@ -336,10 +375,13 @@ export type Database = {
           old_text: string | null
           parent_generation_id: string | null
           qc_report: Json | null
+          reference_urls: Json | null
           rejection_note: string | null
           rejection_reason:
             | Database["public"]["Enums"]["rejection_reason"]
             | null
+          rendered_prompt: string | null
+          resolution: string | null
           reviewed_at: string | null
           reviewed_by: string | null
           started_at: string | null
@@ -353,6 +395,7 @@ export type Database = {
           vendor_job_id: string | null
         }
         Insert: {
+          aspect_ratio?: string | null
           attempt?: number
           brief_snapshot?: Json | null
           card_id: string
@@ -374,10 +417,13 @@ export type Database = {
           old_text?: string | null
           parent_generation_id?: string | null
           qc_report?: Json | null
+          reference_urls?: Json | null
           rejection_note?: string | null
           rejection_reason?:
             | Database["public"]["Enums"]["rejection_reason"]
             | null
+          rendered_prompt?: string | null
+          resolution?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           started_at?: string | null
@@ -391,6 +437,7 @@ export type Database = {
           vendor_job_id?: string | null
         }
         Update: {
+          aspect_ratio?: string | null
           attempt?: number
           brief_snapshot?: Json | null
           card_id?: string
@@ -412,10 +459,13 @@ export type Database = {
           old_text?: string | null
           parent_generation_id?: string | null
           qc_report?: Json | null
+          reference_urls?: Json | null
           rejection_note?: string | null
           rejection_reason?:
             | Database["public"]["Enums"]["rejection_reason"]
             | null
+          rendered_prompt?: string | null
+          resolution?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           started_at?: string | null
@@ -508,31 +558,43 @@ export type Database = {
       }
       settings: {
         Row: {
+          generation_model: string
+          generation_resolution: string
           id: number
           max_active_finish: number
           max_active_generations: number
+          max_style_refs: number
           n8n_base_url: string
           per_card_price_usd: number
           pipeline_paused: boolean
           updated_at: string
+          vision_model: string
         }
         Insert: {
+          generation_model?: string
+          generation_resolution?: string
           id?: number
           max_active_finish?: number
           max_active_generations?: number
+          max_style_refs?: number
           n8n_base_url?: string
           per_card_price_usd?: number
           pipeline_paused?: boolean
           updated_at?: string
+          vision_model?: string
         }
         Update: {
+          generation_model?: string
+          generation_resolution?: string
           id?: number
           max_active_finish?: number
           max_active_generations?: number
+          max_style_refs?: number
           n8n_base_url?: string
           per_card_price_usd?: number
           pipeline_paused?: boolean
           updated_at?: string
+          vision_model?: string
         }
         Relationships: []
       }
@@ -579,6 +641,57 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      style_draft_requests: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          last_error: string | null
+          n8n_execution_id: string | null
+          requested_by: string | null
+          status: Database["public"]["Enums"]["job_status"]
+          style_card_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          n8n_execution_id?: string | null
+          requested_by?: string | null
+          status?: Database["public"]["Enums"]["job_status"]
+          style_card_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          n8n_execution_id?: string | null
+          requested_by?: string | null
+          status?: Database["public"]["Enums"]["job_status"]
+          style_card_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "style_draft_requests_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "style_draft_requests_style_card_id_fkey"
+            columns: ["style_card_id"]
+            isOneToOne: false
+            referencedRelation: "style_cards"
             referencedColumns: ["id"]
           },
         ]
@@ -642,6 +755,7 @@ export type Database = {
           reference_analysis: Json | null
           reference_paths: string[]
           similarity_tier: number | null
+          source: string
           stage: Database["public"]["Enums"]["card_stage"]
           stage_entered_at: string
           stage_note: string | null
@@ -659,6 +773,7 @@ export type Database = {
       claim_generations: {
         Args: { p_max?: number }
         Returns: {
+          aspect_ratio: string | null
           attempt: number
           brief_snapshot: Json | null
           card_id: string
@@ -680,10 +795,13 @@ export type Database = {
           old_text: string | null
           parent_generation_id: string | null
           qc_report: Json | null
+          reference_urls: Json | null
           rejection_note: string | null
           rejection_reason:
             | Database["public"]["Enums"]["rejection_reason"]
             | null
+          rendered_prompt: string | null
+          resolution: string | null
           reviewed_at: string | null
           reviewed_by: string | null
           started_at: string | null
@@ -701,6 +819,55 @@ export type Database = {
           to: "generations"
           isOneToOne: false
           isSetofReturn: true
+        }
+      }
+      create_card_as_designer: {
+        Args: {
+          p_avoid_notes?: string
+          p_brief: string
+          p_card_id: string
+          p_client_id: string
+          p_due_on?: string
+          p_garment_color: string
+          p_placement: string
+          p_print_text: Json
+          p_reference_paths: string[]
+          p_similarity_tier?: number
+        }
+        Returns: {
+          approved_at: string | null
+          approved_by: string | null
+          avoid_notes: string | null
+          brief_snapshot: Json | null
+          brief_text: string
+          client_id: string
+          client_submission: Json
+          created_at: string
+          current_generation_id: string | null
+          due_on: string | null
+          garment_color: string | null
+          id: string
+          last_error: string | null
+          n8n_execution_id: string | null
+          placement: string | null
+          previous_stage: Database["public"]["Enums"]["card_stage"] | null
+          print_text: Json
+          reference_analysis: Json | null
+          reference_paths: string[]
+          similarity_tier: number | null
+          source: string
+          stage: Database["public"]["Enums"]["card_stage"]
+          stage_entered_at: string
+          stage_note: string | null
+          style_card_id: string | null
+          style_card_version: number | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "cards"
+          isOneToOne: true
+          isSetofReturn: false
         }
       }
       current_style_card: {
@@ -747,6 +914,7 @@ export type Database = {
           reference_analysis: Json | null
           reference_paths: string[]
           similarity_tier: number | null
+          source: string
           stage: Database["public"]["Enums"]["card_stage"]
           stage_entered_at: string
           stage_note: string | null
@@ -873,6 +1041,7 @@ export type Database = {
           reference_analysis: Json | null
           reference_paths: string[]
           similarity_tier: number | null
+          source: string
           stage: Database["public"]["Enums"]["card_stage"]
           stage_entered_at: string
           stage_note: string | null
@@ -916,6 +1085,7 @@ export type Database = {
           p_payload?: Json
         }
         Returns: {
+          aspect_ratio: string | null
           attempt: number
           brief_snapshot: Json | null
           card_id: string
@@ -937,10 +1107,13 @@ export type Database = {
           old_text: string | null
           parent_generation_id: string | null
           qc_report: Json | null
+          reference_urls: Json | null
           rejection_note: string | null
           rejection_reason:
             | Database["public"]["Enums"]["rejection_reason"]
             | null
+          rendered_prompt: string | null
+          resolution: string | null
           reviewed_at: string | null
           reviewed_by: string | null
           started_at: string | null
@@ -1000,6 +1173,7 @@ export type Database = {
           reference_analysis: Json | null
           reference_paths: string[]
           similarity_tier: number | null
+          source: string
           stage: Database["public"]["Enums"]["card_stage"]
           stage_entered_at: string
           stage_note: string | null
@@ -1037,6 +1211,7 @@ export type Database = {
           reference_analysis: Json | null
           reference_paths: string[]
           similarity_tier: number | null
+          source: string
           stage: Database["public"]["Enums"]["card_stage"]
           stage_entered_at: string
           stage_note: string | null
@@ -1062,6 +1237,32 @@ export type Database = {
       studio_notify: { Args: { p_body: Json; p_path: string }; Returns: number }
       studio_secret_ok: { Args: never; Returns: boolean }
       studio_sweep: { Args: never; Returns: Json }
+      style_draft_update: {
+        Args: {
+          p_error?: string
+          p_execution_id?: string
+          p_request_id: string
+          p_status: Database["public"]["Enums"]["job_status"]
+          p_style_card_id?: string
+        }
+        Returns: {
+          client_id: string
+          created_at: string
+          id: string
+          last_error: string | null
+          n8n_execution_id: string | null
+          requested_by: string | null
+          status: Database["public"]["Enums"]["job_status"]
+          style_card_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "style_draft_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       submit_brief: {
         Args: {
           p_brief: string

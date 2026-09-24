@@ -4,9 +4,20 @@
  * call fails, so callers can `toast.error(e.message)` directly.
  */
 import type { PostgrestError } from '@supabase/supabase-js'
-import { supabase } from './supabase'
+import { REFS_BUCKET, storagePaths, supabase } from './supabase'
 import type { Json } from './database.types'
-import type { Card, CardStage, FinJob, Generation, GenerationKind, RejectionReason, StyleCard } from './types'
+import type {
+  Card,
+  CardStage,
+  ClientReference,
+  FinJob,
+  Generation,
+  GenerationKind,
+  PrintTextLine,
+  RejectionReason,
+  StyleCard,
+  StyleDraftRequest,
+} from './types'
 
 function rpcError(error: PostgrestError | null, fallback: string): Error {
   if (!error) return new Error(fallback)
@@ -155,6 +166,162 @@ export async function isLead(): Promise<boolean> {
   const res = await supabase.rpc('is_lead')
   if (res.error) throw rpcError(res.error, 'Role check failed')
   return res.data === true
+}
+
+/** The signed-in user's id, or throws when there is no session (staff-only calls). */
+async function currentUserId(): Promise<string> {
+  const { data, error } = await supabase.auth.getUser()
+  if (error) throw new Error(error.message)
+  if (!data.user) throw new Error('You are signed out. Sign in again to continue.')
+  return data.user.id
+}
+
+export interface CreateCardAsDesignerArgs {
+  /**
+   * Pre-generated card id (crypto.randomUUID()). The dialog uploads the references to
+   * refs `<client_id>/<card_id>/<n>.<ext>` FIRST, then calls this, so the path is known.
+   */
+  cardId: string
+  clientId: string
+  brief: string
+  /** `[{role, text}]`; empty array when the design has no text. */
+  printText: PrintTextLine[]
+  /** 1–3 refs bucket paths (bucket-relative) in slot order. */
+  referencePaths: string[]
+  garmentColor: string
+  placement: string
+  /** `YYYY-MM-DD` or null. */
+  dueOn?: string | null
+  avoidNotes?: string | null
+  /** 1–5; omit to use the client's default_similarity_tier. */
+  similarityTier?: number | null
+}
+
+/**
+ * Board "New card": inserts a card with source = designer in stage intake.
+ * WF-1 reads the references and moves it to review.
+ */
+export async function createCardAsDesigner(args: CreateCardAsDesignerArgs): Promise<Card> {
+  return unwrap(
+    await supabase.rpc('create_card_as_designer', {
+      p_card_id: args.cardId,
+      p_client_id: args.clientId,
+      p_brief: args.brief,
+      p_print_text: args.printText.map((l) => ({ role: l.role, text: l.text })),
+      p_reference_paths: args.referencePaths,
+      p_garment_color: args.garmentColor,
+      p_placement: args.placement,
+      ...(args.dueOn ? { p_due_on: args.dueOn } : {}),
+      ...(args.avoidNotes && args.avoidNotes.trim() ? { p_avoid_notes: args.avoidNotes.trim() } : {}),
+      ...(typeof args.similarityTier === 'number' ? { p_similarity_tier: args.similarityTier } : {}),
+    }),
+    'Create card',
+  )
+}
+
+/* ---------- Client reference library (client_references + refs bucket) ---------- */
+
+const IMAGE_EXT_BY_MIME: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/avif': 'avif',
+}
+
+/** Lower-case extension for a storage key: from the MIME type when known, else the file name, else `bin`. */
+export function fileExtension(file: File): string {
+  const byMime = IMAGE_EXT_BY_MIME[file.type]
+  if (byMime) return byMime
+  const m = /\.([a-z0-9]{1,5})$/i.exec(file.name)
+  return m ? m[1].toLowerCase() : 'bin'
+}
+
+/** Library images for a client, oldest first (upload order). */
+export async function listClientReferences(clientId: string): Promise<ClientReference[]> {
+  const res = await supabase
+    .from('client_references')
+    .select('*')
+    .eq('client_id', clientId)
+    .order('created_at', { ascending: true })
+  if (res.error) throw rpcError(res.error, 'Load reference library failed')
+  return res.data ?? []
+}
+
+/**
+ * Uploads each file to refs `<client_id>/library/<uuid>.<ext>` then inserts the
+ * `client_references` rows in one statement. Resolves with the new rows.
+ * If any upload fails, the objects already uploaded are removed and the error is rethrown,
+ * so the library never shows a row without an image or an image without a row.
+ */
+export async function addClientReferences(clientId: string, files: File[]): Promise<ClientReference[]> {
+  if (files.length === 0) return []
+  const userId = await currentUserId()
+  const uploaded: string[] = []
+  try {
+    for (const file of files) {
+      const path = storagePaths.libraryReference(clientId, crypto.randomUUID(), fileExtension(file))
+      const { error } = await supabase.storage.from(REFS_BUCKET).upload(path, file, {
+        contentType: file.type || undefined,
+        upsert: false,
+      })
+      if (error) throw new Error(`Upload of ${file.name} failed: ${error.message}`)
+      uploaded.push(path)
+    }
+    const res = await supabase
+      .from('client_references')
+      .insert(uploaded.map((path) => ({ client_id: clientId, path, created_by: userId })))
+      .select('*')
+    if (res.error) throw rpcError(res.error, 'Save reference library failed')
+    return res.data ?? []
+  } catch (e) {
+    if (uploaded.length) {
+      // Best effort; a leftover object is harmless but a dangling one would be confusing.
+      await supabase.storage.from(REFS_BUCKET).remove(uploaded).catch(() => undefined)
+    }
+    throw e
+  }
+}
+
+/** Removes the storage object first, then the row. A missing object is not an error. */
+export async function deleteClientReference(row: Pick<ClientReference, 'id' | 'path'>): Promise<void> {
+  const { error: storageError } = await supabase.storage.from(REFS_BUCKET).remove([row.path])
+  if (storageError && !/not found/i.test(storageError.message)) {
+    throw new Error(`Remove image failed: ${storageError.message}`)
+  }
+  const res = await supabase.from('client_references').delete().eq('id', row.id)
+  if (res.error) throw rpcError(res.error, 'Remove reference failed')
+}
+
+/* ---------- Style Card drafting (style_draft_requests) ---------- */
+
+/**
+ * "Draft Style Card from library": inserts a queued request for the client. The DB trigger
+ * notifies n8n (WF-1b), which drafts a new style_cards version from the reference library and
+ * updates the row (working → done with style_card_id, or failed with last_error).
+ * Follow it with `useStyleDraftRequests(clientId)`.
+ */
+export async function requestStyleDraft(clientId: string): Promise<StyleDraftRequest> {
+  const userId = await currentUserId()
+  const res = await supabase
+    .from('style_draft_requests')
+    .insert({ client_id: clientId, requested_by: userId })
+    .select('*')
+    .single()
+  if (res.error) throw rpcError(res.error, 'Draft Style Card failed')
+  return res.data
+}
+
+/** Recent draft requests for a client, newest first. */
+export async function listStyleDraftRequests(clientId: string, limit = 10): Promise<StyleDraftRequest[]> {
+  const res = await supabase
+    .from('style_draft_requests')
+    .select('*')
+    .eq('client_id', clientId)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (res.error) throw rpcError(res.error, 'Load draft requests failed')
+  return res.data ?? []
 }
 
 /* ---------- Public form RPCs (anon; no session required) ---------- */

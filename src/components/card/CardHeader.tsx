@@ -1,10 +1,22 @@
 import { Link } from 'react-router-dom'
 import { ArrowLeft, Clock, CopyPlus, ExternalLink } from 'lucide-react'
 import { STAGE_BADGE_CLASS, STAGE_HINT, STAGE_LABEL, ageLabel, isOverdue } from '../../lib/stage'
+import { CARD_SOURCE_LABEL, isCardSource, type CardSource } from '../../lib/types'
 import { Badge, CopyButton, Spinner } from './ui'
 import { btnSecondary, btnSmall } from './styles'
 import { formatDate, isPastDate, shortId } from './format'
 import type { CardRow } from './useCardData'
+
+/** Chip text per `cards.source`; the fuller CARD_SOURCE_LABEL goes in the tooltip. */
+const SOURCE_CHIP: Record<CardSource, string> = { form: 'Form', designer: 'Designer', duplicate: 'Duplicate' }
+
+/** Where the card came from. Unknown values (hand-edited rows) pass through unchanged. */
+function sourceChipFor(source: string | null | undefined): { label: string; title: string } | null {
+  const v = source?.trim()
+  if (!v) return null
+  if (isCardSource(v)) return { label: SOURCE_CHIP[v], title: `Source: ${CARD_SOURCE_LABEL[v]}` }
+  return { label: v, title: `Source: ${v}` }
+}
 
 export interface ExecutionLink {
   label: string
@@ -29,6 +41,7 @@ export function CardHeader({
   const formLink = card.clients?.form_token ? `${window.location.origin}/brief/${card.clients.form_token}` : null
   const overdue = isOverdue(card.stage, card.stage_entered_at, now)
   const dueLate = card.stage !== 'delivered' && isPastDate(card.due_on, now)
+  const source = sourceChipFor(card.source)
 
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -45,6 +58,11 @@ export function CardHeader({
           <Badge className={STAGE_BADGE_CLASS[card.stage]} title={STAGE_HINT[card.stage]}>
             {STAGE_LABEL[card.stage]}
           </Badge>
+          {source && (
+            <Badge className="bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200" title={source.title}>
+              {source.label}
+            </Badge>
+          )}
           <span
             className={`inline-flex items-center gap-1 text-xs ${overdue ? 'font-medium text-amber-700 dark:text-amber-300' : 'text-neutral-500'}`}
             title={overdue ? 'Longer than expected for an automated stage — check the queue and the Paused banner' : undefined}

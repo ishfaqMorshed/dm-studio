@@ -16,7 +16,10 @@ export const supabase = createClient<Database>(url, anonKey, {
   realtime: { params: { eventsPerSecond: 10 } },
 })
 
-/** Client references: `<client_id>/<card_id>/<n>.<ext>` (anon upload after start_brief, staff read). */
+/**
+ * Client references: card refs `<client_id>/<card_id>/<n>.<ext>` (anon upload after start_brief,
+ * staff insert, staff read) and the reference library `<client_id>/library/<uuid>.<ext>` (staff).
+ */
 export const REFS_BUCKET = 'refs'
 /** Generated images: `<card_id>/<generation_id>.png`; masks `<card_id>/<generation_id>-mask.png`. */
 export const GENS_BUCKET = 'gens'
@@ -26,6 +29,8 @@ export const FINALS_BUCKET = 'finals'
 /** Path helpers so every page spells storage keys the same way. */
 export const storagePaths = {
   reference: (clientId: string, cardId: string, n: number, ext: string) => `${clientId}/${cardId}/${n}.${ext}`,
+  /** Reference-library image; `client_references.path` stores exactly this (no bucket prefix). */
+  libraryReference: (clientId: string, uuid: string, ext: string) => `${clientId}/library/${uuid}.${ext}`,
   generation: (cardId: string, generationId: string) => `${cardId}/${generationId}.png`,
   mask: (cardId: string, generationId: string) => `${cardId}/${generationId}-mask.png`,
   final: (cardId: string, generationId: string) => `${cardId}/${generationId}-final.png`,

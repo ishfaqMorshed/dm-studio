@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, type Locat
 import { Loader2, ShieldAlert } from 'lucide-react'
 import { ToastProvider } from './lib/toast'
 import { SessionProvider } from './lib/session'
+import { ClientScopeProvider } from './lib/clientScope'
 import { useAuth } from './lib/useAuth'
 import { useProfile } from './lib/useProfile'
 import { Header } from './components/Header'
@@ -11,6 +12,7 @@ import BoardPage from './pages/BoardPage'
 import CardPage from './pages/CardPage'
 import CompletedPage from './pages/CompletedPage'
 import ClientsPage from './pages/ClientsPage'
+import ClientPanelPage from './pages/ClientPanelPage'
 import StyleCardPage from './pages/StyleCardPage'
 import SettingsPage from './pages/SettingsPage'
 
@@ -31,6 +33,7 @@ export default function App() {
               <Route path="/card/:id" element={<CardPage />} />
               <Route path="/completed" element={<CompletedPage />} />
               <Route path="/clients" element={<ClientsPage />} />
+              <Route path="/clients/:id" element={<ClientPanelPage />} />
               <Route path="/clients/:id/style" element={<StyleCardPage />} />
               <Route
                 path="/settings"
@@ -80,12 +83,14 @@ function StaffLayout() {
   if (loading) return <FullScreenSpinner />
   if (!user) return <Navigate to="/login" replace state={{ from: location } satisfies LocationState} />
   return (
-    <div className="min-h-screen">
-      <Header />
-      <main className="mx-auto max-w-screen-2xl px-4 py-4 sm:px-6">
-        <Outlet />
-      </main>
-    </div>
+    <ClientScopeProvider>
+      <div className="min-h-screen">
+        <Header />
+        <main className="mx-auto max-w-screen-2xl px-4 py-4 sm:px-6">
+          <Outlet />
+        </main>
+      </div>
+    </ClientScopeProvider>
   )
 }
 

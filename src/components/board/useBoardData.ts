@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/useAuth'
 import { useRealtimeTable } from '../../lib/useRealtimeTable'
 import { useTableEvents } from './useTableEvents'
-import type { BoardCard, ClientOption } from './types'
+import type { BoardCard } from './types'
 
 /**
  * Every card with its client name and the current generation's image path.
@@ -12,17 +12,10 @@ import type { BoardCard, ClientOption } from './types'
 const BOARD_SELECT =
   '*, client:clients(name), current_generation:generations!cards_current_generation_fk(id, image_path, status)'
 
-async function fetchClients(): Promise<ClientOption[]> {
-  const { data, error } = await supabase.from('clients').select('id, name, active').order('name')
-  if (error) throw error
-  return data
-}
-
-async function fetchBoardCards(): Promise<BoardCard[]> {
-  const { data, error } = await supabase
-    .from('cards')
-    .select(BOARD_SELECT)
-    .order('stage_entered_at', { ascending: true })
+async function fetchBoardCards(clientId: string | null): Promise<BoardCard[]> {
+  let query = supabase.from('cards').select(BOARD_SELECT)
+  if (clientId) query = query.eq('client_id', clientId)
+  const { data, error } = await query.order('stage_entered_at', { ascending: true })
   if (error) throw error
   return data
 }
@@ -34,42 +27,39 @@ export interface BoardData {
   /** Message of the last failed cards fetch; null once a fetch succeeds again. */
   error: string | null
   refresh: () => Promise<void>
-  /** Every client, active or not, sorted by name. Empty until loaded. */
-  clients: ClientOption[]
 }
 
 /**
- * Live board data: cards via Realtime + 20 s poll (useRealtimeTable), a refetch whenever
- * a generation row changes (thumbnails), and the client list for the filter select.
+ * Live board data: cards via Realtime + 20 s poll (useRealtimeTable) and a refetch whenever
+ * a generation row changes (thumbnails). `clientId` (the header's scope) narrows the query
+ * and the subscription; null means every client.
  */
-export function useBoardData(): BoardData {
+export function useBoardData(clientId: string | null): BoardData {
   const { user } = useAuth()
   const enabled = Boolean(user)
 
-  const cards = useRealtimeTable<BoardCard>({ table: 'cards', fetch: fetchBoardCards, enabled })
+  const fetch = useCallback(() => fetchBoardCards(clientId), [clientId])
+
+  const cards = useRealtimeTable<BoardCard>({
+    table: 'cards',
+    fetch,
+    filter: clientId ? `client_id=eq.${clientId}` : undefined,
+    enabled,
+  })
 
   // A finished generation sets image_path on generations, not on cards.
   useTableEvents('generations', cards.refresh, enabled)
 
-  // Clients are not in the realtime publication; a slow poll keeps a client added elsewhere visible.
-  const [clients, setClients] = useState<ClientOption[]>([])
+  // The scope changed: fetch the new client's cards now instead of waiting for the poll.
+  const { refresh } = cards
+  const firstRun = useRef(true)
   useEffect(() => {
-    if (!enabled) return
-    let cancelled = false
-    const load = () => {
-      fetchClients()
-        .then((rows) => {
-          if (!cancelled) setClients(rows)
-        })
-        .catch((e: unknown) => console.error('clients load failed', e))
+    if (firstRun.current) {
+      firstRun.current = false
+      return
     }
-    load()
-    const t = window.setInterval(load, 60_000)
-    return () => {
-      cancelled = true
-      window.clearInterval(t)
-    }
-  }, [enabled])
+    void refresh()
+  }, [clientId, refresh])
 
   return useMemo(
     () => ({
@@ -77,8 +67,7 @@ export function useBoardData(): BoardData {
       loading: cards.loading,
       error: cards.error,
       refresh: cards.refresh,
-      clients,
     }),
-    [cards.rows, cards.loading, cards.error, cards.refresh, clients],
+    [cards.rows, cards.loading, cards.error, cards.refresh],
   )
 }
