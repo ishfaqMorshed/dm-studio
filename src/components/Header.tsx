@@ -1,5 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { LogOut, PauseCircle, Sparkles, Users } from 'lucide-react'
+import { LogOut, PauseCircle, Users } from 'lucide-react'
+import { BrandMark } from './BrandMark'
 import { useAuth } from '../lib/useAuth'
 import { useClientScope } from '../lib/useClientScope'
 import { useProfile } from '../lib/useProfile'
@@ -25,7 +26,7 @@ export function Header() {
   const scope = useClientScope()
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
-    `rounded-lg px-2.5 py-1.5 text-sm font-medium outline-none ring-neutral-900/10 focus-visible:ring-4 dark:ring-white/20 ${
+    `rounded-lg px-2.5 py-1.5 text-sm font-medium outline-none ring-accent-500/30 focus-visible:ring-4 dark:ring-accent-400/40 ${
       isActive
         ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-900'
         : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100'
@@ -39,11 +40,9 @@ export function Header() {
   return (
     <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/80 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/80">
       <div className="mx-auto flex max-w-screen-2xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 sm:px-6">
-        <NavLink to="/board" className="flex items-center gap-2 rounded-lg outline-none focus-visible:ring-4 focus-visible:ring-neutral-900/10">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-900 text-white dark:bg-white dark:text-neutral-900">
-            <Sparkles className="h-4 w-4" />
-          </span>
-          <span className="font-semibold">DM Studio</span>
+        <NavLink to="/board" className="flex items-center gap-2 rounded-lg outline-none focus-visible:ring-4 focus-visible:ring-accent-500/30">
+          <BrandMark className="h-8 w-8" />
+          <span className="font-display text-[15px] font-semibold tracking-tight">DM Studio</span>
         </NavLink>
 
         <ClientSelector scope={scope} />
@@ -73,7 +72,7 @@ export function Header() {
           <button
             type="button"
             onClick={() => void onSignOut()}
-            className="flex items-center gap-1.5 rounded-lg border border-neutral-300 px-2.5 py-1.5 text-xs font-medium outline-none ring-neutral-900/10 hover:bg-neutral-100 focus-visible:ring-4 dark:border-neutral-700 dark:ring-white/20 dark:hover:bg-neutral-800"
+            className="flex items-center gap-1.5 rounded-lg border border-neutral-300 px-2.5 py-1.5 text-xs font-medium outline-none ring-accent-500/25 hover:bg-neutral-100 focus-visible:ring-4 dark:border-neutral-700 dark:ring-accent-400/30 dark:hover:bg-neutral-800"
           >
             <LogOut className="h-3.5 w-3.5" />
             Sign out
@@ -114,9 +113,9 @@ function ClientSelector({ scope }: { scope: ReturnType<typeof useClientScope> })
         value={selectedClientId ?? ''}
         onChange={(e) => setSelectedClientId(e.target.value || null)}
         aria-label="Client scope"
-        className={`max-w-[11rem] truncate rounded-lg border bg-white px-2 py-1.5 text-sm outline-none ring-neutral-900/10 focus-visible:ring-4 dark:bg-neutral-950 dark:ring-white/20 sm:max-w-[14rem] ${
+        className={`max-w-[11rem] truncate rounded-lg border bg-white px-2 py-1.5 text-sm outline-none ring-accent-500/25 focus-visible:ring-4 dark:bg-neutral-950 dark:ring-accent-400/30 sm:max-w-[14rem] ${
           selectedClientId
-            ? 'border-neutral-900 font-medium dark:border-white'
+            ? 'border-accent-500 font-medium text-accent-800 dark:border-accent-400 dark:text-accent-200'
             : 'border-neutral-300 dark:border-neutral-700'
         }`}
       >
@@ -147,7 +146,7 @@ function QueueIndicator({
   const tone = atCap
     ? 'text-amber-700 dark:text-amber-300'
     : count.working > 0
-      ? 'text-blue-700 dark:text-blue-300'
+      ? 'text-stage-generating-ink dark:text-stage-generating-light'
       : 'text-neutral-500'
   const title = `${label}: ${count.queued} waiting, ${count.working} running${cap !== null ? ` of cap ${cap}` : ''}`
   return (

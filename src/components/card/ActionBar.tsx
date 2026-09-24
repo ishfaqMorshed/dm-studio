@@ -89,7 +89,7 @@ export function ActionBar(p: ActionBarProps) {
         onClick: p.onEditText,
         disabled: !hasImage || paused,
         reason: noImageReason ?? pausedReason,
-        title: 'Replace one text line on the current image',
+        title: 'Edit the text lines: one line is replaced in place, several are regenerated together',
       },
       {
         key: 'edit_region',

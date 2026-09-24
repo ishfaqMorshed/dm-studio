@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
-import { AlertTriangle, Check, CheckCircle2, Copy, Loader2, RefreshCw, ShieldAlert, Sparkles } from 'lucide-react'
+import { AlertTriangle, Check, CheckCircle2, Copy, Loader2, RefreshCw, ShieldAlert } from 'lucide-react'
+import { BrandMark } from '../BrandMark'
 import { useToast } from '../../lib/useToast'
 import { primaryButton, secondaryButton } from './ui'
 
@@ -9,17 +10,15 @@ export function BriefShell({ clientName, children }: { clientName?: string | nul
     <div className="min-h-screen px-4 py-6 sm:py-10">
       <div className="mx-auto w-full max-w-2xl">
         <header className="mb-6 flex items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neutral-900 text-white dark:bg-white dark:text-neutral-900">
-            <Sparkles className="h-5 w-5" aria-hidden />
-          </span>
+          <BrandMark className="h-10 w-10 rounded-xl" title="Design Musketeer" />
           <div className="min-w-0">
-            <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Design Musketeer</p>
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-accent-700 dark:text-accent-300">Design Musketeer</p>
             <h1 className="truncate text-lg font-semibold leading-tight">
               Design brief{clientName ? ` · ${clientName}` : ''}
             </h1>
           </div>
         </header>
-        <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 sm:p-8">
+        <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-card dark:border-neutral-800 dark:bg-neutral-900 sm:p-8">
           {children}
         </div>
         <p className="mt-6 text-center text-xs text-neutral-500">

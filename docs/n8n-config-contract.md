@@ -32,7 +32,7 @@ Kie.ai keeps its EXISTING credentials (bind by id): images "GPT Image 2 [DM-Kie]
 9. Sub-workflow ids: WF-5 Poll id → const `pollWorkflowId` (placeholder REPLACE_WITH_WF5_POLL_ID); WF-2's worker webhook path is
    `studio-generate-worker` and ONLY WF-2's dispatcher (Fire Worker) calls it. WF-3 regenerate POSTs the dispatcher
    `/webhook/studio-generate` instead (decided 2026-09-24 review): request_edit inserts the row as status queued, so a direct worker POST
-   raced claim_generations() (fired by every other approval and the 5-min sweep) and could start two workers for one generation; going
+   raced claim_generations() (fired by every other approval and the 2-min sweep) and could start two workers for one generation; going
    through claim_generations() is atomic and honours settings.max_active_generations.
 10. Worker time budget: Wait For Callback 8 min + WF-5 Poll timeout 600 s (10 min) per pass, and the attempt-2 PATCH re-stamps
    generations.started_at, so every pass stays inside public.requeue_stale()'s 20-min window (status dispatched/working,
@@ -48,23 +48,33 @@ WF-0 Studio Config → WF-5 Poll → WF-2 Generate → WF-3 Edit → WF-1 Intake
 ## Frontend ⇄ workflow bindings (already deployed DB triggers; nothing to change in the app)
 form submit / New card → cards insert (stage intake) → /webhook/studio-intake → WF-1
 Draft Style Card button → style_draft_requests insert → /webhook/studio-style-draft → WF-1b
-Approve → approve_card → cards.stage=approved → /webhook/studio-generate → WF-2 (+ 5-min pg_cron nudge)
+Approve → approve_card → cards.stage=approved → /webhook/studio-generate → WF-2 (+ 2-min pg_cron nudge, studio_13_sweep_cadence)
 Edit text / Edit region / Regenerate → request_edit → generations insert kind≠generate → /webhook/studio-edit → WF-3
 Accept → accept_generation → fin_jobs queued → /webhook/finisher-dispatch → WF-4
 pg_cron 02:00 UTC → /webhook/studio-lessons → WF-7
 Retry → retry_card requeues the generation / fin_job → same webhooks
 
-## WF-3 Edit (new, file n8n/wf3-edit.sdk.js)
-Webhook studio-edit {generation_id, card_id, kind} → Load Config → Secret OK? → Get Generation(+card) → branch on kind:
-- regenerate: POST <n8nBaseUrl>/webhook/studio-generate (WF-2 dispatcher; claim_generations() hands the queued row to one worker, which does prompt-engine → Kie → QC) and stop. See item 9.
-- edit_text / edit_region: PATCH generation working → prompt-engine (returns rendered_prompt for the edit, input_paths: previous_version + optional mask)
-  → sign the parent image (gens) and the mask if present → Kie createTask model 'google/nano-banana-edit' (request shape from docs/tshirt-engine/EXTRACT.md
-  "tweak" path: input image URLs + prompt; add the mask as a second input and say in the prompt that only the white region may change)
-  → WF-5 Poll (timeout 600 s) → download result → upload gens/<card_id>/<generation_id>.png → PATCH image_path/vendor_job_id → Gemini QC (qc_prompt) → qc-judge
-  → PATCH status done → PATCH cards.current_generation_id (item 12) → move_card(needs_review). Failure → PATCH failed + move_card(failed).
-  (drift_pct pixel diff is out of scope for v1; leave the column null.)
+Field names shared by WF-4 and the app (keep in sync):
+- fin_jobs.metrics (WF-4 "Status -> done" p_fields.metrics) = { final_w, final_h, dpi } from the Set 300 DPI node; src/lib/types.ts
+  parseFinalMetrics reads w|width|px_w|final_w, h|height|px_h|final_h and dpi, so the Completed tile shows "<w>×<h> px · 300 DPI".
+- fin_jobs.final_path = <card_id>/<generation_id>-final.png (bucket finals); generations.image_path = <card_id>/<generation_id>.png (bucket gens).
 
-## WF-7 Lessons (new, file n8n/wf7-lessons.sdk.js)
-Webhook studio-lessons → Load Config → Secret OK? → GET generations rejected in the last 24 h (rejection_reason not null, reviewed_at > now-1d) with card client_id
-→ group per client (Code ≤ 20 lines) → per client: Kie claude-sonnet-4-6 messages call with distill_system / distill_user templates (fetched from prompt_templates)
-→ parse up to 3 rules → INSERT design_lessons (client_id, category, rule, active=false, source_generation_ids) → Slack "DM HR" digest message (continueRegularOutput).
+## Error workflow binding (R99)
+WF-1 Intake, WF-1b Style Draft, WF-2 Generate, WF-3 Edit and WF-4 Finisher must have Settings → Error workflow = DM Studio · WF-6 Error
+(id PIgUHDGkVJVg9FHj). This is a LIVE-ONLY setting: the SDK parser used by create_workflow_from_code / check.js rejects `.settings()`
+("not an allowed SDK method"), so it cannot be declared in the *.sdk.js sources, and n8n refuses to store it while WF-6 has no published
+version ("has no published version, so n8n cannot run it"). Order: paste keys in WF-0 → publish WF-0 → publish WF-6 → on each of the five
+workflows set Settings → Error workflow = WF-6 (or update_workflow setWorkflowSettings { errorWorkflow: 'PIgUHDGkVJVg9FHj' }) → publish
+the rest. WF-5 Poll, WF-6 and WF-7 have no error workflow (WF-5 is a sub-workflow whose failure surfaces in the caller; WF-7 is a nightly
+digest). Any re-create of these five workflows from code must repeat this step.
+
+## Manual n8n steps (UI or connector), in order — status 2026-09-24
+1. WF-0 `vbyjWhK4ZRN9uZUM` → node "Studio Config": paste studioSecret, ideogramKey, imgbbKey, mlKey (the only paste location).
+2. Publish WF-0, then WF-5 Poll, then **WF-6 Error**, then WF-2, WF-3, WF-1, WF-1b, WF-4, WF-7.
+3. Error workflow binding: WF-1, WF-1b, WF-2, WF-3, WF-4 → Settings → Error workflow → "DM Studio · WF-6 Error" (`PIgUHDGkVJVg9FHj`).
+   n8n refuses to bind an error workflow that has no published version, so this step MUST come after WF-6 is published
+   (verified 2026-09-24: `update_workflow` setWorkflowSettings.errorWorkflow on WF-2/3/4 answered "has no published version").
+   WF-6 runs only for unhandled node crashes on production executions; the inline Fail Message paths stay the normal failure route.
+   WF-5 (sub-workflow), WF-0, WF-6 and WF-7 get no error workflow.
+4. Delete the superseded copies `62DdRaJTr7rIsPFP` (old WF-4) and `3QD6HDEtWWcBYFbD` (stray WF-5); check every studio workflow sits in folder QKT7A5gRiL349k8X.
+5. Then run the acceptance flow (docs/generation-spec.md section 6) — see docs/STATUS.md.

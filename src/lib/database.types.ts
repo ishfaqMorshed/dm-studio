@@ -529,6 +529,7 @@ export type Database = {
           activated_by: string | null
           active: boolean
           body: string
+          consumer: string | null
           created_at: string
           id: string
           slug: string
@@ -539,6 +540,7 @@ export type Database = {
           activated_by?: string | null
           active?: boolean
           body: string
+          consumer?: string | null
           created_at?: string
           id?: string
           slug: string
@@ -549,6 +551,7 @@ export type Database = {
           activated_by?: string | null
           active?: boolean
           body?: string
+          consumer?: string | null
           created_at?: string
           id?: string
           slug?: string

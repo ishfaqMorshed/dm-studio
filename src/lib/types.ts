@@ -184,7 +184,7 @@ export function parseReferenceUrls(json: Json | null | undefined): ReferenceUrl[
   return out
 }
 
-/** `fin_jobs.metrics` is written by the finisher; shape is `{w, h, dpi, alpha}` but tolerate anything. */
+/** `fin_jobs.metrics` is written by WF-4 Finisher (Status -> done) as `{final_w, final_h, dpi}`; older shapes `{w, h, dpi, alpha}` are tolerated. */
 export interface FinalMetrics {
   w: number | null
   h: number | null
@@ -199,8 +199,8 @@ export function parseFinalMetrics(json: Json | null | undefined): FinalMetrics {
     const v = json[k]
     return typeof v === 'number' && Number.isFinite(v) ? v : null
   }
-  m.w = num('w') ?? num('width') ?? num('px_w')
-  m.h = num('h') ?? num('height') ?? num('px_h')
+  m.w = num('w') ?? num('width') ?? num('px_w') ?? num('final_w')
+  m.h = num('h') ?? num('height') ?? num('px_h') ?? num('final_h')
   m.dpi = num('dpi')
   m.alpha = typeof json.alpha === 'boolean' ? json.alpha : null
   return m

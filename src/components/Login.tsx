@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
-import { KeyRound, Loader2, Mail, Sparkles } from 'lucide-react'
+import { KeyRound, Loader2, Mail } from 'lucide-react'
+import { BrandMark } from './BrandMark'
 import { supabase } from '../lib/supabase'
 
 /** Password sign-in for staff. Public sign-ups and magic links are disabled on this project. */
@@ -26,17 +27,16 @@ export function Login() {
   }
 
   const input =
-    'w-full rounded-lg border border-neutral-300 bg-white py-2 pl-9 pr-3 text-sm outline-none ring-neutral-900/10 focus:ring-4 dark:border-neutral-700 dark:bg-neutral-950 dark:ring-white/10'
+    'w-full rounded-lg border border-neutral-300 bg-white py-2 pl-9 pr-3 text-sm outline-none ring-accent-500/25 focus:border-accent-400 focus:ring-4 dark:border-neutral-700 dark:bg-neutral-950 dark:ring-accent-400/30 dark:focus:border-accent-500'
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-sm rounded-2xl border border-neutral-200 bg-white p-8 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <div className="mb-6 flex items-center gap-2">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-neutral-900 text-white dark:bg-white dark:text-neutral-900">
-            <Sparkles className="h-5 w-5" />
-          </span>
+      <div className="w-full max-w-sm rounded-2xl border border-neutral-200 bg-white p-8 shadow-card dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="mb-6 flex items-center gap-3">
+          <BrandMark className="h-10 w-10 rounded-xl" />
           <div>
-            <h1 className="text-lg font-semibold leading-tight">DM Studio</h1>
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-accent-700 dark:text-accent-300">Design Musketeer</p>
+            <h1 className="text-xl font-semibold leading-tight">DM Studio</h1>
             <p className="text-xs text-neutral-500">Brief · generate · review · print-ready</p>
           </div>
         </div>
@@ -81,7 +81,7 @@ export function Login() {
           <button
             type="submit"
             disabled={busy || !email || !password}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-neutral-900 py-2 text-sm font-medium text-white outline-none ring-neutral-900/20 transition hover:bg-neutral-700 focus-visible:ring-4 disabled:opacity-50 dark:bg-white dark:text-neutral-900 dark:ring-white/30 dark:hover:bg-neutral-200"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent-600 py-2 text-sm font-medium text-white shadow-card outline-none ring-accent-500/30 transition hover:bg-accent-700 focus-visible:ring-4 disabled:opacity-50 dark:bg-accent-500 dark:ring-accent-400/40 dark:hover:bg-accent-400"
           >
             {busy && <Loader2 className="h-4 w-4 animate-spin" />}
             Sign in

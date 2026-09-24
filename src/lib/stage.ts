@@ -43,30 +43,30 @@ export const STAGE_HINT: Record<CardStage, string> = {
 
 /** Tailwind classes for the stage badge (light + dark). */
 export const STAGE_BADGE_CLASS: Record<CardStage, string> = {
-  intake: 'bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200',
-  review: 'bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-300',
-  approved: 'bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark:text-sky-300',
-  generating: 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300',
-  needs_review: 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300',
-  editing: 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300',
-  finishing: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-300',
-  delivered: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300',
-  waiting: 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-300',
-  failed: 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300',
+  intake: 'bg-stage-intake-soft text-stage-intake-ink dark:bg-stage-intake/25 dark:text-stage-intake-light',
+  review: 'bg-stage-review-soft text-stage-review-ink dark:bg-stage-review/25 dark:text-stage-review-light',
+  approved: 'bg-stage-approved-soft text-stage-approved-ink dark:bg-stage-approved/25 dark:text-stage-approved-light',
+  generating: 'bg-stage-generating-soft text-stage-generating-ink dark:bg-stage-generating/25 dark:text-stage-generating-light',
+  needs_review: 'bg-stage-needs_review-soft text-stage-needs_review-ink dark:bg-stage-needs_review/25 dark:text-stage-needs_review-light',
+  editing: 'bg-stage-editing-soft text-stage-editing-ink dark:bg-stage-editing/25 dark:text-stage-editing-light',
+  finishing: 'bg-stage-finishing-soft text-stage-finishing-ink dark:bg-stage-finishing/25 dark:text-stage-finishing-light',
+  delivered: 'bg-stage-delivered-soft text-stage-delivered-ink dark:bg-stage-delivered/25 dark:text-stage-delivered-light',
+  waiting: 'bg-stage-waiting-soft text-stage-waiting-ink dark:bg-stage-waiting/25 dark:text-stage-waiting-light',
+  failed: 'bg-stage-failed-soft text-stage-failed-ink dark:bg-stage-failed/25 dark:text-stage-failed-light',
 }
 
 /** Accent colour for the column header strip on the board. */
 export const STAGE_ACCENT_CLASS: Record<CardStage, string> = {
-  intake: 'bg-neutral-400',
-  review: 'bg-violet-500',
-  approved: 'bg-sky-500',
-  generating: 'bg-blue-500',
-  needs_review: 'bg-amber-500',
-  editing: 'bg-blue-500',
-  finishing: 'bg-indigo-500',
-  delivered: 'bg-emerald-500',
-  waiting: 'bg-orange-500',
-  failed: 'bg-red-500',
+  intake: 'bg-stage-intake',
+  review: 'bg-stage-review',
+  approved: 'bg-stage-approved',
+  generating: 'bg-stage-generating',
+  needs_review: 'bg-stage-needs_review',
+  editing: 'bg-stage-editing',
+  finishing: 'bg-stage-finishing',
+  delivered: 'bg-stage-delivered',
+  waiting: 'bg-stage-waiting',
+  failed: 'bg-stage-failed',
 }
 
 /** Stages where a machine, not a designer, is expected to move the card on. */

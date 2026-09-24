@@ -32,7 +32,7 @@ No Code node over 20 lines except owner-frozen code. No secrets in Set nodes, ex
 - Storage: refs (staff insert/select/delete; worker select), gens (worker all; staff read/insert), finals. Storage forwards x-studio-secret, so the worker calls
   `POST /storage/v1/object/sign/<bucket>/<path>` body {"expiresIn":3600} with apikey + secret to get `{signedURL}` (prefix with `<sbUrl>/storage/v1`).
 - Triggers already firing: cards insert (stage intake) → /webhook/studio-intake {card_id, client_id}; cards stage → approved → /webhook/studio-generate {card_id, generation_id};
-  generations insert kind≠generate → /webhook/studio-edit; style_draft_requests insert → /webhook/studio-style-draft {request_id, client_id}; pg_cron 5-min sweep nudges studio-generate when queued rows exist.
+  generations insert kind≠generate → /webhook/studio-edit; style_draft_requests insert → /webhook/studio-style-draft {request_id, client_id}; pg_cron sweep (every 2 min since studio_13_sweep_cadence; was 5) nudges studio-generate / finisher-dispatch when queued rows exist.
 
 ## 2. Style Card JSON schema (the contract every prompt is built from)
 {
@@ -55,6 +55,24 @@ Builds magic_prompt_json with keys in this order and renders rendered_prompt fro
 Also returns: aspect_ratio from placement (docs/kie-gpt-image-2-5.md table), resolution from settings, input_urls plan: which reference paths to attach (card refs always; up to 3 library refs when tier ≥ 3) and the per-image role labels to put in the prompt ("Image 1–3: style/subject references for this design; Image 4–6: examples of the client's established look — match the look, never copy a subject").
 Writes magic_prompt_json, rendered_prompt, final_prompt (= rendered_prompt unless a polish node changes it), aspect_ratio, resolution, model, vendor onto the generation row, and returns them. Fails 422 with a clear message when the client has no locked Style Card or the card has no reference_analysis.
 The prompt texts (print rules, tier definitions, exact-text rules, defect list, QC checklist) are taken VERBATIM from docs/tshirt-engine/EXTRACT.md and seeded into prompt_templates v1 by a migration; the function reads them from the table so the lead can version them (P7).
+Template consumers (prompt_templates.consumer column, migration studio_13_prompt_template_consumers; the Settings page shows the same text under each slug):
+| slug | consumer |
+|---|---|
+| analysis_prompt | WF-1 Studio Intake > Analyze References (Kie gemini-3.1-pro, JSON mode). v2 active (JSON contract); v1 inactive, kept for rollback. |
+| background_rule | prompt-engine (required) - rendered into the print_rules block with defects. |
+| corrective_suffix | WF-2 Studio Generate + WF-3 Studio Edit > Build Corrective Task (attempt 2 after failed QC). |
+| defects | prompt-engine (required) - print_rules block, after background_rule. |
+| distill_system / distill_user | WF-7 Studio Lessons > Build Distill Request (Kie claude-sonnet-4-6). |
+| placement_aspect | prompt-engine (optional) - placement -> aspect_ratio; built-in table when the row is absent. |
+| prompt_engine_system / prompt_engine_user | NO CONSUMER, inactive since studio_13. Verbatim T-Shirt Engine LLM prompt-writer prompts (EXTRACT.md 3.2/3.3) kept for reference; re-activate only if WF-2 gains an optional LLM polish step. |
+| qc_prompt | WF-2 + WF-3 > Vision QC (Kie gemini-3.1-pro, JSON mode), normalised by qc-judge. |
+| style_card_render | reference only - documents render.ts renderStyleCard(); the code is the source of truth and the row is never sent to a model. |
+| style_profiler | WF-1b Studio Style Draft > Profile Style, and the WF-1 fallback draft from the card references. |
+| text_rules | prompt-engine (required) - exact-text block. |
+| tier_rules | prompt-engine (required) - JSON keyed 1..5 + edit, picked by cards.similarity_tier. |
+| print_rules | optional, intentionally absent: prompt-engine composes it from background_rule + defects so a lead edits those two rows instead. |
+| render_order | declared optional in prompt-engine but unused (the block order above is fixed in render.ts); no row exists. |
+
 ### qc-judge  POST {generation_id, qc_raw}
 Normalises the vision QC response into qc_report {checks:[{id, name, pass, note}], score, needs_regen, corrective_instruction, style_violations[], text_ok, min_text_height_frac}; adds the Style Card palette check and the "rules violated" list; writes qc_report/needs_regen/text_elements; returns it. Never throws on malformed JSON (returns needs_regen false with a parse_error note and flags for the designer).
 
@@ -66,7 +84,7 @@ Respond 200 → style_draft_update(working, execution id) → list client_refere
 ### WF-2 Studio Generate  (/webhook/studio-generate; nudged by cron)
 Respond 200 → claim_generations() → per generation (batch 1): move_card(generating) → PATCH generation status working + n8n_execution_id → prompt-engine → sign input paths → Kie createTask (model from settings, input_urls, aspect_ratio, resolution, background opaque, callBackUrl = the Wait node's resume URL) → Wait (resume on webhook, timeout 15 min) → on timeout poll recordInfo every 10 s via the shared Poll sub-workflow until success/fail (30-min cap) → parse resultJson.resultUrls[0] → download → upload to gens/<card_id>/<generation_id>.png (apikey + secret, x-upsert) → PATCH image_path, vendor_job_id → Vision QC (the 9-point prompt verbatim + palette/style-violations/text-height additions; JSON mode; inputs: the image signed URL, the exact text lines, the Style Card JSON) → qc-judge → if needs_regen and attempt = 1: insert corrective regen? NO — keep one generation row: PATCH attempt 2, append corrective_instruction to the prompt (template "corrective") and loop back to createTask once → PATCH status done, cards.current_generation_id → move_card(needs_review). Any failure → PATCH generation failed + last_error → move_card(failed, message).
 ### WF-5 Poll (sub-workflow) inputs {url, headersCredential?, interval ≥ 6 s, timeout} → returns the final JSON or throws. Reused by WF-2 (Kie) and later WF-3.
-### WF-6 Error workflow: set as the error workflow on WF-1/1b/2/4; writes last_error + stage failed onto the card if it can find card_id in the failed execution's data; posts to Slack channel #dm-studio if the Slack credential "DM HR" is allowed, otherwise skip the Slack node.
+### WF-6 Error workflow: set as the error workflow on WF-1/1b/2/3/4 (bind only after WF-6 is published; see docs/n8n-config-contract.md "Manual n8n steps"); writes last_error + stage failed onto the card if it can find card_id in the failed execution's data; posts to Slack channel #dm-studio if the Slack credential "DM HR" is allowed, otherwise skip the Slack node.
 
 ## 5. Frontend changes (dm-studio repo)
 - Header: client selector (All clients + each active client; persisted in localStorage and the URL ?client=); every page filters by it (board, completed, card list). Board title becomes the client name.

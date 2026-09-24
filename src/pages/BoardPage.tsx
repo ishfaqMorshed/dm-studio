@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { AlertCircle, Inbox, Loader2, Plus } from 'lucide-react'
+import { AlertCircle, Images, Inbox, Loader2, Plus } from 'lucide-react'
 import { STAGES } from '../lib/stage'
 import type { CardStage } from '../lib/types'
 import { useClientScope } from '../lib/useClientScope'
@@ -9,10 +9,11 @@ import { BoardColumn } from '../components/board/BoardColumn'
 import { BoardFilters } from '../components/board/BoardFilters'
 import { matchesCard, readFilters, writeFilters, type BoardFilters as Filters } from '../components/board/filters'
 import { NewCardDialog } from '../components/board/NewCardDialog'
+import { BulkCardsDialog } from '../components/board/BulkCardsDialog'
 import { useBoardData } from '../components/board/useBoardData'
 import { useNow } from '../components/board/useNow'
 import type { BoardCard } from '../components/board/types'
-import { btnPrimary } from '../components/card/styles'
+import { btnPrimary, btnSecondary } from '../components/card/styles'
 
 function emptyCounts(): Record<CardStage, number> {
   const out = {} as Record<CardStage, number>
@@ -33,6 +34,7 @@ export default function BoardPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [refreshing, setRefreshing] = useState(false)
   const [newCard, setNewCard] = useState(false)
+  const [bulkCards, setBulkCards] = useState(false)
 
   const filters = useMemo(() => readFilters(searchParams), [searchParams])
   const setFilters = useCallback(
@@ -82,10 +84,21 @@ export default function BoardPage() {
               : 'Updates live. Open a card to edit the brief, review output or move it on.'}
           </p>
         </div>
-        <button type="button" onClick={() => setNewCard(true)} className={btnPrimary}>
-          <Plus className="h-4 w-4" />
-          New card
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setBulkCards(true)}
+            className={btnSecondary}
+            title="Drop many reference images and get one card per image"
+          >
+            <Images className="h-4 w-4" />
+            New cards from images
+          </button>
+          <button type="button" onClick={() => setNewCard(true)} className={btnPrimary}>
+            <Plus className="h-4 w-4" />
+            New card
+          </button>
+        </div>
       </div>
 
       <BoardFilters
@@ -144,6 +157,7 @@ export default function BoardPage() {
       )}
 
       {newCard && <NewCardDialog clientId={selectedClientId} onClose={() => setNewCard(false)} />}
+      {bulkCards && <BulkCardsDialog clientId={selectedClientId} onClose={() => setBulkCards(false)} />}
     </div>
   )
 }

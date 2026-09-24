@@ -72,16 +72,25 @@ docs/reference/            DM Finisher's CompletedPanel, kept as a pattern refer
 
 ## Deploy to Vercel
 
-1. Import the repo in Vercel (framework preset: Vite). `vercel.json` already rewrites every path to `index.html` for the router.
-2. Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` under *Project → Settings → Environment Variables*.
-3. Deploy. Build command `npm run build`, output directory `dist`.
+Nothing in this repo is deployed yet; the steps below need the user's GitHub and Vercel logins.
+
+1. Create an empty GitHub repository (private), then from this folder:
+   ```bash
+   git remote add origin git@github.com:<org>/dm-studio.git
+   git push -u origin master
+   ```
+   `.gitignore` already excludes `.env`, `*.local` and `n8n/*.json`; run `git status` first and confirm nothing secret is staged.
+2. Vercel → *Add New → Project* → import the repo. Framework preset **Vite** (auto-detected from `vercel.json`, which also rewrites every path to `index.html` for the router). Build command `npm run build`, output directory `dist`.
+3. *Project → Settings → Environment Variables*: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (the publishable key, same values as `.env`), for Production and Preview.
+4. Deploy, open the URL, sign in with the staff account and load `/board` and `/brief/<token>` directly to confirm the SPA rewrite.
 
 Password login does not need redirect URLs. If magic links are ever enabled, add the deployed origin under **Authentication → URL Configuration** in Supabase.
 
+Current build state: `docs/STATUS.md`. Workflow conventions: `docs/n8n-config-contract.md`. Generation spec and acceptance flow: `docs/generation-spec.md`.
+
 ## Test accounts
 
-- Staff (lead): `studio-test@dmteam.local` / `StudioTest#2026`
+- Staff (lead): `studio-test@dmteam.local` (password kept out of the repo; ask the lead)
 - Client form token: `0570536095895eb6f05ed21a73a8624d` → `/brief/0570536095895eb6f05ed21a73a8624d`
 
 Delete the test user in Supabase → Authentication when no longer needed.
-

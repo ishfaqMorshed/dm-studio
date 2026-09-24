@@ -14,11 +14,11 @@ import { errorMessage } from '../lib/types'
 const AGE_TICK_MS = 30_000
 
 const secondaryBtn =
-  'inline-flex items-center justify-center gap-1.5 rounded-lg border border-neutral-300 px-2.5 py-1.5 text-xs font-medium outline-none ring-neutral-900/10 hover:bg-neutral-100 focus-visible:ring-4 disabled:opacity-40 dark:border-neutral-700 dark:ring-white/20 dark:hover:bg-neutral-800'
+  'inline-flex items-center justify-center gap-1.5 rounded-lg border border-neutral-300 px-2.5 py-1.5 text-xs font-medium outline-none ring-accent-500/25 hover:bg-neutral-100 focus-visible:ring-4 disabled:opacity-40 dark:border-neutral-700 dark:ring-accent-400/30 dark:hover:bg-neutral-800'
 const primaryBtn =
-  'inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral-900 px-2.5 py-1.5 text-xs font-medium text-white outline-none ring-neutral-900/20 hover:bg-neutral-700 focus-visible:ring-4 disabled:opacity-40 dark:bg-white dark:text-neutral-900 dark:ring-white/30 dark:hover:bg-neutral-200'
+  'inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent-600 px-2.5 py-1.5 text-xs font-medium text-white shadow-card outline-none ring-accent-500/30 hover:bg-accent-700 focus-visible:ring-4 disabled:opacity-40 dark:bg-accent-500 dark:ring-accent-400/40 dark:hover:bg-accent-400'
 const field =
-  'rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm outline-none ring-neutral-900/10 focus:ring-4 dark:border-neutral-700 dark:bg-neutral-950 dark:ring-white/10'
+  'rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm outline-none ring-accent-500/25 focus:border-accent-400 focus:ring-4 dark:border-neutral-700 dark:bg-neutral-950 dark:ring-accent-400/30 dark:focus:border-accent-500'
 
 function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`

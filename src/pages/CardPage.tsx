@@ -17,7 +17,7 @@ import {
   retryCard,
   setCurrentGeneration,
 } from '../lib/api'
-import { ACTIVE_JOB_STATUSES, errorMessage, parsePrintText, type Generation, type Json } from '../lib/types'
+import { ACTIVE_JOB_STATUSES, errorMessage, isRecord, parsePrintText, type Generation, type Json, type PrintTextLine } from '../lib/types'
 import { safeFileName } from '../lib/download'
 import { useCardFinJobs, useCardGenerations, useCardRow, useStyleCard } from '../components/card/useCardData'
 import { useNow } from '../components/card/useNow'
@@ -38,7 +38,7 @@ import { RenderedPromptPanel } from '../components/card/RenderedPromptPanel'
 import { ActionBar } from '../components/card/ActionBar'
 import { ApproveDialog } from '../components/card/ApproveDialog'
 import { AcceptDialog } from '../components/card/AcceptDialog'
-import { EditTextDialog, type EditTextSubmit } from '../components/card/EditTextDialog'
+import { EditTextDialog, type EditTextSubmit, type TextChange } from '../components/card/EditTextDialog'
 import { EditRegionDialog, type EditRegionSubmit } from '../components/card/EditRegionDialog'
 import { RegenerateDialog, type RegenerateSubmit } from '../components/card/RegenerateDialog'
 import { ParkDialog } from '../components/card/ParkDialog'
@@ -175,14 +175,19 @@ function CardView({ cardId }: { cardId: string }) {
     )
   }
 
-  function onEditText({ oldText, newText, instruction, updateBrief }: EditTextSubmit) {
+  function onEditText(args: EditTextSubmit) {
     if (!card || !current) return
+    if (args.mode === 'multi') {
+      onEditTextMulti(args.lines, args.changes, args.instruction)
+      return
+    }
+    const { oldText, newText, instruction, updateBrief } = args
     void run(
       'edit_text',
       async () => {
         if (updateBrief) {
           const lines = parsePrintText(card.print_text)
-          const idx = lines.findIndex((l) => l.text === oldText)
+          const idx = lines.findIndex((l) => l.text.trim() === oldText)
           if (idx >= 0) {
             const next = lines.map((l, i) => ({ role: l.role, text: i === idx ? newText : l.text }))
             const { data, error: err } = await supabase.from('cards').update({ print_text: next }).eq('id', card.id).select('*').single()
@@ -197,6 +202,53 @@ function CardView({ cardId }: { cardId: string }) {
         void refreshCard()
         closeDialog()
         toast.success('Text edit queued — the card is now editing')
+      },
+    )
+  }
+
+  /**
+   * Several lines changed at once: write the new print text into the card (and its
+   * brief snapshot, which the engine and QC read), rewrite the text slot of the magic
+   * prompt, then queue ONE regenerate so every new line lands in the same generation.
+   */
+  function onEditTextMulti(lines: PrintTextLine[], changes: TextChange[], instruction: string) {
+    if (!card || !current) return
+    let basePrompt: Json | null = current.magic_prompt_json
+    if (promptDirty) {
+      try {
+        basePrompt = jsonFromSections(draft.sections, current.magic_prompt_json)
+      } catch (e) {
+        toast.error(errorMessage(e))
+        return
+      }
+    }
+    const printText = lines.map((l) => ({ role: l.role, text: l.text }))
+    // The engine builds regenerates from the parent's prompt, so the text slot must carry the new lines too.
+    const prompt: Json | null =
+      isRecord(basePrompt) && isRecord(basePrompt.text) ? { ...basePrompt, text: { ...basePrompt.text, lines: printText } } : basePrompt
+    const summary = changes.map((c) => `“${c.oldText}” → “${c.newText}”`).join('; ')
+    const note = `Text edit (${changes.length} lines): ${summary}${instruction ? ` — ${instruction}` : ''}`.slice(0, 500)
+
+    void run(
+      'edit_text',
+      async () => {
+        const patch: { print_text: Json; brief_snapshot?: Json } = { print_text: printText }
+        if (isRecord(card.brief_snapshot)) patch.brief_snapshot = { ...card.brief_snapshot, print_text: printText }
+        const { data, error: err } = await supabase.from('cards').update(patch).eq('id', card.id).select('*').single()
+        if (err) throw new Error(`The brief was not updated (${err.message}), so nothing was queued.`)
+        upsertCard(data)
+        return requestEdit(current.id, 'regenerate', {
+          rejection_reason: 'text_wrong',
+          rejection_note: note,
+          instruction: instruction || null,
+          magic_prompt_json: prompt,
+        })
+      },
+      (child) => {
+        generations.upsertLocal(child)
+        void refreshCard()
+        closeDialog()
+        toast.success(`Brief updated — regenerating with ${changes.length} new text lines`)
       },
     )
   }

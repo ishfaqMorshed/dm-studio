@@ -27,6 +27,18 @@ interface DialogState {
 }
 
 /** Prompt templates grouped by slug: activate a version, or add the next one as a draft. */
+/** The consumer note for a slug: the active row's, else the newest version's (the column is set per slug by studio_13). */
+function consumerOf(group: TemplateGroup): string | null {
+  const text = (group.active ?? group.versions[0])?.consumer ?? null
+  return text && text.trim() ? text.trim() : null
+}
+
+/** True for slugs that no workflow or edge function reads (reference-only rows), so "no active version" is not an outage. */
+function hasNoConsumer(group: TemplateGroup): boolean {
+  const c = consumerOf(group)
+  return Boolean(c && /^(no consumer|reference only)/i.test(c))
+}
+
 export function PromptTemplates() {
   const toast = useToast()
   const { groups, loading, error, refresh, activate, createVersion, nameOf } = usePromptTemplates()
@@ -159,6 +171,10 @@ export function PromptTemplates() {
                   <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">
                     v{group.active.version} active
                   </span>
+                ) : hasNoConsumer(group) ? (
+                  <span className="rounded-full bg-neutral-200 px-2 py-0.5 text-xs font-medium text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
+                    Inactive — no worker reads this slug
+                  </span>
                 ) : (
                   <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800 dark:bg-red-900/50 dark:text-red-300">
                     No active version — workers cannot use this slug
@@ -169,6 +185,11 @@ export function PromptTemplates() {
                   New version (v{group.nextVersion})
                 </button>
               </div>
+              {consumerOf(group) && (
+                <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">
+                  <span className="font-medium">Read by:</span> {consumerOf(group)}
+                </p>
+              )}
 
               <ul className="mt-3 space-y-2">
                 {group.versions.map((t) => {
