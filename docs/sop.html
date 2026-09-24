@@ -1,0 +1,801 @@
+<title>New POD Studio SOP</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ground: #F4F6F8;
+    --surface: #FFFFFF;
+    --surface-2: #EAEFF3;
+    --ink: #17202A;
+    --ink-2: #3D4854;
+    --muted: #66727F;
+    --rule: #D5DCE3;
+    --accent: #0B6E8F;
+    --accent-ink: #085870;
+    --accent-soft: #DCEFF5;
+    --must: #B8305F;
+    --must-soft: #F8E3EB;
+    --ok: #2E7D4F;
+    --ok-soft: #DFF1E6;
+    --warn: #A96A0A;
+    --warn-soft: #F8EBD3;
+    --code-bg: #EDF1F4;
+    --shadow: 0 1px 2px rgba(23,32,42,.06), 0 8px 24px rgba(23,32,42,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0F151B;
+      --surface: #161E26;
+      --surface-2: #1E2832;
+      --ink: #E7ECF0;
+      --ink-2: #C3CCD5;
+      --muted: #8E9BA8;
+      --rule: #2A3540;
+      --accent: #43B5D9;
+      --accent-ink: #7FD0EA;
+      --accent-soft: #14303C;
+      --must: #E9679A;
+      --must-soft: #3A1826;
+      --ok: #62C48C;
+      --ok-soft: #14301F;
+      --warn: #E0A63A;
+      --warn-soft: #3A2A0E;
+      --code-bg: #1B242D;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0F151B;
+    --surface: #161E26;
+    --surface-2: #1E2832;
+    --ink: #E7ECF0;
+    --ink-2: #C3CCD5;
+    --muted: #8E9BA8;
+    --rule: #2A3540;
+    --accent: #43B5D9;
+    --accent-ink: #7FD0EA;
+    --accent-soft: #14303C;
+    --must: #E9679A;
+    --must-soft: #3A1826;
+    --ok: #62C48C;
+    --ok-soft: #14301F;
+    --warn: #E0A63A;
+    --warn-soft: #3A2A0E;
+    --code-bg: #1B242D;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.55;
+    padding-inline: 20px;
+    padding-block: 0 80px;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover, a:focus-visible { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  code, .mono { font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace; font-size: .88em; }
+  code { background: var(--code-bg); padding: .1em .35em; border-radius: 4px; color: var(--ink); }
+  pre { background: var(--code-bg); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; overflow-x: auto; font-family: "IBM Plex Mono", Menlo, monospace; font-size: .84rem; line-height: 1.5; margin: 12px 0 18px; }
+  pre code { background: none; padding: 0; }
+
+  .wrap { max-width: 1240px; margin: 0 auto; }
+
+  /* masthead */
+  .mast { padding-block: 40px 28px; border-bottom: 1px solid var(--rule); display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: end; }
+  .eyebrow { font-family: "IBM Plex Mono", Menlo, monospace; font-size: .74rem; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin: 0 0 10px; }
+  h1 { font-family: "Bricolage Grotesque", "IBM Plex Sans", sans-serif; font-weight: 700; font-size: clamp(2rem, 4.5vw, 3.2rem); line-height: 1.02; letter-spacing: -.02em; margin: 0 0 12px; text-wrap: balance; }
+  .lede { max-width: 66ch; color: var(--ink-2); font-size: 1.06rem; margin: 0; }
+  .meta { display: grid; grid-template-columns: auto auto; gap: 4px 18px; font-size: .85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .meta dt { font-family: "IBM Plex Mono", Menlo, monospace; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; }
+  .meta dd { margin: 0; color: var(--ink-2); }
+
+  /* rule banner */
+  .rule-banner { margin: 28px 0 0; padding: 18px 22px; background: var(--surface); border: 1px solid var(--rule); border-left: 4px solid var(--accent); border-radius: 6px; box-shadow: var(--shadow); }
+  .rule-banner strong { font-family: "Bricolage Grotesque", sans-serif; font-size: 1.15rem; font-weight: 700; display: block; margin-bottom: 4px; }
+  .rule-banner p { margin: 0; color: var(--ink-2); max-width: 78ch; }
+
+  /* body layout */
+  .layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 48px; padding-top: 32px; }
+  nav.toc { position: sticky; top: 24px; align-self: start; font-size: .86rem; max-height: calc(100vh - 48px); overflow-y: auto; }
+  nav.toc .toc-h { font-family: "IBM Plex Mono", Menlo, monospace; font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--rule); }
+  nav.toc li a { display: block; padding: 5px 0 5px 14px; color: var(--ink-2); border-left: 2px solid transparent; margin-left: -1px; line-height: 1.3; }
+  nav.toc li a:hover { color: var(--accent); text-decoration: none; border-left-color: var(--accent); }
+  nav.toc li a .n { font-family: "IBM Plex Mono", Menlo, monospace; font-size: .72rem; color: var(--muted); margin-right: 6px; }
+  main { min-width: 0; }
+  main > section { padding-block: 8px 44px; border-bottom: 1px solid var(--rule); margin-bottom: 36px; }
+  main > section:last-child { border-bottom: 0; }
+  h2 { font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; font-size: 1.75rem; letter-spacing: -.015em; line-height: 1.1; margin: 0 0 6px; text-wrap: balance; scroll-margin-top: 24px; }
+  h2 .n { font-family: "IBM Plex Mono", Menlo, monospace; font-size: .8rem; color: var(--accent); letter-spacing: .08em; display: block; margin-bottom: 6px; font-weight: 500; }
+  h3 { font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; font-size: 1.18rem; margin: 30px 0 8px; letter-spacing: -.01em; scroll-margin-top: 24px; }
+  h4 { font-size: .95rem; font-weight: 600; margin: 20px 0 6px; color: var(--ink-2); }
+  p, li { max-width: 72ch; }
+  p { margin: 0 0 12px; }
+  .section-lede { color: var(--ink-2); font-size: 1.02rem; margin-bottom: 18px; }
+  ul, ol { padding-left: 22px; margin: 0 0 14px; }
+  li { margin-bottom: 5px; }
+  li strong { font-weight: 600; }
+
+  /* tables */
+  .tbl { overflow-x: auto; margin: 10px 0 20px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--rule); }
+  th { font-family: "IBM Plex Mono", Menlo, monospace; font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); font-weight: 500; white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td code { white-space: nowrap; }
+  .num { font-variant-numeric: tabular-nums; text-align: right; }
+
+  /* pills */
+  .pill { display: inline-block; font-family: "IBM Plex Mono", Menlo, monospace; font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap; vertical-align: middle; }
+  .pill.v1 { background: var(--accent-soft); color: var(--accent-ink); border-color: transparent; }
+  .pill.v2 { background: var(--warn-soft); color: var(--warn); }
+  .pill.out { background: var(--must-soft); color: var(--must); }
+  .pill.ok { background: var(--ok-soft); color: var(--ok); }
+  .pill.state { background: var(--surface-2); color: var(--ink-2); border-color: var(--rule); text-transform: none; letter-spacing: 0; font-size: .76rem; }
+
+  /* callouts */
+  .callout { padding: 12px 16px; border-radius: 6px; margin: 14px 0 18px; border: 1px solid var(--rule); background: var(--surface); max-width: 78ch; }
+  .callout.must { border-color: var(--must); background: var(--must-soft); }
+  .callout.must .lbl { color: var(--must); }
+  .callout.note .lbl { color: var(--accent); }
+  .callout .lbl { font-family: "IBM Plex Mono", Menlo, monospace; font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; display: block; margin-bottom: 4px; }
+  .callout p:last-child { margin-bottom: 0; }
+
+  /* procedures */
+  .proc { counter-reset: step; list-style: none; padding: 0; margin: 10px 0 22px; max-width: 78ch; }
+  .proc > li { counter-increment: step; position: relative; padding: 10px 0 10px 46px; border-top: 1px solid var(--rule); margin: 0; max-width: none; }
+  .proc > li:last-child { border-bottom: 1px solid var(--rule); }
+  .proc > li::before { content: counter(step, decimal-leading-zero); position: absolute; left: 0; top: 11px; font-family: "IBM Plex Mono", Menlo, monospace; font-size: .8rem; color: var(--accent); font-weight: 500; }
+  .proc .who { font-family: "IBM Plex Mono", Menlo, monospace; font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-left: 8px; }
+  .proc .check { display: block; font-size: .86rem; color: var(--ink-2); margin-top: 3px; }
+  .proc .check::before { content: "Done when: "; color: var(--ok); font-weight: 600; }
+
+  /* state flow */
+  .flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0 18px; }
+  .flow .st { font-family: "IBM Plex Mono", Menlo, monospace; font-size: .78rem; padding: 5px 10px; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); }
+  .flow .st.gate { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-soft); }
+  .flow .st.term { border-style: dashed; color: var(--muted); }
+  .flow .ar { color: var(--muted); font-size: .8rem; }
+
+  /* system diagram */
+  .sys { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin: 14px 0 22px; }
+  .sys .box { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 12px 14px; font-size: .86rem; }
+  .sys .box .t { font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; font-size: 1rem; margin-bottom: 4px; }
+  .sys .box .own { font-family: "IBM Plex Mono", Menlo, monospace; font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin-bottom: 6px; }
+  .sys .box ul { padding-left: 16px; margin: 0; }
+  .sys .box li { font-size: .84rem; margin-bottom: 2px; color: var(--ink-2); }
+
+  /* key/value grid */
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; font-size: .9rem; margin: 8px 0 18px; max-width: 78ch; }
+  .kv dt { font-family: "IBM Plex Mono", Menlo, monospace; font-size: .8rem; color: var(--muted); }
+  .kv dd { margin: 0; }
+
+  .two { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 20px; }
+
+  @media (max-width: 1000px) {
+    .layout { grid-template-columns: 1fr; gap: 24px; }
+    nav.toc { position: static; max-height: none; }
+    nav.toc ol { columns: 2; column-gap: 24px; border-left: 0; }
+    nav.toc li { break-inside: avoid; }
+    .sys { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  }
+  @media (max-width: 640px) {
+    .mast { grid-template-columns: 1fr; }
+    .sys, .two { grid-template-columns: 1fr; }
+    nav.toc ol { columns: 1; }
+    .kv { grid-template-columns: 1fr; gap: 2px 0; }
+    .kv dt { margin-top: 8px; }
+  }
+</style>
+
+<div class="wrap">
+  <header class="mast">
+    <div>
+      <p class="eyebrow">Design Musketeer · Standard Operating Procedure</p>
+      <h1>New POD Studio SOP</h1>
+      <p class="lede">How the client-brief-to-print-file pipeline is built, run and changed. One generic system, switched per client by a locked Style Card. Covers product rules, frontend, Supabase backend, the n8n workflows, and every day-to-day procedure.</p>
+    </div>
+    <dl class="meta">
+      <dt>Version</dt><dd>1.2 · built, awaiting keys and publish</dd>
+      <dt>Date</dt><dd>24 Sep 2026</dd>
+      <dt>Owner</dt><dd>Technical lead, Design Musketeer</dd>
+      <dt>Status</dt><dd>All parts built · n8n unpublished until keys are pasted</dd>
+    </dl>
+  </header>
+
+  <div class="rule-banner">
+    <strong>The one architecture rule</strong>
+    <p>n8n owns sequence and visibility. Code (Supabase Edge Functions) owns decisions and contracts. Postgres owns state, concurrency and time. No client name ever appears in a workflow or a function; the pipeline only knows "load whatever this card's client says".</p>
+  </div>
+
+  <div class="layout">
+    <nav class="toc" aria-label="Contents">
+      <p class="toc-h">Contents</p>
+      <ol>
+        <li><a href="#s1"><span class="n">01</span>Scope and locked decisions</a></li>
+        <li><a href="#s2"><span class="n">02</span>System overview</a></li>
+        <li><a href="#s3"><span class="n">03</span>Roles and access</a></li>
+        <li><a href="#s4"><span class="n">04</span>Card lifecycle</a></li>
+        <li><a href="#s5"><span class="n">05</span>Frontend</a></li>
+        <li><a href="#s6"><span class="n">06</span>Backend (Supabase)</a></li>
+        <li><a href="#s7"><span class="n">07</span>Style Card and magic prompt</a></li>
+        <li><a href="#s8"><span class="n">08</span>n8n workflows</a></li>
+        <li><a href="#s9"><span class="n">09</span>Operating procedures</a></li>
+        <li><a href="#s10"><span class="n">10</span>Feature register</a></li>
+        <li><a href="#s11"><span class="n">11</span>Build order</a></li>
+        <li><a href="#s12"><span class="n">12</span>Constants and naming</a></li>
+      </ol>
+    </nav>
+
+    <main>
+
+      <!-- 01 -->
+      <section id="s1">
+        <h2><span class="n">01</span>Scope and locked decisions</h2>
+        <p class="section-lede">The studio turns one client form submission into one approved, print-ready PNG, with a designer as the only gate. These decisions are fixed for v1; changing any of them is a new version of this SOP.</p>
+        <div class="tbl"><table>
+          <thead><tr><th>Decision</th><th>Rule</th><th>Consequence</th></tr></thead>
+          <tbody>
+            <tr><td>Client access</td><td>Clients get one form link. No portal, no login, no review page.</td><td>Every client-facing feature (share links, sign-off, credits) is v2 or out.</td></tr>
+            <tr><td>Outputs per card</td><td>One generation per approval. No variations.</td><td>Alternatives come from Regenerate, tracked as history on the same card.</td></tr>
+            <tr><td>Brief text</td><td>The text to print always comes from the client form, edited by the designer, never invented by the model.</td><td>Exact-text rules in the prompt; QC checks the text appears once, verbatim.</td></tr>
+            <tr><td>Approval gate</td><td>Designer approval is the only trigger for generation. Nothing generates before it.</td><td>Approval is a guarded state transition; a second click is a no-op.</td></tr>
+            <tr><td>Style memory</td><td>One locked, versioned Style Card per client, injected into every prompt. The pipeline refuses to run without one.</td><td>Onboarding a client is data entry, never a workflow change.</td></tr>
+            <tr><td>Infrastructure</td><td>Fresh Supabase project. Existing self-hosted n8n. Vercel for the board.</td><td>DM Finisher's project and the DM POD project are never touched.</td></tr>
+            <tr><td>Orchestration</td><td>Hybrid: n8n orchestrates, Edge Functions decide, Postgres owns state.</td><td>No Code node over 20 lines; no 30-second sweeps. Keys live in exactly one place: the "Studio Config" node of WF-0.</td></tr>
+            <tr><td>Image engine</td><td>Kie.ai GPT Image 2.5 Sunburst, image-to-image. References are read by vision into the prompt AND attached to the model as inputs.</td><td>Model, resolution and vision model are Settings fields; a client may override the model.</td></tr>
+            <tr><td>Style memory</td><td>A per-client reference library (5 to 15 past designs) is profiled into the Style Card draft; a designer edits and locks it.</td><td>"Draft Style Card from library" on the client panel; card references only describe that design.</td></tr>
+            <tr><td>Client scoping</td><td>The header client selector scopes the board, Completed and New card to one client. Each client has its own form link.</td><td>Briefs from a client link land only in that client's panel.</td></tr>
+          </tbody>
+        </table></div>
+        <div class="callout must"><span class="lbl">Never</span>
+          <p>Never edit the live DM T-Shirt Engine workflow (<code>DcdygzBz5GAoy2Zg</code>). It is the reference implementation and is read-only. Never point anything at the DM POD Supabase project. Never commit a workflow export: the WF-0 config node carries the keys, so exports are never stored in the repo (only the SDK sources with placeholders).</p>
+        </div>
+      </section>
+
+      <!-- 02 -->
+      <section id="s2">
+        <h2><span class="n">02</span>System overview</h2>
+        <p class="section-lede">Six components, each with one owner. Data flows left to right; every hand-off is a row change in Postgres, never a direct call from the board to n8n.</p>
+        <div class="sys">
+          <div class="box"><div class="t">Client form</div><div class="own">Public · Vite route</div><ul><li>Token link per client</li><li>3 references, description, exact text</li><li>Anonymous insert via RLS</li></ul></div>
+          <div class="box"><div class="t">Studio board</div><div class="own">Designers · Vite + React</div><ul><li>Stage columns, live via Realtime</li><li>Card detail, edit and approve</li><li>Style Card editor, Completed panel</li></ul></div>
+          <div class="box"><div class="t">Supabase</div><div class="own">State, concurrency, time</div><ul><li>Postgres tables and RLS</li><li>Storage buckets, signed URLs</li><li>pg_net triggers, pg_cron sweeps</li></ul></div>
+          <div class="box"><div class="t">Edge Functions</div><div class="own">Decisions · Deno, unit-tested</div><ul><li><code>prompt-engine</code></li><li><code>qc-judge</code></li><li>Pure input to output, no vendor calls</li></ul></div>
+          <div class="box"><div class="t">n8n</div><div class="own">Sequence and visibility</div><ul><li>Generate, Edit, Finisher workflows</li><li>Vendor poll sub-workflow</li><li>Error and nightly workflows</li></ul></div>
+          <div class="box"><div class="t">Vendors</div><div class="own">External APIs</div><ul><li>Gemini vision (references, QC)</li><li>Kie.ai GPT Image 2.5 Sunburst, nano-banana-edit</li><li>ModelsLab upscale, Ideogram remove-bg</li></ul></div>
+        </div>
+        <h3>End-to-end path of one card</h3>
+        <div class="flow">
+          <span class="st">form submit</span><span class="ar">→</span>
+          <span class="st">card row · intake</span><span class="ar">→</span>
+          <span class="st">reference read (Gemini)</span><span class="ar">→</span>
+          <span class="st gate">designer edits and approves</span><span class="ar">→</span>
+          <span class="st">prompt-engine</span><span class="ar">→</span>
+          <span class="st">GPT Image 2.5 Sunburst</span><span class="ar">→</span>
+          <span class="st">qc-judge</span><span class="ar">→</span>
+          <span class="st gate">designer review</span><span class="ar">→</span>
+          <span class="st">edit-text / edit-region / regenerate</span><span class="ar">→</span>
+          <span class="st">finisher: upscale · remove-bg · 300 DPI</span><span class="ar">→</span>
+          <span class="st term">delivered</span>
+        </div>
+        <p>The finisher is the DM Finisher chain already verified in production, ported unchanged except for its trigger and its table names.</p>
+      </section>
+
+      <!-- 03 -->
+      <section id="s3">
+        <h2><span class="n">03</span>Roles and access</h2>
+        <div class="tbl"><table>
+          <thead><tr><th>Role</th><th>Who</th><th>Can</th><th>Cannot</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Client</strong></td><td>Anyone holding a client form link</td><td>Submit a brief with 3 references. See a confirmation screen.</td><td>Log in, see the board, see outputs, edit after submit.</td></tr>
+            <tr><td><strong>Designer</strong></td><td>Team member with a password login</td><td>Open any card, edit every field, approve, review, request edits, regenerate, deliver, edit and lock Style Cards.</td><td>Change prompt templates, prices, pipeline settings, n8n workflows.</td></tr>
+            <tr><td><strong>Lead</strong></td><td>Technical lead</td><td>Everything a designer can, plus settings, prompt template activation, Supabase and n8n changes, execution links on cards.</td><td>Edit the T-Shirt Engine workflow.</td></tr>
+            <tr><td><strong>Worker</strong></td><td>n8n, calling Supabase</td><td>Read and update rows on the tables it is allowed to, only when the <code>x-studio-secret</code> header matches.</td><td>Read auth users, use a service-role key, delete rows.</td></tr>
+          </tbody>
+        </table></div>
+        <p>Auth is Supabase password login only. Email OTP and public sign-ups stay disabled. Roles come from a <code>profiles.role</code> column, not from custom JWT claims.</p>
+      </section>
+
+      <!-- 04 -->
+      <section id="s4">
+        <h2><span class="n">04</span>Card lifecycle</h2>
+        <p class="section-lede">A card has exactly one <code>stage</code>. Every stage change goes through one RPC that also stamps <code>stage_entered_at</code>, so the board can show how long a card has waited.</p>
+        <div class="tbl"><table>
+          <thead><tr><th>Stage</th><th>Meaning</th><th>Entered by</th><th>Leaves when</th></tr></thead>
+          <tbody>
+            <tr><td><span class="pill state">intake</span></td><td>Form received, references being read</td><td>Form insert</td><td>Reference read finishes → <code>review</code></td></tr>
+            <tr><td><span class="pill state">review</span></td><td>Designer edits brief, text, references, confirms Style Card</td><td>Reference read</td><td>Designer clicks Approve → <code>approved</code></td></tr>
+            <tr><td><span class="pill state">approved</span></td><td>Queued for generation</td><td>Approve RPC</td><td>Claim RPC picks it up → <code>generating</code></td></tr>
+            <tr><td><span class="pill state">generating</span></td><td>Prompt built, image being generated, QC running</td><td>n8n worker</td><td>QC report saved → <code>needs_review</code>; hard failure → <code>failed</code></td></tr>
+            <tr><td><span class="pill state">needs_review</span></td><td>Designer looks at the output and the QC report</td><td>n8n worker</td><td>Accept → <code>finishing</code>; edit or regenerate → <code>editing</code>; reject with reason → <code>editing</code></td></tr>
+            <tr><td><span class="pill state">editing</span></td><td>An edit-text, edit-region or regenerate job is running</td><td>Edit RPC</td><td>Child generation saved → <code>needs_review</code></td></tr>
+            <tr><td><span class="pill state">finishing</span></td><td>Upscale, remove background, 300 DPI</td><td>Accept action</td><td>Final stored → <code>delivered</code>; failure after 3 attempts → <code>failed</code></td></tr>
+            <tr><td><span class="pill state">delivered</span></td><td>Final PNG available in the Completed panel</td><td>Finisher</td><td>Terminal. Duplicate card to start again.</td></tr>
+            <tr><td><span class="pill state">waiting</span></td><td>Parked by a designer with a note (missing info, client question)</td><td>Designer</td><td>Designer resumes → previous stage</td></tr>
+            <tr><td><span class="pill state">failed</span></td><td>Pipeline error recorded in <code>last_error</code></td><td>Error workflow</td><td>Retry → previous stage; or delete</td></tr>
+          </tbody>
+        </table></div>
+        <div class="callout note"><span class="lbl">Rule</span><p>Approval is the only transition a designer can make that spends money. The Approve button shows the fixed per-card cost and refuses if the client has no locked Style Card or if <code>pipeline_paused</code> is on.</p></div>
+      </section>
+
+      <!-- 05 -->
+      <section id="s5">
+        <h2><span class="n">05</span>Frontend</h2>
+        <p class="section-lede">One Vite + React 18 + TypeScript app, Tailwind for layout, supabase-js for data, deployed on Vercel. It grows out of the DM Finisher codebase: auth, Realtime subscription, signed-URL upload and download, tiles, and the Completed panel are reused.</p>
+
+        <h3>5.1 Client form <span class="mono" style="color:var(--muted);font-size:.8rem">/brief/&lt;client_token&gt;</span></h3>
+        <div class="tbl"><table>
+          <thead><tr><th>Field</th><th>Type</th><th>Validation</th><th>Stored as</th></tr></thead>
+          <tbody>
+            <tr><td>Client</td><td>Resolved from the URL token</td><td>Token must match an active client; otherwise a "link expired" screen</td><td><code>cards.client_id</code></td></tr>
+            <tr><td>Reference images</td><td>Exactly 3 image slots</td><td>PNG, JPG or WebP; max 15 MB each; warn under 512 px on the short side</td><td><code>cards.reference_paths[3]</code> in bucket <code>refs</code></td></tr>
+            <tr><td>Description</td><td>Textarea, max 400 characters</td><td>Required</td><td><code>cards.brief_text</code></td></tr>
+            <tr><td>Text to print</td><td>Multi-line textarea, rendered verbatim</td><td>Optional; each line becomes one text element</td><td><code>cards.print_text</code> as <code>[{role, text}]</code></td></tr>
+            <tr><td>Garment colour</td><td>Select: black, white, heather, navy, other</td><td>Required</td><td><code>cards.garment_color</code></td></tr>
+            <tr><td>Product and placement</td><td>Single select (front chest, full front, back, pocket, tote, mug)</td><td>Required; drives the aspect ratio pick</td><td><code>cards.placement</code></td></tr>
+            <tr><td>Deadline</td><td>Date</td><td>Optional</td><td><code>cards.due_on</code></td></tr>
+          </tbody>
+        </table></div>
+        <p>The form first calls <code>start_brief</code> with the link token and receives a fresh card id plus a 15-minute upload grant. The three references are uploaded to <code>refs/&lt;client_id&gt;/&lt;card_id&gt;/n.ext</code>; the storage policy accepts at most three objects under a granted card id and nothing else. <code>submit_brief</code> then checks the grant, the three objects and a limit of 20 submissions per client per day before inserting the card. The raw submission is copied to <code>cards.client_submission</code> and never edited, so the designer's changes can always be compared with what the client sent.</p>
+
+        <h3>5.2 Studio board <span class="mono" style="color:var(--muted);font-size:.8rem">/board</span></h3>
+        <ul>
+          <li><strong>Columns</strong> are the stages from section 04, in order. <code>waiting</code> and <code>failed</code> sit at the far right.</li>
+          <li><strong>Card tile</strong> shows client name, thumbnail of the current generation (or the first reference while in intake), print text first line, stage badge, and "in review for 3 h" computed from <code>stage_entered_at</code>. Turns amber after 4 minutes in any automated stage.</li>
+          <li><strong>Header</strong> shows a queue indicator: "3 waiting · 2 running of cap 2", plus a Paused banner when the lead has paused the pipeline.</li>
+          <li><strong>Client selector</strong> in the header scopes the board, Completed and New card to one client; "All clients" shows everything. Filters: by stage, mine (cards I approved).</li>
+          <li><strong>New card</strong> (client from the selector or a dropdown; 1 to 3 references, brief, text, colour, placement) and <strong>New cards from images</strong> (one intake card per dropped image with shared brief fields) for designer-started work.</li>
+          <li><strong>Realtime</strong> on <code>cards</code> and <code>generations</code>, with a 20-second poll fallback, the same pattern as DM Finisher.</li>
+        </ul>
+
+        <h3>5.3 Card detail <span class="mono" style="color:var(--muted);font-size:.8rem">/card/&lt;id&gt;</span></h3>
+        <div class="two">
+          <div>
+            <h4>Left: brief and references</h4>
+            <ul>
+              <li>Every form field, editable until approval. Edits after approval apply only to the next regenerate.</li>
+              <li>Three references with the vision read under each: style, palette, subject structure, typography transcription.</li>
+              <li>Reference role override, only if the vision read got it wrong.</li>
+              <li>Print text as lines with an optional hierarchy tag: headline, sub, tagline.</li>
+              <li>Designer avoid-notes for this card, free text.</li>
+              <li>Style Card panel: the client's locked card version, with a link to the editor. Red if none is locked.</li>
+            </ul>
+          </div>
+          <div>
+            <h4>Right: generations and actions</h4>
+            <ul>
+              <li>Horizontal strip of every generation, newest first, with kind and QC verdict; a "make current" button on each.</li>
+              <li>Large preview of the current generation with a previous/current blink toggle.</li>
+              <li>QC report: nine points plus palette, Style Card violations and cropping, rendered as pass/fail lines with the model's note.</li>
+              <li>Structured magic prompt, editable per section before Regenerate.</li>
+              <li>Actions: Approve · Accept · Edit text · Edit region · Regenerate · Reject with reason · Park · Retry · Duplicate card.</li>
+              <li>Lead only: link to the n8n execution.</li>
+            </ul>
+          </div>
+        </div>
+
+        <h3>5.4 Edit dialogs</h3>
+        <div class="tbl"><table>
+          <thead><tr><th>Action</th><th>UI</th><th>Creates</th></tr></thead>
+          <tbody>
+            <tr><td>Edit text</td><td>Every brief line listed as a prefilled editable field. One changed line queues an edit; several changed lines update the brief and queue one regenerate tagged text_wrong.</td><td><code>generations</code> row with <code>kind = edit_text</code> (or one <code>regenerate</code>), parent set</td></tr>
+            <tr><td>Edit region</td><td>Rectangle or lasso drawn on the 1024 px preview, exported as a mask PNG; instruction field.</td><td><code>generations</code> row with <code>kind = edit_region</code>, mask path, parent set</td></tr>
+            <tr><td>Regenerate</td><td>Editable magic prompt sections; reason enum for why the last one was rejected.</td><td><code>generations</code> row with <code>kind = regenerate</code>, parent set, rejection reason on the parent</td></tr>
+          </tbody>
+        </table></div>
+
+        <h3>5.5 Client panel and Style Card editor <span class="mono" style="color:var(--muted);font-size:.8rem">/clients/&lt;id&gt; · /clients/&lt;id&gt;/style</span></h3>
+        <ul>
+          <li>Client panel: form link with copy and rotate, reference library (upload, delete, count against the max), Style Card status, "Draft Style Card from library" with live request status, card counts by stage, New card.</li>
+          <li>Shows every version with who locked it and when. Only the highest locked version is current.</li>
+          <li>A draft is created from the reference library by the "Draft Style Card from library" button, or automatically from a client's first card when the library is empty.</li>
+          <li>Fields are a form over the JSON schema in section 07, with the raw JSON visible in a collapsed panel.</li>
+          <li>Lock creates a new version. Locked versions are read-only forever.</li>
+        </ul>
+
+        <h3>5.6 Completed panel and settings</h3>
+        <ul>
+          <li>Completed panel: delivered cards, final badge, hover to see the original, download one or a zip, delete selected. Reused from DM Finisher.</li>
+          <li>Settings (lead only): <code>pipeline_paused</code> toggle, per-card price label, generation model, resolution (1K/2K/4K), vision model, max library references, prompt templates with "read by" notes and activation.</li>
+        </ul>
+      </section>
+
+      <!-- 06 -->
+      <section id="s6">
+        <h2><span class="n">06</span>Backend (Supabase)</h2>
+        <p class="section-lede">A new Supabase project on the Pro plan. Postgres is the only place state lives. The worker reaches it with the anon key plus a shared secret header checked by RLS, the pattern already running in DM Finisher.</p>
+
+        <h3>6.1 Tables</h3>
+        <div class="tbl"><table>
+          <thead><tr><th>Table</th><th>Purpose</th><th>Key columns</th><th>Write rule</th></tr></thead>
+          <tbody>
+            <tr><td><code>clients</code></td><td>One row per client</td><td>id, name, form_token, active, garment_colors[], target_px (default 4500×5400), default_similarity_tier, model_override (nullable)</td><td>Lead inserts and edits</td></tr>
+            <tr><td><code>style_cards</code></td><td>Versioned aesthetic contract</td><td>id, client_id, version, status (draft | locked), json, created_by, locked_at</td><td>Append-only. Locked rows cannot be updated or deleted.</td></tr>
+            <tr><td><code>cards</code></td><td>One client brief</td><td>id, client_id, stage, stage_entered_at, last_error, brief_text, print_text jsonb, reference_paths[], reference_analysis jsonb, garment_color, placement, due_on, avoid_notes, client_submission jsonb, current_generation_id, approved_by, approved_at, n8n_execution_id</td><td>Anon insert via token; designers update until approved; worker updates stage fields only</td></tr>
+            <tr><td><code>generations</code></td><td>Every image the pipeline produces</td><td>id, card_id, parent_generation_id, kind (generate | edit_text | edit_region | regenerate), status, magic_prompt_json, final_prompt, model, vendor_job_id, style_card_id, style_card_version, style_card_snapshot jsonb, brief_snapshot jsonb, edit_instruction, mask_path, image_path, qc_report jsonb, text_elements, drift_pct, rejection_reason, rejection_note, reviewed_by, n8n_execution_id, attempt</td><td>Worker inserts and updates; designers set review fields only</td></tr>
+            <tr><td><code>fin_jobs</code></td><td>Finisher queue, ported from DM Finisher</td><td>id, generation_id, status, original_url, final_upload_token, final_path, metrics jsonb (px, dpi, alpha), attempt</td><td>Accept action inserts; worker updates</td></tr>
+            <tr><td><code>fin_job_events</code></td><td>Finisher step log, ported unchanged</td><td>job_id, step, ok, message, at</td><td>Worker inserts</td></tr>
+            <tr><td><code>design_lessons</code></td><td>Nightly distilled rules</td><td>id, client_id (nullable = global), category, rule, source_generation_ids[], active</td><td>Nightly workflow inserts; lead may deactivate</td></tr>
+            <tr><td><code>prompt_templates</code></td><td>Versioned prompt bodies</td><td>slug, version, body, active, activated_by</td><td>Lead only; activation gated by the evaluation set</td></tr>
+            <tr><td><code>settings</code></td><td>One row</td><td>pipeline_paused, per_card_price_usd, max_active_generations, max_active_finish, generation_model, generation_resolution, vision_model, max_style_refs</td><td>Lead only</td></tr>
+            <tr><td><code>client_references</code></td><td>The client's reference library</td><td>id, client_id, path (<code>&lt;client_id&gt;/library/&lt;uuid&gt;.ext</code>), note</td><td>Staff insert and delete; worker reads</td></tr>
+            <tr><td><code>style_draft_requests</code></td><td>Draft-from-library jobs</td><td>id, client_id, status, style_card_id, last_error</td><td>Staff insert; trigger to n8n; worker updates</td></tr>
+            <tr><td><code>profiles</code></td><td>Team members</td><td>user_id, display_name, role (designer | lead)</td><td>Lead only</td></tr>
+          </tbody>
+        </table></div>
+
+        <h3>6.2 Storage buckets</h3>
+        <div class="kv">
+          <dt>refs</dt><dd>Client references. Path <code>&lt;client_id&gt;/&lt;card_id&gt;/&lt;n&gt;.&lt;ext&gt;</code>. Private; anon may insert via signed upload token only.</dd>
+          <dt>gens</dt><dd>Generated 1024 px images and masks. Path <code>&lt;card_id&gt;/&lt;generation_id&gt;.png</code>. Private.</dd>
+          <dt>finals</dt><dd>Finished print files. Path <code>&lt;card_id&gt;/&lt;generation_id&gt;-final.png</code>. Private; designers download via 1-hour signed URLs.</dd>
+        </div>
+
+        <h3>6.3 RPCs</h3>
+        <div class="tbl"><table>
+          <thead><tr><th>Function</th><th>Caller</th><th>Behaviour</th></tr></thead>
+          <tbody>
+            <tr><td><code>approve_card(card_id)</code></td><td>Designer</td><td>Guarded: only if stage = review, client has a locked Style Card, pipeline not paused. Snapshots brief and Style Card version, sets approved_by and approved_at, moves to <code>approved</code>. Idempotent.</td></tr>
+            <tr><td><code>move_card(card_id, stage, note)</code></td><td>Designer, worker</td><td>Single entry point for stage changes; stamps <code>stage_entered_at</code>; validates allowed transitions.</td></tr>
+            <tr><td><code>request_edit(generation_id, kind, payload)</code></td><td>Designer</td><td>Inserts the child generation row with parent and kind, moves the card to <code>editing</code>.</td></tr>
+            <tr><td><code>accept_generation(generation_id)</code></td><td>Designer</td><td>Sets current generation, inserts the <code>fin_jobs</code> row with a signed original URL and final upload token, moves to <code>finishing</code>.</td></tr>
+            <tr><td><code>claim_generations(p_max)</code></td><td>Worker</td><td><code>FOR UPDATE SKIP LOCKED</code>, cap from settings, returns rows to run, marks them dispatched.</td></tr>
+            <tr><td><code>fin_claim_jobs(p_max)</code></td><td>Worker</td><td>Ported unchanged; cap 2 because ModelsLab rate-limits above that.</td></tr>
+            <tr><td><code>requeue_stale()</code></td><td>pg_cron every 2 min</td><td>Anything working for more than 20 minutes returns to the queue; failed after 3 attempts.</td></tr>
+            <tr><td><code>studio_secret_ok()</code></td><td>RLS</td><td>Compares the <code>x-studio-secret</code> request header with the stored secret. Supabase Storage forwards the header too, so the worker reads <code>gens</code> and writes <code>finals</code> directly.</td></tr>
+            <tr><td><code>start_brief(token)</code></td><td>Client form</td><td>Validates the link, issues a 15-minute upload grant for a fresh card id, returns the client name and garment colours.</td></tr>
+            <tr><td><code>fin_job_update(job_id, status, fields, event, ok, message)</code></td><td>Worker</td><td>The finisher's single status call: updates the job, appends a <code>fin_job_events</code> row, and moves the card to <code>delivered</code> or <code>failed</code>.</td></tr>
+          </tbody>
+        </table></div>
+
+        <h3>6.4 Triggers and schedules</h3>
+        <ul>
+          <li><strong>cards insert</strong> → pg_net POST to <code>/webhook/studio-intake</code> (reference read).</li>
+          <li><strong>cards stage becomes approved</strong> → pg_net POST to <code>/webhook/studio-generate</code>.</li>
+          <li><strong>generations insert with kind ≠ generate</strong> → pg_net POST to <code>/webhook/studio-edit</code>.</li>
+          <li><strong>fin_jobs status becomes queued</strong> → pg_net POST to <code>/webhook/finisher-dispatch</code>.</li>
+          <li><strong>style_draft_requests insert</strong> → pg_net POST to <code>/webhook/studio-style-draft</code>.</li>
+          <li><strong>pg_cron every 2 minutes</strong> → <code>requeue_stale()</code>, then one nudge to each dispatcher if anything is queued. pg_net is fire-and-forget with a 2-second timeout, so the sweep is the safety net, not an optimisation.</li>
+          <li><strong>pg_cron nightly 02:00</strong> → POST to <code>/webhook/studio-lessons</code>.</li>
+        </ul>
+
+        <h3>6.5 Edge Functions</h3>
+        <div class="tbl"><table>
+          <thead><tr><th>Function</th><th>Input</th><th>Output</th><th>Tests</th></tr></thead>
+          <tbody>
+            <tr><td><code>prompt-engine</code></td><td>card id. Loads the card, its brief snapshot, the locked Style Card, active lessons, up to 5 approved exemplars for the client, the active template.</td><td>Structured magic prompt JSON (section 07) and the rendered final prompt. Fails with 422 if no locked Style Card.</td><td>Golden briefs: 20 to 30 fixtures whose rendered prompt must contain the exact text, the Style Card tokens, and no forbidden tokens.</td></tr>
+            <tr><td><code>qc-judge</code></td><td>Raw vision QC response plus the Style Card and print text.</td><td>Normalised <code>qc_report</code> with pass/fail per point, the corrective instruction if any, and <code>needs_regen</code>.</td><td>Recorded vendor responses as fixtures; parser must never throw on malformed JSON.</td></tr>
+          </tbody>
+        </table></div>
+        <p>Both functions are pure: they never call an image vendor. That keeps them under the 2-second CPU limit and makes them testable offline.</p>
+
+        <h3>6.6 RLS summary</h3>
+        <ul>
+          <li>Designers and the lead: select all studio rows; update cards until approved; update review fields on generations; insert Style Card versions; no deletes except cards in <code>failed</code> or <code>delivered</code>.</li>
+          <li>Anon with a valid client token: insert one card and upload three references. Nothing else.</li>
+          <li>Worker (anon key plus secret header): select and update cards, generations, fin_jobs; insert generations, fin_job_events, design_lessons. Never delete.</li>
+          <li>All exemplar and lessons queries are filtered by <code>client_id</code> inside the function, and the policies enforce the same filter, so one client's history can never reach another client's prompt.</li>
+        </ul>
+      </section>
+
+      <!-- 07 -->
+      <section id="s7">
+        <h2><span class="n">07</span>Style Card and magic prompt</h2>
+        <p class="section-lede">The Style Card is the per-client aesthetic contract. The magic prompt is assembled in layers, in a fixed order, from data the pipeline already has. Neither contains a client name; both are looked up by the card's client id.</p>
+
+        <h3>7.1 Style Card schema</h3>
+<pre><code>{
+  "version": 1,
+  "medium": "hand-inked linework with flat screen-print fills",
+  "linework": { "weight": "medium-bold", "style": "clean, closed shapes, no sketchy strokes" },
+  "shading": "flat fills, two-tone at most, no gradients",
+  "texture": "subtle grain on fills only",
+  "palette": [
+    { "name": "bone",   "hex": "#EDE6D6", "weight": "dominant" },
+    { "name": "rust",   "hex": "#B5472A", "weight": "accent" },
+    { "name": "ink",    "hex": "#1C1B1A", "weight": "outline" }
+  ],
+  "composition": "centred single subject, symmetrical, badge silhouette, no borders",
+  "typography": { "vibe": "condensed grotesque, all caps", "placement": "arched above subject" },
+  "background": "flat mid-grey #808080, no scene",
+  "mood": ["vintage", "bold", "outdoorsy"],
+  "forbid": ["gradients", "photoreal", "drop shadows", "thin hairlines", "more than 4 colours"],
+  "garment_colors": ["black", "heather"]
+}</code></pre>
+        <ul>
+          <li>Drafted by the "style profiler" vision prompt from the client's reference library (up to the Settings maximum), or from a first card's references when the library is empty. Returns exactly this schema plus evidence notes.</li>
+          <li>A designer edits and locks it. A locked card is never changed; corrections are a new version.</li>
+          <li>Every generation stores the card id, version and a JSON snapshot, so any output can be audited.</li>
+        </ul>
+
+        <h3>7.2 Magic prompt assembly order</h3>
+        <ol>
+          <li><strong>Hard print rules</strong> from the active template: flat grey background, isolated artwork, no mockup, no borders, visible margin on all sides, known print defects to avoid.</li>
+          <li><strong>Style Card</strong> rendered as prose from the JSON above, including the forbid list as negatives.</li>
+          <li><strong>Client lessons</strong>: active rows from <code>design_lessons</code> for this client, then global ones.</li>
+          <li><strong>Exemplars</strong>: up to 5 approved prompts for this client as few-shot, once the client has 10 or more approved cards.</li>
+          <li><strong>Reference reading</strong> for this card: art style, palette, subject structure, typography transcription, with the reference role rule "style only, do not copy the subject" unless the tier says otherwise.</li>
+          <li><strong>Similarity tier</strong> (1 to 5) chosen by the designer or the client default, controlling how close to the references the subject may be.</li>
+          <li><strong>Brief</strong>: description, garment colour, placement, avoid-notes.</li>
+          <li><strong>Text slot</strong>: the print text lines, verbatim, with the exact-text rules: render once, spelled exactly, in the Style Card's typography, no extra words.</li>
+        </ol>
+        <p>The engine outputs structured JSON with one key per layer plus a <code>text</code> slot, and a rendered paragraph in that order. The designer can edit any section before Regenerate; the render is redone from the edited JSON.</p>
+
+        <h3>7.3 QC points</h3>
+        <div class="tbl"><table>
+          <thead><tr><th>#</th><th>Check</th><th>Source</th><th>On fail</th></tr></thead>
+          <tbody>
+            <tr><td class="num">1</td><td>Text present exactly once, spelled exactly</td><td>Print text</td><td>Corrective regen with the text line restated</td></tr>
+            <tr><td class="num">2</td><td>No extra or garbled text</td><td>Vision</td><td>Corrective regen</td></tr>
+            <tr><td class="num">3</td><td>Flat grey background, nothing else</td><td>Template</td><td>Corrective regen</td></tr>
+            <tr><td class="num">4</td><td>Artwork fully inside the canvas with visible margin</td><td>Template</td><td>Corrective regen</td></tr>
+            <tr><td class="num">5</td><td>Subject matches the brief</td><td>Brief</td><td>Flag for designer</td></tr>
+            <tr><td class="num">6</td><td>No known print defects (thin lines, halos, gradients if forbidden)</td><td>Template + Style Card</td><td>Corrective regen</td></tr>
+            <tr><td class="num">7</td><td>Anatomy and object integrity</td><td>Vision</td><td>Corrective regen</td></tr>
+            <tr><td class="num">8</td><td>Composition matches placement and aspect</td><td>Card</td><td>Flag for designer</td></tr>
+            <tr><td class="num">9</td><td>Overall print quality</td><td>Vision</td><td>Flag for designer</td></tr>
+            <tr><td class="num">10</td><td>Palette within the Style Card's named colours</td><td>Style Card</td><td>Flag; recorded for lessons</td></tr>
+            <tr><td class="num">11</td><td>List any Style Card rules violated</td><td>Style Card</td><td>Shown as text on the card; never blocks</td></tr>
+            <tr><td class="num">12</td><td>Smallest text height as a fraction of artwork height</td><td>Vision</td><td>Warn if under 2.5%</td></tr>
+          </tbody>
+        </table></div>
+        <p>One corrective regeneration is automatic. A second failure goes to the designer with the report. After an edit-region job, a pixel diff outside the mask is stored as <code>drift_pct</code> and flagged above 3%.</p>
+
+        <h3>7.4 Lessons loop</h3>
+        <p>Every rejection carries a reason from a fixed list: text_wrong, spelling, colour, style_drift, subject, background_artifact, placement, other. The nightly workflow groups the day's rejections by client and reason, asks the model to distil at most three new rules, and inserts them as inactive rows for the lead to activate. Style-drift rejections are keyed to the Style Card version so a bad version shows up quickly.</p>
+      </section>
+
+      <!-- 08 -->
+      <section id="s8">
+        <h2><span class="n">08</span>n8n workflows</h2>
+        <p class="section-lede">Nine small workflows on the existing self-hosted instance, in the "Print on demand" folder. Every workflow loads the shared WF-0 config on its first step, checks the secret header with an IF node, calls Supabase with the shared secret, and hands decisions to the Edge Functions. Sources are the SDK files under <code>n8n/</code> in the repo; the canvas is generated from them.</p>
+
+        <h3>8.1 Workflow rules</h3>
+        <ul>
+          <li>No Code node longer than 20 lines. The only exception is the 300 DPI stamp, which is kept exactly as it is.</li>
+          <li>Keys live in one place: WF-0 "Studio Config" (studio secret, Ideogram, imgbb, ModelsLab). Kie and Slack stay as n8n credentials bound by id. Never commit a workflow export.</li>
+          <li>Every vendor wait goes through the one Poll sub-workflow at a 6-second minimum interval, or through Wait-on-webhook when the vendor calls back. No workflow may hold its own poll loop.</li>
+          <li>Every workflow has the Error workflow set in its settings. Successful executions of the dispatcher and nightly workflows are not saved.</li>
+          <li>Each stage writes <code>stage</code>, <code>stage_entered_at</code>, <code>last_error</code> and <code>n8n_execution_id</code> in the same PATCH it already needs.</li>
+          <li>Changes are made in the editor or by importing JSON exported to git. The MCP update tools are not used on live workflows.</li>
+        </ul>
+
+        <h3>8.2 Workflow catalogue</h3>
+        <div class="tbl"><table>
+          <thead><tr><th>Workflow</th><th>Trigger</th><th>Sequence</th><th>Writes</th></tr></thead>
+          <tbody>
+            <tr><td><strong>WF-0 Studio Config</strong></td><td>Called by every workflow</td><td>Returns one item with the Supabase URL, publishable key, n8n URL and the four keys</td><td>Nothing</td></tr>
+            <tr><td><strong>WF-1 Studio Intake</strong></td><td><code>/webhook/studio-intake</code> on card insert</td><td>Respond 200 → fetch card and signed reference URLs → Gemini vision with the Style Card JSON schema → if client has no locked card, insert a draft Style Card → move card to <code>review</code></td><td><code>cards.reference_analysis</code>, optional <code>style_cards</code> draft</td></tr>
+            <tr><td><strong>WF-1b Style Draft</strong></td><td><code>/webhook/studio-style-draft</code> on request insert</td><td>Load config → list the client's library → sign → style profiler vision (JSON) → <code>new_style_card_version</code> draft → request done</td><td><code>style_cards</code> draft, <code>style_draft_requests</code></td></tr>
+            <tr><td><strong>WF-2 Studio Generate</strong></td><td><code>/webhook/studio-generate</code> on approval, and the 2-minute nudge; worker on <code>/webhook/studio-generate-worker</code></td><td>Dispatcher: <code>claim_generations</code> → one worker call per row. Worker: <code>prompt-engine</code> → sign references and up to 3 library images → Kie GPT Image 2.5 Sunburst with callback → Wait (8 min) or Poll sub-workflow (10 min cap) → store image in <code>gens</code> → Gemini QC vision → <code>qc-judge</code> → if needs_regen and attempt = 1, loop once with the corrective instruction → move card to <code>needs_review</code></td><td><code>generations</code>, <code>cards.current_generation_id</code></td></tr>
+            <tr><td><strong>WF-3 Studio Edit</strong></td><td><code>/webhook/studio-edit</code> on child generation insert</td><td>edit_text and edit_region → <code>prompt-engine</code> → nano-banana-edit with the previous image and the mask → Poll → store → QC → <code>needs_review</code>; regenerate → hands the queued row to the WF-2 dispatcher</td><td>Child <code>generations</code> row</td></tr>
+            <tr><td><strong>WF-4 Finisher</strong></td><td><code>/webhook/finisher-dispatch</code> and <code>/webhook/finisher-worker</code></td><td>Ported from DM Finisher: claim → get job with its <code>gens</code> image path → download with the secret header → fit to 1024 → imgbb public link → ModelsLab upscale ×4 → Poll → Ideogram remove-background → status <code>bg_removed</code> → fetch result → 300 DPI stamp (unchanged Code node) → upload to <code>finals</code> with the secret header → <code>fin_job_update</code> done with px and DPI in <code>metrics</code>, which moves the card to <code>delivered</code>. The status update is recorded before the result fetch on purpose: an HTTP node between the download and the DPI code would drop the binary.</td><td><code>fin_jobs</code>, <code>fin_job_events</code>, <code>cards.stage</code></td></tr>
+            <tr><td><strong>WF-5 Poll</strong> (sub-workflow)</td><td>Execute Workflow from WF-2 and WF-3</td><td>Inputs: Kie task id, interval (min 6 s), timeout (10 min) → poll recordInfo → success / wait / fail → return result URLs or throw</td><td>None</td></tr>
+            <tr><td><strong>WF-6 Error</strong></td><td>Error Trigger</td><td>Read failing workflow, node, message and the row id from the execution → PATCH <code>last_error</code>, stage <code>failed</code>, <code>n8n_execution_id</code> → Slack message with the execution link</td><td><code>cards</code> or <code>fin_jobs</code></td></tr>
+            <tr><td><strong>WF-7 Lessons</strong></td><td><code>/webhook/studio-lessons</code> nightly</td><td>Query yesterday's rejections grouped by client → Claude distil with the distill templates, max 3 rules per client → insert inactive <code>design_lessons</code> → Slack digest</td><td><code>design_lessons</code></td></tr>
+          </tbody>
+        </table></div>
+
+        <h3>8.3 Vendor map</h3>
+        <div class="tbl"><table>
+          <thead><tr><th>Step</th><th>Vendor and model</th><th>Called from</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>Reference read, QC vision</td><td>Gemini (gemini-3.1-pro via Kie or direct)</td><td>WF-1, WF-2, WF-3</td><td>JSON response mode; Style Card schema for the read, QC schema for judging</td></tr>
+            <tr><td>Prompt polish (optional)</td><td>GPT-5.6-terra</td><td>WF-2, as one HTTP node after <code>prompt-engine</code></td><td>The Edge Function renders the prompt deterministically; the LLM pass only smooths wording and may not add or remove tokens. Kept out of the function so it stays pure and under the CPU limit</td></tr>
+            <tr><td>Generate</td><td>Kie.ai GPT Image 2.5 Sunburst (<code>gpt-image-2-5-sunburst-image-to-image</code>), card references plus up to 3 library images as inputs</td><td>WF-2</td><td>Async; callback to the Wait node, poll via WF-5 as fallback</td></tr>
+            <tr><td>Edit text, edit region</td><td>Kie.ai nano-banana-edit</td><td>WF-3</td><td>Region enforced by compositing the mask, not by vendor mask support</td></tr>
+            <tr><td>Upscale</td><td>ModelsLab super_resolution ×4</td><td>WF-4</td><td>Needs a public URL (imgbb); cap 2 concurrent</td></tr>
+            <tr><td>Remove background</td><td>Ideogram <code>/v1/remove-background</code></td><td>WF-4</td><td>Ideogram upscale is retired for this account</td></tr>
+            <tr><td>300 DPI</td><td>User's Code node (pHYs chunk)</td><td>WF-4</td><td>Do not change</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <!-- 09 -->
+      <section id="s9">
+        <h2><span class="n">09</span>Operating procedures</h2>
+        <p class="section-lede">Numbered because order matters. Each step names who does it and what "done" looks like.</p>
+
+        <h3 id="p1">P1 · Onboard a new client</h3>
+        <ol class="proc">
+          <li>Create the client row: name, garment colours, target print size, default similarity tier. <span class="who">Lead</span><span class="check">The client appears in the board filter.</span></li>
+          <li>Copy the form link from the client row and send it to the client. <span class="who">Lead</span><span class="check">Opening the link shows the form with the client's name.</span></li>
+          <li>Wait for the first submission. WF-1 reads the references and drafts Style Card version 1. <span class="who">System</span><span class="check">The card is in <code>review</code> and the Style Card panel shows "Draft".</span></li>
+          <li>Open the Style Card editor, correct the draft against the references and your own read of the client, and lock it. <span class="who">Designer</span><span class="check">Version 1 shows as locked; the card's Style Card panel turns green.</span></li>
+          <li>Continue with P2. Nothing generates before the lock. <span class="who">Designer</span></li>
+        </ol>
+        <div class="callout note"><span class="lbl">Why</span><p>The workflow, the prompt engine and the QC judge never change for a new client. Only rows change. That is the whole point of the Style Card.</p></div>
+
+        <h3 id="p2">P2 · Review and approve a card</h3>
+        <ol class="proc">
+          <li>Open the card from the <code>review</code> column. Read the brief, the three references and the vision read. <span class="who">Designer</span></li>
+          <li>Fix the print text lines and tag hierarchy if it matters. The text must be exactly what will print. <span class="who">Designer</span><span class="check">No spelling doubts remain; each line is one element.</span></li>
+          <li>Set placement and similarity tier. Add avoid-notes for anything the references contain that must not be copied. <span class="who">Designer</span></li>
+          <li>Confirm the Style Card panel is green. If red, do P1 step 4 first. <span class="who">Designer</span></li>
+          <li>Click Approve. Confirm the cost in the dialog. <span class="who">Designer</span><span class="check">Card moves to <code>approved</code>, then <code>generating</code> within a minute.</span></li>
+          <li>If the card stays in <code>approved</code> for more than 5 minutes, check the Paused banner and the queue indicator, then see P8. <span class="who">Designer</span></li>
+        </ol>
+
+        <h3 id="p3">P3 · Review a generation</h3>
+        <ol class="proc">
+          <li>Open the card from <code>needs_review</code>. Read the QC report before looking at the image. <span class="who">Designer</span></li>
+          <li>Check the print text against the brief with the blink toggle if there was a previous generation. <span class="who">Designer</span></li>
+          <li>Check style against the Style Card panel: palette, linework, forbid list. Read any listed violations. <span class="who">Designer</span></li>
+          <li>Decide: Accept (P5), Edit text or Edit region (P4), or Regenerate (P4). Rejections require a reason from the list. <span class="who">Designer</span><span class="check">The card leaves <code>needs_review</code>.</span></li>
+        </ol>
+
+        <h3 id="p4">P4 · Edit text, edit region, regenerate</h3>
+        <ol class="proc">
+          <li>Edit text: the dialog prefills the old text from the brief. Type the new text. Optionally add an instruction. Submit. <span class="who">Designer</span><span class="check">A child generation appears in the strip; card is in <code>editing</code>.</span></li>
+          <li>Edit region: drag a rectangle or lasso around the problem on the preview. Write what should change inside it. Submit. <span class="who">Designer</span><span class="check">Same as above; after return, <code>drift_pct</code> is under 3% or the card is flagged.</span></li>
+          <li>Regenerate: pick the rejection reason, edit any section of the magic prompt, submit. <span class="who">Designer</span><span class="check">New generation with kind <code>regenerate</code> and the edited prompt stored.</span></li>
+          <li>Return to P3 when the card is back in <code>needs_review</code>. After three rounds on one card, ask the lead to look at the Style Card or lessons before continuing. <span class="who">Designer</span></li>
+        </ol>
+
+        <h3 id="p5">P5 · Accept and deliver</h3>
+        <ol class="proc">
+          <li>Click Accept on the generation you want. <span class="who">Designer</span><span class="check">Card moves to <code>finishing</code>; a finisher job appears.</span></li>
+          <li>Wait for <code>delivered</code>. Typical time is 2 to 4 minutes; the ModelsLab step is the slow one. <span class="who">System</span></li>
+          <li>Open the Completed panel, check the metrics badge (pixels, 300 DPI, transparent background), download the PNG. <span class="who">Designer</span><span class="check">File opens with a transparent background at the target size.</span></li>
+          <li>Send the file to the client by your usual channel. Delivery email automation is a v2 item. <span class="who">Designer</span></li>
+        </ol>
+
+        <h3 id="p6">P6 · Change a client's Style Card</h3>
+        <ol class="proc">
+          <li>Open the Style Card editor, click New version. It copies the current locked version into a draft. <span class="who">Designer</span></li>
+          <li>Edit and lock. Write one line in the version note saying what changed and why. <span class="who">Designer</span><span class="check">The new version is current; older cards keep the version they were generated with.</span></li>
+          <li>Regenerate one recent card and compare. If drift is worse, lock another version that reverts; never edit a locked one. <span class="who">Designer</span></li>
+        </ol>
+
+        <h3 id="p7">P7 · Change a prompt template</h3>
+        <ol class="proc">
+          <li>Insert the new template body as a new version with <code>active = false</code>. <span class="who">Lead</span></li>
+          <li>Run the golden-brief test suite for <code>prompt-engine</code> against the new version. <span class="who">Lead</span><span class="check">All fixtures pass: exact text present, Style Card tokens present, no forbidden tokens.</span></li>
+          <li>Run the n8n Evaluations workflow on the 20 to 30 brief dataset. <span class="who">Lead</span><span class="check">QC pass rate is not lower than the current version.</span></li>
+          <li>Activate the version in Settings. Note the date in the version row. <span class="who">Lead</span></li>
+          <li>Watch the first 10 generations. Roll back by activating the previous version if rejection rate rises. <span class="who">Lead</span></li>
+        </ol>
+
+        <h3 id="p8">P8 · Incidents</h3>
+        <div class="tbl"><table>
+          <thead><tr><th>Symptom</th><th>Check</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td>Card in <code>failed</code></td><td>Read <code>last_error</code> on the card; lead opens the execution link</td><td>Fix the cause, click Retry. Retry re-signs URLs and re-queues from the failed stage.</td></tr>
+            <tr><td>Card stuck in <code>approved</code> or <code>finishing</code> over 20 minutes</td><td>Queue indicator, Paused banner, n8n instance reachable</td><td>The 5-minute sweep requeues automatically. If it repeats, the n8n instance is down or the webhook URL changed.</td></tr>
+            <tr><td>Vendor errors with "rate limit"</td><td>Which vendor, in the Error Slack message</td><td>Do not raise the caps. Lower <code>max_active_finish</code> or <code>max_active_generations</code> in Settings; restore after an hour.</td></tr>
+            <tr><td>Vendor outage</td><td>Several failures on the same node within minutes</td><td>Turn on <code>pipeline_paused</code>. Approvals are refused, running jobs finish, queued ones wait. Turn off when the vendor recovers; the sweep resumes them.</td></tr>
+            <tr><td>Wrong or drifting style on one client</td><td>Rejection reasons for that client this week; Style Card version on the bad generations</td><td>P6. If the drift began with a template change, P7 rollback.</td></tr>
+            <tr><td>Form link abused or leaked</td><td>Submissions per day on the client</td><td>Rotate <code>form_token</code> on the client row and resend the link.</td></tr>
+          </tbody>
+        </table></div>
+
+        <h3 id="p9">P9 · Change an n8n workflow</h3>
+        <ol class="proc">
+          <li>Export the current version to git with the CLI backup before touching anything. <span class="who">Lead</span></li>
+          <li>Make the change in the editor. Keep Code nodes under 20 lines; if logic is growing, it belongs in an Edge Function. <span class="who">Lead</span></li>
+          <li>Run one test execution with a real card in a test client. Check the row was updated and the Error workflow did not fire. <span class="who">Lead</span></li>
+          <li>Export again, grep the export for key-shaped strings, commit. <span class="who">Lead</span><span class="check">Git holds the new version; the export contains no secrets.</span></li>
+          <li>Never touch the T-Shirt Engine workflow. Copy ideas from it; do not edit it. <span class="who">Lead</span></li>
+        </ol>
+
+        <h3 id="p10">P10 · Weekly review (15 minutes)</h3>
+        <ol class="proc">
+          <li>Count cards delivered, rejection rate, and regen rounds per card by client. <span class="who">Lead</span></li>
+          <li>Read the inactive lessons from WF-7; activate the ones that are true, delete the rest. <span class="who">Lead</span></li>
+          <li>Look at any client whose style_drift rejections rose; schedule P6 with the designer who knows them. <span class="who">Lead</span></li>
+          <li>Check vendor spend against the per-card price label; adjust the label if it is off by more than 20%. <span class="who">Lead</span></li>
+        </ol>
+      </section>
+
+      <!-- 10 -->
+      <section id="s10">
+        <h2><span class="n">10</span>Feature register</h2>
+        <p class="section-lede">Seventy-six candidate features from PodSpy, competitors and studio practice were argued against by independent reviewers. What survived is below, with what was cut and why.</p>
+
+        <h3>In v1</h3>
+        <div class="tbl"><table>
+          <thead><tr><th>Feature</th><th>Shape in v1</th><th>Lives in</th></tr></thead>
+          <tbody>
+            <tr><td>Client form with token link <span class="pill v1">v1</span></td><td>Minimal fields, no role chips, anon insert with rate limit</td><td>Frontend, RLS</td></tr>
+            <tr><td>Stage board with live status <span class="pill v1">v1</span></td><td>Stage columns, age label, amber after 4 min, queue indicator</td><td>Frontend</td></tr>
+            <tr><td>Append-only generation history <span class="pill v1">v1</span></td><td>Kind, parent, current pointer, thumbnail strip, make-current</td><td>generations table</td></tr>
+            <tr><td>Locked, versioned Style Card <span class="pill v1">v1</span></td><td>Append-only versions, snapshot on every generation</td><td>style_cards, prompt-engine</td></tr>
+            <tr><td>Style Card auto-draft <span class="pill v1">v1</span></td><td>Vision read returns the schema; first card only or on request</td><td>WF-1</td></tr>
+            <tr><td>Layered magic prompt with text slot <span class="pill v1">v1</span></td><td>Structured JSON, per-section editable, rendered in fixed order</td><td>prompt-engine</td></tr>
+            <tr><td>Full provenance per generation <span class="pill v1">v1</span></td><td>Columns, no events table, execution link for the lead</td><td>generations table</td></tr>
+            <tr><td>Edit text <span class="pill v1">v1</span></td><td>Prefilled from the brief, instruction edit, QC on the child</td><td>WF-3</td></tr>
+            <tr><td>Edit region <span class="pill v1">v1</span></td><td>Rectangle or lasso mask, composited back, drift check</td><td>Frontend, WF-3</td></tr>
+            <tr><td>Regenerate with rejection reason <span class="pill v1">v1</span></td><td>Reason enum feeds the lessons loop</td><td>Frontend, WF-2, WF-7</td></tr>
+            <tr><td>QC additions <span class="pill v1">v1</span></td><td>Palette, Style Card violations, cropping, text height</td><td>qc-judge</td></tr>
+            <tr><td>Guarded approval and pause switch <span class="pill v1">v1</span></td><td>Idempotent RPC, cost label, pipeline_paused</td><td>RPC, Settings</td></tr>
+            <tr><td>Error workflow and 5-minute sweep <span class="pill v1">v1</span></td><td>Failed stage with message; requeue_stale</td><td>WF-6, pg_cron</td></tr>
+            <tr><td>Finisher and Completed panel <span class="pill v1">v1</span></td><td>Ported from DM Finisher with metrics badge</td><td>WF-4, Frontend</td></tr>
+            <tr><td>Duplicate card <span class="pill v1">v1</span></td><td>Copies brief and references, re-injects the current Style Card</td><td>Frontend</td></tr>
+            <tr><td>Blink compare <span class="pill v1">v1</span></td><td>Previous/current toggle on the preview</td><td>Frontend</td></tr>
+          </tbody>
+        </table></div>
+
+        <h3>Deferred to v2</h3>
+        <div class="tbl"><table>
+          <thead><tr><th>Feature</th><th>Trigger to build it</th></tr></thead>
+          <tbody>
+            <tr><td>Delivery email with a 7-day signed link <span class="pill v2">v2</span></td><td>Designers spend real time sending files by hand</td></tr>
+            <tr><td>Monthly quality digest per client, model and Style Card version <span class="pill v2">v2</span></td><td>After 4 weeks of production data</td></tr>
+            <tr><td>Per-card cost view from a price table <span class="pill v2">v2</span></td><td>When pricing clients per design</td></tr>
+            <tr><td>Multi-image style conditioning as an opt-in experiment <span class="pill v2">v2</span></td><td>Only if it beats the Style-Card-only baseline on a fixed sample</td></tr>
+            <tr><td>Assignee field on cards <span class="pill v2">v2</span></td><td>Two designers collide on the same card</td></tr>
+            <tr><td>Per-card events table and timeline <span class="pill v2">v2</span></td><td>The lead asks for latency numbers</td></tr>
+            <tr><td>Automated print gate with hard block <span class="pill v2">v2</span></td><td>A client returns a file for print reasons</td></tr>
+          </tbody>
+        </table></div>
+
+        <h3>Out of scope</h3>
+        <div class="tbl"><table>
+          <thead><tr><th>Feature</th><th>Why it was cut</th></tr></thead>
+          <tbody>
+            <tr><td>Variation prompts, bulk remix <span class="pill out">out</span></td><td>Contradicts one-output-per-card; the model would invent copy the client never asked for</td></tr>
+            <tr><td>Mockup studio, garment previews, AI video <span class="pill out">out</span></td><td>No client portal to show them in; a preview background toggle covers contrast checks</td></tr>
+            <tr><td>Pinterest scheduling, listing text <span class="pill out">out</span></td><td>Marketing features for solo sellers, not agency delivery</td></tr>
+            <tr><td>Clerk auth, Stripe credits, client balances <span class="pill out">out</span></td><td>No client identity exists; Supabase Auth covers the team</td></tr>
+            <tr><td>Per-model routing, Ideogram direct, Recraft styles, per-client LoRA <span class="pill out">out</span></td><td>Second engine branches before the first is measured; revisit after 200 approved cards</td></tr>
+            <tr><td>SLA lanes, timers, batch approve, compare and onion-skin views <span class="pill out">out</span></td><td>Board decoration; the age label and blink toggle give the same information</td></tr>
+            <tr><td>OCR-based edit text, drift canaries, embedding thresholds, style scores <span class="pill out">out</span></td><td>The brief already holds the text; rejection reasons give the same signal for free</td></tr>
+            <tr><td>Client share links and sign-off flows <span class="pill out">out</span></td><td>Requires a client surface; at most a delivery email in v2</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <!-- 11 -->
+      <section id="s11">
+        <h2><span class="n">11</span>Build order</h2>
+        <p class="section-lede">All twelve steps below are built as of 24 Sep 2026. What remains is operational: paste the four keys into WF-0, publish WF-0, WF-5 and WF-6 first, set WF-6 as the error workflow on WF-1, WF-1b, WF-2, WF-3 and WF-4, delete the two superseded copies, then run the acceptance test in step 12 and deploy the app to Vercel. The live checklist is <code>docs/STATUS.md</code> in the repo.</p>
+        <div class="tbl"><table>
+          <thead><tr><th>Step</th><th>Deliverable</th><th class="num">Hours</th><th>Done when</th></tr></thead>
+          <tbody>
+            <tr><td class="num">1</td><td>New Supabase project, schema, RLS, RPCs, buckets, secret function</td><td class="num">10</td><td>A card row can be inserted, approved and claimed from SQL</td></tr>
+            <tr><td class="num">2</td><td>Port the finisher: fin_jobs tables, WF-4, trigger, sweep</td><td class="num">6</td><td>A manually inserted fin_job produces a final PNG</td></tr>
+            <tr><td class="num">3</td><td>Board app from the DM Finisher codebase: auth, stage columns, card detail read-only, Completed panel</td><td class="num">16</td><td>Cards show live and finals download</td></tr>
+            <tr><td class="num">4</td><td>Client form with token link and reference upload</td><td class="num">8</td><td>A real submission lands as a card in intake</td></tr>
+            <tr><td class="num">5</td><td>WF-1 Intake with the Style Card schema; Style Card editor and lock</td><td class="num">12</td><td>First card for a new client drafts a card; designer locks it</td></tr>
+            <tr><td class="num">6</td><td><code>prompt-engine</code> with golden-brief tests, extracted from the T-Shirt Engine's Code nodes</td><td class="num">14</td><td>Rendered prompts match the old engine's on 20 replayed cards</td></tr>
+            <tr><td class="num">7</td><td>WF-2 Generate with WF-5 Poll and <code>qc-judge</code></td><td class="num">16</td><td>Approve produces a QC'd generation in needs_review</td></tr>
+            <tr><td class="num">8</td><td>Card detail actions: approve, accept, regenerate with reasons, generation strip</td><td class="num">12</td><td>Full path form → delivered without touching SQL</td></tr>
+            <tr><td class="num">9</td><td>WF-3 Edit: edit text, edit region with mask compositing and drift check</td><td class="num">14</td><td>Both edits return a child generation that passes QC</td></tr>
+            <tr><td class="num">10</td><td>WF-6 Error workflow, Settings page, pause switch, Retry</td><td class="num">8</td><td>A forced vendor failure lands in failed with a message and a Slack post</td></tr>
+            <tr><td class="num">11</td><td>WF-7 Lessons, evaluations dataset, git export script</td><td class="num">8</td><td>Nightly run inserts inactive lessons; template change gated by tests</td></tr>
+            <tr><td class="num">12</td><td>Shadow cutover: 20 historical cards through old and new, diff prompts and QC; old workflows disabled but kept 30 days</td><td class="num">4</td><td>Team signs off; DM Finisher app retired into the studio board</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <!-- 12 -->
+      <section id="s12">
+        <h2><span class="n">12</span>Constants and naming</h2>
+        <div class="kv">
+          <dt>n8n instance</dt><dd><code>https://n8n.srv1202488.hstgr.cloud</code>, project Design Musketeer, folder <strong>Print on demand</strong> holds every studio workflow</dd>
+          <dt>Webhooks</dt><dd><code>/webhook/studio-intake</code> · <code>/webhook/studio-style-draft</code> · <code>/webhook/studio-generate</code> · <code>/webhook/studio-generate-worker</code> · <code>/webhook/studio-edit</code> · <code>/webhook/studio-lessons</code> · <code>/webhook/finisher-dispatch</code> · <code>/webhook/finisher-worker</code></dd>
+          <dt>Secret header</dt><dd><code>x-studio-secret</code>, stored once in Supabase (checked by <code>studio_secret_ok()</code>) and once in an n8n Header Auth credential. Never written in this document or in a workflow export.</dd>
+          <dt>Buckets</dt><dd><code>refs</code> · <code>gens</code> · <code>finals</code></dd>
+          <dt>Signed URL lifetimes</dt><dd>Worker reads: 24 h. Designer downloads: 1 h. Client uploads: 15 min.</dd>
+          <dt>Concurrency caps</dt><dd>Generations 3 · Finisher 2 · Poll interval 6 s minimum · Callback wait 8 min · Poll timeout 10 min · Stale after 20 min · Sweep every 2 min · Max attempts 3</dd>
+          <dt>Frontend env</dt><dd><code>VITE_SUPABASE_URL</code> · <code>VITE_SUPABASE_ANON_KEY</code> · repo <code>dm-studio</code>, dev port 3100</dd>
+          <dt>Edge Function env</dt><dd><code>STUDIO_SECRET</code> · <code>SUPABASE_URL</code> · <code>SUPABASE_ANON_KEY</code></dd>
+          <dt>Keys</dt><dd>WF-0 "Studio Config" node: <code>studioSecret</code>, <code>ideogramKey</code>, <code>imgbbKey</code>, <code>mlKey</code>. Credentials by id: GPT Image 2 [DM-Kie], Gemini 3.1 Pro [DM-Kie], Slack DM HR.</dd>
+          <dt>Workflow ids</dt><dd>WF-0 <code>vbyjWhK4ZRN9uZUM</code> · WF-1 <code>CrpmkqYiaWBtvto6</code> · WF-1b <code>CsohPMosybjBoP8s</code> · WF-2 <code>KVLDYPaWZZZtOoir</code> · WF-3 <code>V83NWHjzDdyiqtNP</code> · WF-4 <code>2HEm3yQETeEMocOL</code> · WF-5 <code>3Sr7H74AxZUu6QiW</code> · WF-6 <code>PIgUHDGkVJVg9FHj</code> · WF-7 <code>zvGIh8mZIBzevlai</code></dd>
+          <dt>Edge Functions</dt><dd><code>prompt-engine</code> · <code>qc-judge</code>, both live, secret-header checked</dd>
+          <dt>Repositories</dt><dd><code>dm-studio</code> for the app and Edge Functions; <code>n8n/</code> folder holds nightly workflow exports</dd>
+          <dt>Read-only</dt><dd>DM T-Shirt Engine <code>DcdygzBz5GAoy2Zg</code> · DM POD Supabase project</dd>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
