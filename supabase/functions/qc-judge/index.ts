@@ -1,0 +1,81 @@
+// qc-judge — Supabase Edge Function (Deno). Normalises the vision QC verdict for one generation and writes
+// generations.qc_report / needs_regen / text_elements. Contract: docs/generation-spec.md §3 "qc-judge".
+//
+// Auth: rejected unless the caller sends x-studio-secret and rpc studio_secret_ok (called with that header forwarded)
+// returns true. verify_jwt is off; the apikey is the project's publishable key (public), never a service-role key.
+// POST {generation_id, qc_raw, exact_text_lines?: string[], style_card?: object}
+//   qc_raw = the Gemini response text, the whole chat-completions response object, or the parsed verdict object.
+//   exact_text_lines defaults to the card's print_text lines when omitted; style_card defaults to the generation's
+//   style_card_snapshot when omitted.
+
+import { normaliseQc, normaliseTextLines } from './qc.ts';
+export { normaliseQc } from './qc.ts';
+
+const SB_URL = (Deno.env.get('SUPABASE_URL') ?? 'https://voatrqhfsdfjomyajovi.supabase.co').replace(/\/$/, '');
+const PUBLISHABLE_KEY = Deno.env.get('STUDIO_PUBLISHABLE_KEY') ?? 'sb_publishable_shDVoGzgpaS2L9OTmzyRGA_JOx52p0I';
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function json(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+}
+
+function sbHeaders(secret: string, extra: Record<string, string> = {}): Record<string, string> {
+  return { apikey: PUBLISHABLE_KEY, 'x-studio-secret': secret, 'content-type': 'application/json', ...extra };
+}
+
+async function secretOk(secret: string): Promise<boolean> {
+  const r = await fetch(`${SB_URL}/rest/v1/rpc/studio_secret_ok`, { method: 'POST', headers: sbHeaders(secret), body: '{}' });
+  if (!r.ok) return false;
+  const v = await r.json().catch(() => null);
+  return v === true;
+}
+
+type GenRow = { id: string; attempt: number | null; style_card_snapshot: unknown; cards: { print_text: unknown } | null };
+
+// The embed names the FK explicitly: generations.card_id -> cards and cards.current_generation_id -> generations are
+// both relationships, so a bare cards(...) embed is ambiguous (PostgREST 300 PGRST201).
+async function loadGeneration(secret: string, id: string): Promise<GenRow | null> {
+  const u = `${SB_URL}/rest/v1/generations?id=eq.${id}&select=id,attempt,style_card_snapshot,cards!generations_card_id_fkey(print_text)`;
+  const r = await fetch(u, { headers: sbHeaders(secret, { accept: 'application/json' }) });
+  if (!r.ok) throw new Error(`load generation failed: ${r.status} ${(await r.text()).slice(0, 200)}`);
+  const rows = (await r.json()) as GenRow[];
+  return rows[0] ?? null;
+}
+
+async function patchGeneration(secret: string, id: string, patch: Record<string, unknown>): Promise<void> {
+  const r = await fetch(`${SB_URL}/rest/v1/generations?id=eq.${id}`, {
+    method: 'PATCH', headers: sbHeaders(secret, { prefer: 'return=minimal' }), body: JSON.stringify(patch),
+  });
+  if (!r.ok) throw new Error(`patch generation failed: ${r.status} ${(await r.text()).slice(0, 200)}`);
+}
+
+export async function handler(req: Request): Promise<Response> {
+  if (req.method !== 'POST') return json(405, { error: 'POST only' });
+  const secret = (req.headers.get('x-studio-secret') ?? '').trim();
+  if (!secret) return json(401, { error: 'missing x-studio-secret' });
+  if (!(await secretOk(secret))) return json(401, { error: 'bad x-studio-secret' });
+
+  let body: Record<string, unknown>;
+  try { body = (await req.json()) as Record<string, unknown>; } catch { return json(400, { error: 'body must be JSON' }); }
+  if (!body || typeof body !== 'object') return json(400, { error: 'body must be a JSON object' });
+  const generation_id = String(body.generation_id ?? '').trim();
+  if (!UUID_RE.test(generation_id)) return json(400, { error: 'generation_id must be a uuid' });
+
+  try {
+    const gen = await loadGeneration(secret, generation_id);
+    if (!gen) return json(404, { error: 'generation not found', generation_id });
+
+    const exact_text_lines = body.exact_text_lines !== undefined && body.exact_text_lines !== null
+      ? normaliseTextLines(body.exact_text_lines)
+      : normaliseTextLines(gen.cards?.print_text);
+    const style_card = body.style_card !== undefined && body.style_card !== null ? body.style_card : gen.style_card_snapshot;
+
+    const { qc_report, needs_regen, text_elements } = normaliseQc(body.qc_raw, { exact_text_lines, style_card, attempt: gen.attempt ?? 1 });
+    await patchGeneration(secret, generation_id, { qc_report, needs_regen, text_elements });
+    return json(200, { generation_id, qc_report, needs_regen, text_elements, corrective_instruction: qc_report.corrective_instruction });
+  } catch (e) {
+    return json(500, { error: (e as Error).message ?? String(e), generation_id });
+  }
+}
+
+Deno.serve(handler);

@@ -1,0 +1,9 @@
+project_id = "dm-studio"
+
+[functions.prompt-engine]
+verify_jwt = false
+entrypoint = "./functions/prompt-engine/index.ts"
+
+[functions.qc-judge]
+verify_jwt = false
+entrypoint = "./functions/qc-judge/index.ts"

@@ -1,0 +1,688 @@
+import { workflow, node, trigger, sticky, placeholder, newCredential, ifElse, switchCase, merge, splitInBatches, nextBatch, languageModel, memory, tool, outputParser, embedding, embeddings, vectorStore, retriever, documentLoader, textSplitter, reranker, fromAi, expr } from '@n8n/workflow-sdk';
+
+const supabaseUrl = 'https://voatrqhfsdfjomyajovi.supabase.co';
+const supabasePublishableKey = 'sb_publishable_shDVoGzgpaS2L9OTmzyRGA_JOx52p0I';
+const n8nBaseUrl = 'https://n8n.srv1202488.hstgr.cloud';
+const kieBaseUrl = 'https://api.kie.ai';
+
+const workerSecretCredential = newCredential('DM Studio Worker Secret');
+const kieVisionCredential = newCredential('Gemini 3.1 Pro [DM-Kie]', '0l2nHQUQNnsCAfTR');
+
+const looseOptions = { caseSensitive: true, leftValue: '', typeValidation: 'loose', version: 1 };
+const uuidPattern = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+
+const sampleCardId = '1a2b3c4d-5e6f-4a70-8b91-0c1d2e3f4a5b';
+const sampleClientId = '7c6d5e4f-3a2b-4c1d-9e8f-0a1b2c3d4e5f';
+const sampleStyleCardId = '3f2e1d0c-9b8a-4765-8321-0fedcba98765';
+const sampleRequestId = '5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a';
+const sampleRefPath1 = sampleClientId + '/' + sampleCardId + '/1.png';
+const sampleRefPath2 = sampleClientId + '/' + sampleCardId + '/2.jpg';
+const sampleSignedPath = '/object/sign/refs/' + sampleRefPath1 + '?token=redacted';
+const sampleSignedUrl = supabaseUrl + '/storage/v1' + sampleSignedPath;
+
+const sampleClient = { id: sampleClientId, name: 'Test Client', default_similarity_tier: 3, garment_colors: ['black', 'navy'], notes: 'Loves vintage badges' };
+const sampleCard = {
+  id: sampleCardId,
+  client_id: sampleClientId,
+  stage: 'intake',
+  brief_text: 'Retro camping badge with a bear over a lake',
+  print_text: [{ role: 'headline', text: 'FAMILY FIRST' }],
+  reference_paths: [sampleRefPath1, sampleRefPath2],
+  reference_analysis: null,
+  garment_color: 'black',
+  placement: 'front_chest',
+  similarity_tier: 3,
+  style_card_id: null,
+  n8n_execution_id: null,
+  clients: sampleClient
+};
+const sampleAnalysis = {
+  art_style: 'bold vintage badge illustration, screen-print feel',
+  palette: [{ name: 'cream', hex: '#F2E8D5' }, { name: 'forest green', hex: '#2F5D3A' }],
+  subject_structure: 'centered bear silhouette over a lake inside a circular badge',
+  typography_transcription: 'FAMILY FIRST',
+  text_detected: ['FAMILY FIRST'],
+  composition: 'circular badge, text arched along the top',
+  notes: 'reference 2 is a worn shirt mockup; judged as flat artwork'
+};
+const sampleStyleCard = {
+  medium: 'screen-print style vector illustration',
+  linework: { weight: 'bold', style: 'clean, closed outlines' },
+  shading: 'flat fills with sparse halftone',
+  texture: 'light grain',
+  palette: [{ name: 'cream', hex: '#F2E8D5', weight: 'dominant' }, { name: 'forest green', hex: '#2F5D3A', weight: 'secondary' }],
+  composition: 'centered badge or stacked lockup',
+  typography: { vibe: 'vintage condensed sans', placement: 'arched top', case: 'upper' },
+  background: 'flat mid-grey #808080, isolated artwork',
+  mood: ['rugged', 'warm'],
+  subjects: ['wildlife', 'camping', 'family'],
+  forbid: ['gradients', 'photorealism'],
+  signature_moves: ['thick outer keyline', 'two-tone hero'],
+  garment_colors: ['black', 'navy']
+};
+const sampleAnalysisContent = '{"art_style":"bold vintage badge illustration, screen-print feel","palette":[{"name":"cream","hex":"#F2E8D5"}],"subject_structure":"centered bear over a lake","typography_transcription":"FAMILY FIRST","text_detected":["FAMILY FIRST"],"composition":"circular badge","notes":"reference 2 is a mockup"}';
+const sampleStyleContent = '{"medium":"screen-print style vector illustration","linework":{"weight":"bold","style":"clean"},"shading":"flat fills","texture":"light grain","palette":[{"name":"cream","hex":"#F2E8D5","weight":"dominant"}],"composition":"centered badge","typography":{"vibe":"vintage sans","placement":"arched top","case":"upper"},"background":"flat mid-grey #808080, isolated artwork","mood":["rugged"],"subjects":["wildlife"],"forbid":["gradients"],"signature_moves":["thick keyline"],"garment_colors":["black"]}';
+const sampleAnalysisResponse = { id: 'chatcmpl-analysis', object: 'chat.completion', model: 'gemini-3.1-pro', choices: [{ index: 0, message: { role: 'assistant', content: sampleAnalysisContent }, finish_reason: 'stop' }], usage: { prompt_tokens: 1400, completion_tokens: 260 } };
+const sampleStyleResponse = { id: 'chatcmpl-style', object: 'chat.completion', model: 'gemini-3.1-pro', choices: [{ index: 0, message: { role: 'assistant', content: sampleStyleContent }, finish_reason: 'stop' }], usage: { prompt_tokens: 2200, completion_tokens: 420 } };
+const sampleVisionBody = { messages: [{ role: 'user', content: [{ type: 'text', text: 'You are a precise visual analyst ...' }, { type: 'image_url', image_url: { url: sampleSignedUrl } }] }], response_format: { type: 'json_object' } };
+
+const intakeNote = sticky(
+  '## DM Studio · WF-1 Intake (cards insert → /webhook/studio-intake)\n' +
+  'Payload {card_id, client_id} from the pg_net trigger. Respond 200 immediately, then: Tag Execution (cards.n8n_execution_id, read by WF-6) → Get Card (+client) → Get Templates (prompt_templates slugs **analysis_prompt** (active v2, JSON contract), **style_profiler**; prompts are never inlined here) → sign the card\'s reference_paths (POST /storage/v1/object/sign/refs/<path>, 1 h) → Analyze References (Kie gemini-3.1-pro chat/completions, text + one image_url part per reference, JSON mode) → Parse Analysis (JSON first; a v1-style STYLE:/TYPOGRAPHY_TEXT: text reply is mapped to art_style/typography_transcription/text_detected instead of failing) → PATCH cards.reference_analysis → Style Card check.\n\n' +
+  '**Style Card check:** locked or draft card exists → move_card(review). Otherwise, if the client has a reference library → insert style_draft_requests (WF-1b drafts from the library); if the library is empty → draft from these references with the same style_profiler prompt → new_style_card_version → move_card(review). The fallback draft is best-effort: a vision or JSON failure still moves the card to review.\n\n' +
+  'Any failure in the analysis lane → Fail Message → move_card(failed, message). Template tokens replaced at runtime: {{NICHE}}, {{CLIENT_NAME}}, {{BRIEF}}, {{TEXT_LINES}}, {{IMAGE_COUNT}}, {{CLIENT_NOTES}}, {{GARMENT_COLORS}}.\n\n' +
+  'Auth on every Supabase call: publishable key as apikey + x-studio-secret from the credential **DM Studio Worker Secret** (also validates the webhook). Vision calls use **Gemini 3.1 Pro [DM-Kie]**.',
+  { color: 4, width: 400, height: 720, position: [-460, 80] }
+);
+
+const intakeWebhook = trigger({
+  type: 'n8n-nodes-base.webhook',
+  version: 2.1,
+  config: {
+    name: 'Intake Webhook',
+    parameters: {
+      httpMethod: 'POST',
+      path: 'studio-intake',
+      authentication: 'headerAuth',
+      responseMode: 'onReceived',
+      options: {}
+    },
+    credentials: { httpHeaderAuth: workerSecretCredential },
+    position: [0, 304]
+  },
+  output: [{ headers: { 'content-type': 'application/json' }, params: {}, query: {}, body: { card_id: sampleCardId, client_id: sampleClientId }, webhookUrl: n8nBaseUrl + '/webhook/studio-intake', executionMode: 'production' }]
+});
+
+const config = node({
+  type: 'n8n-nodes-base.set',
+  version: 3.4,
+  config: {
+    name: 'Config',
+    parameters: {
+      mode: 'manual',
+      assignments: {
+        assignments: [
+          { id: 'c1', name: 'sbUrl', type: 'string', value: supabaseUrl },
+          { id: 'c2', name: 'anonKey', type: 'string', value: supabasePublishableKey },
+          { id: 'c3', name: 'cardId', type: 'string', value: expr('{{ $json.body?.card_id ?? "" }}') },
+          { id: 'c4', name: 'clientId', type: 'string', value: expr('{{ $json.body?.client_id ?? "" }}') },
+          { id: 'c5', name: 'executionId', type: 'string', value: expr('{{ String($execution.id) }}') }
+        ]
+      },
+      includeOtherFields: false,
+      options: {}
+    },
+    position: [240, 304]
+  },
+  output: [{ sbUrl: supabaseUrl, anonKey: 'sb_publishable_redacted', cardId: sampleCardId, clientId: sampleClientId, executionId: '48211' }]
+});
+
+const tagExecution = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
+  config: {
+    name: 'Tag Execution',
+    parameters: {
+      method: 'PATCH',
+      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/cards?id=eq.{{ $('Config').first().json.cardId }}"),
+      authentication: 'genericCredentialType',
+      genericAuthType: 'httpHeaderAuth',
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'Content-Type', value: 'application/json' },
+          { name: 'Prefer', value: 'return=representation' }
+        ]
+      },
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: expr("{{ JSON.stringify({ n8n_execution_id: $('Config').first().json.executionId }) }}"),
+      options: { timeout: 15000 }
+    },
+    credentials: { httpHeaderAuth: workerSecretCredential },
+    onError: 'continueRegularOutput',
+    alwaysOutputData: true,
+    position: [480, 304]
+  },
+  output: [{ ...sampleCard, n8n_execution_id: '48211' }]
+});
+
+const getCard = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
+  config: {
+    name: 'Get Card',
+    parameters: {
+      method: 'GET',
+      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/cards?id=eq.{{ $('Config').first().json.cardId }}&select=*,clients(id,name,default_similarity_tier,garment_colors,notes)"),
+      authentication: 'genericCredentialType',
+      genericAuthType: 'httpHeaderAuth',
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'Accept', value: 'application/vnd.pgrst.object+json' }
+        ]
+      },
+      options: { timeout: 15000 }
+    },
+    credentials: { httpHeaderAuth: workerSecretCredential },
+    retryOnFail: true,
+    maxTries: 2,
+    waitBetweenTries: 2000,
+    onError: 'continueErrorOutput',
+    position: [720, 304]
+  },
+  output: [sampleCard]
+});
+
+const getTemplates = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
+  config: {
+    name: 'Get Templates',
+    parameters: {
+      method: 'GET',
+      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/prompt_templates?slug=in.(analysis_prompt,style_profiler)&active=is.true&select=slug,version,body&order=version.desc"),
+      authentication: 'genericCredentialType',
+      genericAuthType: 'httpHeaderAuth',
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") }
+        ]
+      },
+      options: { timeout: 15000 }
+    },
+    credentials: { httpHeaderAuth: workerSecretCredential },
+    executeOnce: true,
+    retryOnFail: true,
+    maxTries: 2,
+    waitBetweenTries: 2000,
+    onError: 'continueErrorOutput',
+    position: [960, 304]
+  },
+  output: [{ slug: 'analysis_prompt', version: 2, body: 'You are a precise visual analyst for a "{{NICHE}}" print-on-demand design. ... Return ONLY this JSON object - no markdown fences: {"art_style":"","palette":[{"name":"","hex":"#RRGGBB"}],"subject_structure":"","typography_transcription":"","text_detected":[],"composition":"","notes":""}' }]
+});
+
+const listReferencePaths = node({
+  type: 'n8n-nodes-base.code',
+  version: 2,
+  config: {
+    name: 'List Reference Paths',
+    parameters: {
+      jsCode: "const card = $('Get Card').first().json;\nconst raw = Array.isArray(card.reference_paths) ? card.reference_paths : [];\nconst paths = raw.map((p) => String(p || '').replace(/^refs\\//, '').trim()).filter(Boolean).slice(0, 3);\nif (!paths.length) throw new Error('card has no reference_paths');\nreturn paths.map((path, i) => ({ json: { path, index: i + 1, bucket: 'refs' } }));"
+    },
+    onError: 'continueErrorOutput',
+    position: [1200, 304]
+  },
+  output: [{ path: sampleRefPath1, index: 1, bucket: 'refs' }]
+});
+
+const signReference = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
+  config: {
+    name: 'Sign Reference',
+    parameters: {
+      method: 'POST',
+      url: expr("{{ $('Config').first().json.sbUrl }}/storage/v1/object/sign/refs/{{ $json.path }}"),
+      authentication: 'genericCredentialType',
+      genericAuthType: 'httpHeaderAuth',
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'Content-Type', value: 'application/json' }
+        ]
+      },
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: '{"expiresIn":3600}',
+      options: { timeout: 15000 }
+    },
+    credentials: { httpHeaderAuth: workerSecretCredential },
+    retryOnFail: true,
+    maxTries: 2,
+    waitBetweenTries: 2000,
+    onError: 'continueErrorOutput',
+    position: [1440, 304]
+  },
+  output: [{ signedURL: sampleSignedPath }]
+});
+
+const buildAnalysisRequest = node({
+  type: 'n8n-nodes-base.code',
+  version: 2,
+  config: {
+    name: 'Build Analysis Request',
+    parameters: {
+      jsCode: "const cfg = $('Config').first().json;\nconst card = $('Get Card').first().json;\nconst rows = $('Get Templates').all().map((i) => i.json);\nconst tpl = rows.find((r) => r.slug === 'analysis_prompt');\nif (!tpl || !tpl.body) throw new Error('prompt_templates: no active analysis_prompt template');\nconst urls = $input.all().map((i) => cfg.sbUrl + '/storage/v1' + String(i.json.signedURL || '')).filter((u) => /token=/.test(u));\nif (!urls.length) throw new Error('no signed reference URLs');\nconst lines = (Array.isArray(card.print_text) ? card.print_text : []).map((t) => (t && t.text) || '').filter(Boolean);\nconst client = card.clients || {};\nconst vars = { NICHE: client.name || '', CLIENT_NAME: client.name || '', CLIENT_NOTES: client.notes || '', GARMENT_COLORS: JSON.stringify(client.garment_colors || []), BRIEF: card.brief_text || '', TEXT_LINES: lines.length ? lines.join('\\n') : 'NONE', IMAGE_COUNT: String(urls.length) };\nconst text = String(tpl.body).replace(/\\{\\{\\s*([A-Z_]+)\\s*\\}\\}/g, (m, k) => (k in vars ? vars[k] : m));\nconst content = [{ type: 'text', text }].concat(urls.map((url) => ({ type: 'image_url', image_url: { url } })));\nreturn { json: { body: { messages: [{ role: 'user', content }], response_format: { type: 'json_object' } }, template_version: tpl.version, reference_urls: urls, text_lines: lines } };"
+    },
+    onError: 'continueErrorOutput',
+    position: [1680, 304]
+  },
+  output: [{ body: sampleVisionBody, template_version: 1, reference_urls: [sampleSignedUrl], text_lines: ['FAMILY FIRST'] }]
+});
+
+const analyzeReferences = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
+  config: {
+    name: 'Analyze References',
+    parameters: {
+      method: 'POST',
+      url: kieBaseUrl + '/gemini-3.1-pro/v1/chat/completions',
+      authentication: 'genericCredentialType',
+      genericAuthType: 'httpHeaderAuth',
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'Content-Type', value: 'application/json' }
+        ]
+      },
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: expr('{{ JSON.stringify($json.body) }}'),
+      options: { timeout: 120000 }
+    },
+    credentials: { httpHeaderAuth: kieVisionCredential },
+    retryOnFail: true,
+    maxTries: 3,
+    waitBetweenTries: 5000,
+    onError: 'continueErrorOutput',
+    position: [1920, 304]
+  },
+  output: [sampleAnalysisResponse]
+});
+
+const parseAnalysis = node({
+  type: 'n8n-nodes-base.code',
+  version: 2,
+  config: {
+    name: 'Parse Analysis',
+    parameters: {
+      mode: 'runOnceForEachItem',
+      jsCode: "const content = ($json.choices && $json.choices[0] && $json.choices[0].message && $json.choices[0].message.content) || '';\nconst cleaned = String(content).replace(/```json|```/g, '').trim();\nconst m = cleaned.match(/\\{[\\s\\S]*\\}/);\nlet analysis = null;\ntry { analysis = JSON.parse(m ? m[0] : cleaned); } catch (e) { analysis = null; }\nif (!analysis || typeof analysis !== 'object' || Array.isArray(analysis)) {\n  // v1-style text reply (STYLE: / TYPOGRAPHY_TEXT: / TYPOGRAPHY_STYLE:) -> minimal reference_analysis object\n  const block = (k) => { const r = cleaned.match(new RegExp('(?:^|\\\\n)' + k + ':\\\\s*([\\\\s\\\\S]*?)(?=\\\\n[A-Z_]+:|$)')); return r ? r[1].trim() : ''; };\n  const style = block('STYLE');\n  if (!style) throw new Error('reference analysis is neither JSON nor a STYLE block: ' + cleaned.slice(0, 200));\n  const text = block('TYPOGRAPHY_TEXT');\n  const hasText = Boolean(text) && !/^none$/i.test(text);\n  analysis = { art_style: style, palette: '', subject_structure: '', typography_transcription: hasText ? text : '', text_detected: hasText ? [text] : [], composition: '', notes: 'parsed from a STYLE/TYPOGRAPHY_TEXT text reply (analysis_prompt v1 format)' };\n}\nif (!Array.isArray(analysis.text_detected)) analysis.text_detected = analysis.typography_transcription && !/^none$/i.test(String(analysis.typography_transcription)) ? [String(analysis.typography_transcription)] : [];\nconst req = $('Build Analysis Request').first().json;\nreturn { json: { reference_analysis: analysis, template_version: req.template_version, reference_count: req.reference_urls.length } };"
+    },
+    onError: 'continueErrorOutput',
+    position: [2160, 304]
+  },
+  output: [{ reference_analysis: sampleAnalysis, template_version: 1, reference_count: 2 }]
+});
+
+const saveAnalysis = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
+  config: {
+    name: 'Save Analysis',
+    parameters: {
+      method: 'PATCH',
+      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/cards?id=eq.{{ $('Config').first().json.cardId }}"),
+      authentication: 'genericCredentialType',
+      genericAuthType: 'httpHeaderAuth',
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'Content-Type', value: 'application/json' },
+          { name: 'Prefer', value: 'return=representation' },
+          { name: 'Accept', value: 'application/vnd.pgrst.object+json' }
+        ]
+      },
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: expr('{{ JSON.stringify({ reference_analysis: $json.reference_analysis }) }}'),
+      options: { timeout: 15000 }
+    },
+    credentials: { httpHeaderAuth: workerSecretCredential },
+    retryOnFail: true,
+    maxTries: 3,
+    waitBetweenTries: 3000,
+    onError: 'continueErrorOutput',
+    position: [2400, 304]
+  },
+  output: [{ ...sampleCard, reference_analysis: sampleAnalysis, clients: undefined }]
+});
+
+const getStyleCards = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
+  config: {
+    name: 'Get Style Cards',
+    parameters: {
+      method: 'GET',
+      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/style_cards?client_id=eq.{{ $('Config').first().json.clientId }}&status=in.(locked,draft)&select=id,status,version&order=version.desc&limit=1"),
+      authentication: 'genericCredentialType',
+      genericAuthType: 'httpHeaderAuth',
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") }
+        ]
+      },
+      options: { timeout: 15000 }
+    },
+    credentials: { httpHeaderAuth: workerSecretCredential },
+    executeOnce: true,
+    onError: 'continueRegularOutput',
+    alwaysOutputData: true,
+    position: [2640, 304]
+  },
+  output: [{ id: sampleStyleCardId, status: 'locked', version: 1 }]
+});
+
+const hasStyleCard = ifElse({
+  version: 2.2,
+  config: {
+    name: 'Has Style Card?',
+    parameters: {
+      conditions: {
+        options: looseOptions,
+        conditions: [
+          { id: 's', leftValue: expr('{{ $json.id ?? "" }}'), operator: { type: 'string', operation: 'regex' }, rightValue: uuidPattern }
+        ],
+        combinator: 'and'
+      },
+      options: {}
+    },
+    position: [2880, 304]
+  },
+  output: [{ id: sampleStyleCardId, status: 'locked', version: 1 }]
+});
+
+const countLibrary = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
+  config: {
+    name: 'Count Library',
+    parameters: {
+      method: 'GET',
+      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/client_references?client_id=eq.{{ $('Config').first().json.clientId }}&select=id&limit=1"),
+      authentication: 'genericCredentialType',
+      genericAuthType: 'httpHeaderAuth',
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") }
+        ]
+      },
+      options: { timeout: 15000 }
+    },
+    credentials: { httpHeaderAuth: workerSecretCredential },
+    executeOnce: true,
+    onError: 'continueRegularOutput',
+    alwaysOutputData: true,
+    position: [3120, 496]
+  },
+  output: [{ id: '8a7b6c5d-4e3f-4a2b-9c1d-0e9f8a7b6c5d' }]
+});
+
+const libraryHasRefs = ifElse({
+  version: 2.2,
+  config: {
+    name: 'Library Has Refs?',
+    parameters: {
+      conditions: {
+        options: looseOptions,
+        conditions: [
+          { id: 'l', leftValue: expr('{{ $json.id ?? "" }}'), operator: { type: 'string', operation: 'regex' }, rightValue: uuidPattern }
+        ],
+        combinator: 'and'
+      },
+      options: {}
+    },
+    position: [3360, 496]
+  },
+  output: [{ id: '8a7b6c5d-4e3f-4a2b-9c1d-0e9f8a7b6c5d' }]
+});
+
+const requestStyleDraft = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
+  config: {
+    name: 'Request Style Draft',
+    parameters: {
+      method: 'POST',
+      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/style_draft_requests"),
+      authentication: 'genericCredentialType',
+      genericAuthType: 'httpHeaderAuth',
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'Content-Type', value: 'application/json' },
+          { name: 'Prefer', value: 'return=representation' }
+        ]
+      },
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: expr("{{ JSON.stringify({ client_id: $('Config').first().json.clientId, status: 'queued' }) }}"),
+      options: { timeout: 15000 }
+    },
+    credentials: { httpHeaderAuth: workerSecretCredential },
+    onError: 'continueRegularOutput',
+    alwaysOutputData: true,
+    position: [3600, 400]
+  },
+  output: [{ id: sampleRequestId, client_id: sampleClientId, status: 'queued', style_card_id: null }]
+});
+
+const buildStyleRequest = node({
+  type: 'n8n-nodes-base.code',
+  version: 2,
+  config: {
+    name: 'Build Style Request',
+    parameters: {
+      jsCode: "const card = $('Get Card').first().json;\nconst rows = $('Get Templates').all().map((i) => i.json);\nconst tpl = rows.find((r) => r.slug === 'style_profiler');\nif (!tpl || !tpl.body) throw new Error('prompt_templates: no active style_profiler template');\nconst urls = $('Build Analysis Request').first().json.reference_urls || [];\nif (!urls.length) throw new Error('no signed reference URLs for the style draft');\nconst client = card.clients || {};\nconst vars = { CLIENT_NAME: client.name || '', CLIENT_NOTES: client.notes || '', GARMENT_COLORS: JSON.stringify(client.garment_colors || []), IMAGE_COUNT: String(urls.length), REFERENCE_NOTES: 'These are the references attached to one brief, not a curated library.' };\nconst text = String(tpl.body).replace(/\\{\\{\\s*([A-Z_]+)\\s*\\}\\}/g, (m, k) => (k in vars ? vars[k] : m));\nconst content = [{ type: 'text', text }].concat(urls.map((url) => ({ type: 'image_url', image_url: { url } })));\nreturn { json: { body: { messages: [{ role: 'user', content }], response_format: { type: 'json_object' } }, template_version: tpl.version, source: 'card_references' } };"
+    },
+    onError: 'continueRegularOutput',
+    position: [3600, 592]
+  },
+  output: [{ body: sampleVisionBody, template_version: 1, source: 'card_references' }]
+});
+
+const profileStyle = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
+  config: {
+    name: 'Profile Style',
+    parameters: {
+      method: 'POST',
+      url: kieBaseUrl + '/gemini-3.1-pro/v1/chat/completions',
+      authentication: 'genericCredentialType',
+      genericAuthType: 'httpHeaderAuth',
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'Content-Type', value: 'application/json' }
+        ]
+      },
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: expr('{{ JSON.stringify($json.body) }}'),
+      options: { timeout: 120000 }
+    },
+    credentials: { httpHeaderAuth: kieVisionCredential },
+    retryOnFail: true,
+    maxTries: 3,
+    waitBetweenTries: 5000,
+    onError: 'continueRegularOutput',
+    alwaysOutputData: true,
+    position: [3840, 592]
+  },
+  output: [sampleStyleResponse]
+});
+
+const parseStyleCard = node({
+  type: 'n8n-nodes-base.code',
+  version: 2,
+  config: {
+    name: 'Parse Style Card',
+    parameters: {
+      mode: 'runOnceForEachItem',
+      jsCode: "const REQUIRED = ['medium', 'linework', 'shading', 'texture', 'palette', 'composition', 'typography', 'background', 'mood', 'subjects', 'forbid', 'signature_moves', 'garment_colors'];\nlet card = null, error = '';\ntry {\n  const content = ($json.choices && $json.choices[0] && $json.choices[0].message && $json.choices[0].message.content) || '';\n  const cleaned = String(content).replace(/```json|```/g, '').trim();\n  const m = cleaned.match(/\\{[\\s\\S]*\\}/);\n  card = JSON.parse(m ? m[0] : cleaned);\n} catch (e) { error = 'style profiler returned no JSON'; card = null; }\nif (card && typeof card === 'object' && !Array.isArray(card)) {\n  const missing = REQUIRED.filter((k) => !(k in card));\n  if (missing.length) { error = 'style card missing keys: ' + missing.join(', '); card = null; }\n} else if (card) { error = 'style profiler returned no object'; card = null; }\nif ($json.error && !error) error = String($json.error.message || $json.error).slice(0, 300);\nreturn { json: { ok: !!card, style_card: card, error } };"
+    },
+    position: [4080, 592]
+  },
+  output: [{ ok: true, style_card: sampleStyleCard, error: '' }]
+});
+
+const styleDraftOk = ifElse({
+  version: 2.2,
+  config: {
+    name: 'Style Draft OK?',
+    parameters: {
+      conditions: {
+        options: looseOptions,
+        conditions: [
+          { id: 'o', leftValue: expr('{{ $json.ok }}'), operator: { type: 'boolean', operation: 'true', singleValue: true } }
+        ],
+        combinator: 'and'
+      },
+      options: {}
+    },
+    position: [4320, 592]
+  },
+  output: [{ ok: true, style_card: sampleStyleCard, error: '' }]
+});
+
+const newStyleCardVersion = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
+  config: {
+    name: 'New Style Card Version',
+    parameters: {
+      method: 'POST',
+      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/rpc/new_style_card_version"),
+      authentication: 'genericCredentialType',
+      genericAuthType: 'httpHeaderAuth',
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'Content-Type', value: 'application/json' }
+        ]
+      },
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: expr("{{ JSON.stringify({ p_client_id: $('Config').first().json.clientId, p_json: $json.style_card }) }}"),
+      options: { timeout: 15000 }
+    },
+    credentials: { httpHeaderAuth: workerSecretCredential },
+    onError: 'continueRegularOutput',
+    alwaysOutputData: true,
+    position: [4560, 496]
+  },
+  output: [{ id: sampleStyleCardId, client_id: sampleClientId, version: 1, status: 'draft', json: sampleStyleCard, note: null }]
+});
+
+const cardReview = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
+  config: {
+    name: 'Card → review',
+    parameters: {
+      method: 'POST',
+      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/rpc/move_card"),
+      authentication: 'genericCredentialType',
+      genericAuthType: 'httpHeaderAuth',
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'Content-Type', value: 'application/json' }
+        ]
+      },
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: expr("{{ JSON.stringify({ p_card_id: $('Config').first().json.cardId, p_stage: 'review', p_note: 'reference analysis complete (' + $('Parse Analysis').first().json.reference_count + ' references)' }) }}"),
+      options: { timeout: 15000 }
+    },
+    credentials: { httpHeaderAuth: workerSecretCredential },
+    executeOnce: true,
+    retryOnFail: true,
+    maxTries: 3,
+    waitBetweenTries: 3000,
+    onError: 'continueRegularOutput',
+    alwaysOutputData: true,
+    position: [4800, 304]
+  },
+  output: [{ ...sampleCard, stage: 'review', reference_analysis: sampleAnalysis, clients: undefined }]
+});
+
+const failMessage = node({
+  type: 'n8n-nodes-base.code',
+  version: 2,
+  config: {
+    name: 'Fail Message',
+    parameters: {
+      mode: 'runOnceForEachItem',
+      jsCode: "const j = $json || {};\nconst cfg = $('Config').first().json;\nconst text = (v) => (v === undefined || v === null || v === '' ? '' : (typeof v === 'object' ? String(v.message || v.description || JSON.stringify(v)) : String(v)));\nconst message = (text(j.error) || text(j.message) || text(j.msg) || text(j.detail) || text(j.hint) || 'intake failed').slice(0, 500);\nreturn { json: { message, cardId: cfg.cardId, clientId: cfg.clientId } };"
+    },
+    position: [2400, 800]
+  },
+  output: [{ message: 'reference analysis is not valid JSON: STYLE: ...', cardId: sampleCardId, clientId: sampleClientId }]
+});
+
+const cardFailed = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
+  config: {
+    name: 'Card → failed',
+    parameters: {
+      method: 'POST',
+      url: expr("{{ $('Config').first().json.sbUrl }}/rest/v1/rpc/move_card"),
+      authentication: 'genericCredentialType',
+      genericAuthType: 'httpHeaderAuth',
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'apikey', value: expr("{{ $('Config').first().json.anonKey }}") },
+          { name: 'Content-Type', value: 'application/json' }
+        ]
+      },
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: expr("{{ JSON.stringify({ p_card_id: $('Config').first().json.cardId, p_stage: 'failed', p_note: $json.message, p_force: true }) }}"),
+      options: { timeout: 15000 }
+    },
+    credentials: { httpHeaderAuth: workerSecretCredential },
+    retryOnFail: true,
+    maxTries: 3,
+    waitBetweenTries: 3000,
+    onError: 'continueRegularOutput',
+    alwaysOutputData: true,
+    position: [2640, 800]
+  },
+  output: [{ ...sampleCard, stage: 'failed', last_error: 'reference analysis is not valid JSON: STYLE: ...', clients: undefined }]
+});
+
+export default workflow('dm-studio-wf1-intake', 'DM Studio · WF-1 Intake')
+  .add(intakeNote)
+  .add(intakeWebhook)
+  .to(config)
+  .to(tagExecution)
+  .to(getCard.onError(failMessage))
+  .to(getTemplates.onError(failMessage))
+  .to(listReferencePaths.onError(failMessage))
+  .to(signReference.onError(failMessage))
+  .to(buildAnalysisRequest.onError(failMessage))
+  .to(analyzeReferences.onError(failMessage))
+  .to(parseAnalysis.onError(failMessage))
+  .to(saveAnalysis.onError(failMessage))
+  .to(getStyleCards)
+  .to(hasStyleCard.onTrue(cardReview).onFalse(countLibrary))
+  .add(countLibrary)
+  .to(libraryHasRefs.onTrue(requestStyleDraft).onFalse(buildStyleRequest))
+  .add(requestStyleDraft)
+  .to(cardReview)
+  .add(buildStyleRequest)
+  .to(profileStyle)
+  .to(parseStyleCard)
+  .to(styleDraftOk.onTrue(newStyleCardVersion).onFalse(cardReview))
+  .add(newStyleCardVersion)
+  .to(cardReview)
+  .add(failMessage)
+  .to(cardFailed);
