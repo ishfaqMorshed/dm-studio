@@ -34,8 +34,8 @@ const finisherNote = sticky(
   '## DM Studio · WF-4 Finisher (Supabase ⇄ n8n ⇄ imgbb / ModelsLab / Ideogram)\n' +
   '**Config convention (no n8n credentials in this workflow).** Both triggers first run **Load Config** / **Load Dispatch Config** = Execute Workflow → *DM Studio · WF-0 Studio Config* (SDK const configWorkflowId = vbyjWhK4ZRN9uZUM, substituted with the WF-0 id at create time). WF-0 returns one item { sbUrl, anonKey, n8nBaseUrl, studioSecret, ideogramKey, imgbbKey, mlKey, upscaleModel, upscaleScale } and every downstream node reads $(\'Load Config\').first().json.<field> (dispatcher branch: $(\'Load Dispatch Config\')). **Secret OK?** / **Dispatch Secret OK?** compare the incoming x-studio-secret header with config.studioSecret and are the only webhook auth (both Webhook nodes: authentication none); a mismatch ends in the no-op Set *Rejected* / *Dispatch Rejected*. Every Supabase REST / RPC / Storage call sends headers apikey = anonKey and x-studio-secret = studioSecret (no Authorization header, no service-role key anywhere); Fire Worker and Ping Dispatcher send the same secret header and use config.n8nBaseUrl.\n\n' +
   '**Vendor keys from the same config item:** ImgBB Upload → query param key = imgbbKey; Build Upscale Req / Eval Upscale → body key = mlKey, model_id = upscaleModel (ultra_resolution), scale = upscaleScale (4); Ideogram RemoveBG → header Api-Key = ideogramKey. **What to paste where:** nothing here - paste studioSecret (private.secrets key studio_secret), ideogramKey, imgbbKey and mlKey once in WF-0 Studio Config → Set node *Studio Config*. Create WF-0 first, paste its id into configWorkflowId, then create this workflow and set WF-6 as its error workflow. Never publish from code.\n\n' +
-  '**Dispatcher branch** (Dispatch Webhook finisher-dispatch ← accept_generation trigger / pg_cron every 5 min / Worker pings): Load Dispatch Config → Dispatch Secret OK? → fin_claim_jobs → fire one Worker call per claimed job (batch 1 / 300 ms). pg_cron also requeues stale jobs, so there is no schedule trigger in this workflow.\n\n' +
-  '**Worker branch** (Worker Webhook finisher-worker; one job): Load Config → Secret OK? → Job Config (jobId) → Get Job (+ generations.image_path) → fin_job_update working → download the original from Storage bucket gens → Fit 1024 → ImgBB → ModelsLab ultra_resolution x4 (poll 6 s / resubmit on rate limit / 10-min cap) → event upscaled → Ideogram RemoveBG → event bg_removed → Fetch Result PNG → Set 300 DPI → upload to Storage finals/<card_id>/<generation_id>-final.png → fin_job_update done → ping Dispatcher. Any failure → Fail Message → fin_job_update failed (message ≤ 500 chars) → ping. Every status change goes through the fin_job_update RPC, which also writes fin_job_events and moves the card.\n\n' +
+  '**Dispatcher branch** (Dispatch Webhook studio-finisher-dispatch ← accept_generation trigger / pg_cron every 2 min / Worker pings): Load Dispatch Config → Dispatch Secret OK? → fin_claim_jobs → fire one Worker call per claimed job (batch 1 / 300 ms). pg_cron also requeues stale jobs, so there is no schedule trigger in this workflow.\n\n' +
+  '**Worker branch** (Worker Webhook studio-finisher-worker; one job): Load Config → Secret OK? → Job Config (jobId) → Get Job (+ generations.image_path) → fin_job_update working → download the original from Storage bucket gens → Fit 1024 → ImgBB → ModelsLab ultra_resolution x4 (poll 6 s / resubmit on rate limit / 10-min cap) → event upscaled → Ideogram RemoveBG → event bg_removed → Fetch Result PNG → Set 300 DPI → upload to Storage finals/<card_id>/<generation_id>-final.png → fin_job_update done → ping Dispatcher. Any failure → Fail Message → fin_job_update failed (message ≤ 500 chars) → ping. Every status change goes through the fin_job_update RPC, which also writes fin_job_events and moves the card.\n\n' +
   '**Do not reorder:** Status → bg_removed is deliberately recorded BEFORE Fetch Result PNG. An HTTP Request node does not pass input binary through, so the RPC call must never sit between the PNG download and Set 300 DPI (the binary would be lost and the job stranded in working). Set 300 DPI is the owner\'s frozen code (byte-identical to the previous version).',
   { color: 4, width: 460, height: 1040, position: [-1000, 120] }
 );
@@ -47,13 +47,13 @@ const dispatchWebhook = trigger({
     name: 'Dispatch Webhook',
     parameters: {
       httpMethod: 'POST',
-      path: 'finisher-dispatch',
+      path: 'studio-finisher-dispatch',
       responseMode: 'onReceived',
       options: {}
     },
     position: [-480, 704]
   },
-  output: [{ headers: { 'content-type': 'application/json', 'x-studio-secret': 'redacted' }, params: {}, query: {}, body: { event: 'WORKER_DONE', job_id: sampleJobId }, webhookUrl: n8nBaseUrl + '/webhook/finisher-dispatch', executionMode: 'production' }]
+  output: [{ headers: { 'content-type': 'application/json', 'x-studio-secret': 'redacted' }, params: {}, query: {}, body: { event: 'WORKER_DONE', job_id: sampleJobId }, webhookUrl: n8nBaseUrl + '/webhook/studio-finisher-dispatch', executionMode: 'production' }]
 });
 
 const loadDispatchConfig = node({
@@ -167,7 +167,7 @@ const fireWorker = node({
     name: 'Fire Worker',
     parameters: {
       method: 'POST',
-      url: expr("{{ $('Load Dispatch Config').first().json.n8nBaseUrl }}/webhook/finisher-worker"),
+      url: expr("{{ $('Load Dispatch Config').first().json.n8nBaseUrl }}/webhook/studio-finisher-worker"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
@@ -196,13 +196,13 @@ const workerWebhook = trigger({
     name: 'Worker Webhook',
     parameters: {
       httpMethod: 'POST',
-      path: 'finisher-worker',
+      path: 'studio-finisher-worker',
       responseMode: 'onReceived',
       options: {}
     },
     position: [-480, 208]
   },
-  output: [{ headers: { 'content-type': 'application/json', 'x-studio-secret': 'redacted' }, params: {}, query: {}, body: { job_id: sampleJobId }, webhookUrl: n8nBaseUrl + '/webhook/finisher-worker', executionMode: 'production' }]
+  output: [{ headers: { 'content-type': 'application/json', 'x-studio-secret': 'redacted' }, params: {}, query: {}, body: { job_id: sampleJobId }, webhookUrl: n8nBaseUrl + '/webhook/studio-finisher-worker', executionMode: 'production' }]
 });
 
 const loadConfig = node({
@@ -806,7 +806,7 @@ const pingDispatcher = node({
     name: 'Ping Dispatcher',
     parameters: {
       method: 'POST',
-      url: expr("{{ $('Load Config').first().json.n8nBaseUrl }}/webhook/finisher-dispatch"),
+      url: expr("{{ $('Load Config').first().json.n8nBaseUrl }}/webhook/studio-finisher-dispatch"),
       sendHeaders: true,
       headerParameters: {
         parameters: [

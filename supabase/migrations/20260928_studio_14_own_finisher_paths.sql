@@ -1,0 +1,3 @@
+-- DM Studio's finisher gets its own webhook paths (studio-finisher-dispatch / studio-finisher-worker)
+-- so it never collides with the live DM Finisher on the same n8n instance. Applied live as studio_14_own_finisher_paths.
+-- fin_jobs_notify() and studio_sweep() now call studio_notify('studio-finisher-dispatch', ...).

@@ -13,7 +13,7 @@ const configNote = sticky(
   '- imgbbKey → imgbb API key (WF-4 public staging upload, query key).\n' +
   '- mlKey → ModelsLab API key (WF-4 upscale, key inside the JSON body).\n\n' +
   'Prefilled (public, no action): sbUrl, anonKey (Supabase publishable key, sent as `apikey`), n8nBaseUrl, upscaleModel ultra_resolution, upscaleScale 4.\n\n' +
-  'Kie.ai stays on its existing n8n credentials bound by id: images **GPT Image 2 [DM-Kie]** w0sDpl2nll4HkF6h, vision **Gemini 3.1 Pro [DM-Kie]** 0l2nHQUQNnsCAfTR. Slack stays on **DM HR** kZQVG6uMHQ7Xxu2B.\n\n' +
+  'Kie.ai stays on its existing n8n credentials bound by id: images **GPT Image 2 [DM-Kie]** w0sDpl2nll4HkF6h, vision **Gemini 3.1 Pro [DM-Kie]** 0l2nHQUQNnsCAfTR.\n\n' +
   'After creating this workflow, copy its id into every other file\'s `const configWorkflowId = \'REPLACE_WITH_WF0_CONFIG_ID\'` before creating them. The trigger accepts any input (passthrough) and ignores it; the Set returns exactly one item.',
   { color: 4, width: 460, height: 640, position: [-520, 80] }
 );

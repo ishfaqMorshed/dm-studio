@@ -4,7 +4,6 @@ const supabaseUrl = 'https://voatrqhfsdfjomyajovi.supabase.co';
 const n8nBaseUrl = 'https://n8n.srv1202488.hstgr.cloud';
 
 const configWorkflowId = 'vbyjWhK4ZRN9uZUM';
-const slackCredential = newCredential('DM HR', 'kZQVG6uMHQ7Xxu2B');
 
 const looseOptions = { caseSensitive: true, leftValue: '', typeValidation: 'loose', version: 1 };
 
@@ -30,9 +29,9 @@ const sampleResolved = { ...sampleContext, card_id: sampleCardId, generation_id:
 
 const errorNote = sticky(
   '## DM Studio · WF-6 Error workflow\n' +
-  'Set this workflow as the **Error workflow** (workflow settings) of WF-1 Intake, WF-1b Style Draft, WF-2 Generate and WF-4 Finisher. It runs only for unhandled failures; the studio workflows handle their own expected failures inline.\n\n' +
-  'Flow: Error Trigger → Failure Context (message, execution id, ids found in the error payload) → Find Card / Find Generation by **n8n_execution_id** (WF-1 and WF-2 tag their rows with the execution id as their first step) → Resolve Ids → PATCH generations status failed + last_error (when a generation is known) → move_card(failed, note) (when a card is known) → Slack #dm-studio.\n\n' +
-  '**Config convention (no credentials except Kie/Slack):** first node **Load Config** runs the sub-workflow WF-0 Studio Config (paste its id into `const configWorkflowId` before creating this workflow); every later node reads `$(\'Load Config\').first().json.<field>`. The Error Trigger carries no header, so there is no Secret OK? node here. Every Supabase REST/RPC call sends headers apikey = anonKey and x-studio-secret = studioSecret from config, no credential attached. Slack keeps the existing credential **DM HR** (kZQVG6uMHQ7Xxu2B); the Slack node is continue-on-error so a Slack outage never masks the database write. Nothing to paste in this workflow: all keys live in WF-0.',
+  'Set this workflow as the **Error workflow** (workflow settings) of WF-1 Intake, WF-1b Style Draft, WF-2 Generate, WF-3 Edit and WF-4 Finisher. It runs only for unhandled failures; the studio workflows handle their own expected failures inline.\n\n' +
+  'Flow: Error Trigger → Failure Context (message, execution id, ids found in the error payload) → Find Card / Find Generation by **n8n_execution_id** (WF-1 and WF-2 tag their rows with the execution id as their first step) → Resolve Ids → PATCH generations status failed + last_error (when a generation is known) → move_card(failed, note) (when a card is known). Failures show on the card in the app (Failed column, last_error, Retry).\n\n' +
+  '**Config convention (no credentials):** first node **Load Config** runs the sub-workflow WF-0 Studio Config (paste its id into `const configWorkflowId` before creating this workflow); every later node reads `$(\'Load Config\').first().json.<field>`. The Error Trigger carries no header, so there is no Secret OK? node here. Every Supabase REST/RPC call sends headers apikey = anonKey and x-studio-secret = studioSecret from config, no credential attached.Nothing to paste in this workflow: all keys live in WF-0.',
   { color: 4, width: 380, height: 640, position: [-440, 120] }
 );
 
@@ -247,26 +246,6 @@ const cardFailed = node({
   output: [{ id: sampleCardId, client_id: sampleClientId, stage: 'failed', last_error: sampleMessage }]
 });
 
-const notifySlack = node({
-  type: 'n8n-nodes-base.slack',
-  version: 2.3,
-  config: {
-    name: 'Notify Slack',
-    parameters: {
-      resource: 'message',
-      operation: 'post',
-      select: 'channel',
-      channelId: { __rl: true, mode: 'name', value: '#dm-studio' },
-      text: expr(":rotating_light: *DM Studio failure* — {{ $('Resolve Ids').first().json.workflowName }}\\n{{ $('Resolve Ids').first().json.message }}\\ncard: {{ $('Resolve Ids').first().json.card_id || 'unknown' }} · generation: {{ $('Resolve Ids').first().json.generation_id || 'none' }}\\n<{{ $('Resolve Ids').first().json.executionUrl }}|open execution {{ $('Resolve Ids').first().json.executionId }}>"),
-      otherOptions: {}
-    },
-    credentials: { slackApi: slackCredential },
-    executeOnce: true,
-    onError: 'continueRegularOutput',
-    position: [2400, 304]
-  },
-  output: [{ ok: true, channel: 'C0123456789', ts: '1790000000.000100' }]
-});
 
 export default workflow('dm-studio-wf6-error', 'DM Studio · WF-6 Error')
   .add(errorNote)
@@ -278,7 +257,4 @@ export default workflow('dm-studio-wf6-error', 'DM Studio · WF-6 Error')
   .to(resolveIds)
   .to(hasGeneration.onTrue(generationFailed.to(hasCard)).onFalse(hasCard))
   .add(hasCard)
-  .to(cardFailed)
-  .add(hasCard.onFalse(notifySlack))
-  .add(cardFailed)
-  .to(notifySlack);
+  .to(cardFailed);

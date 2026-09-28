@@ -50,7 +50,7 @@ form submit / New card → cards insert (stage intake) → /webhook/studio-intak
 Draft Style Card button → style_draft_requests insert → /webhook/studio-style-draft → WF-1b
 Approve → approve_card → cards.stage=approved → /webhook/studio-generate → WF-2 (+ 2-min pg_cron nudge, studio_13_sweep_cadence)
 Edit text / Edit region / Regenerate → request_edit → generations insert kind≠generate → /webhook/studio-edit → WF-3
-Accept → accept_generation → fin_jobs queued → /webhook/finisher-dispatch → WF-4
+Accept → accept_generation → fin_jobs queued → /webhook/studio-finisher-dispatch → WF-4
 pg_cron 02:00 UTC → /webhook/studio-lessons → WF-7
 Retry → retry_card requeues the generation / fin_job → same webhooks
 

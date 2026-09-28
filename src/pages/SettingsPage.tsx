@@ -1,5 +1,6 @@
 import { PipelineSettings } from '../components/settings/PipelineSettings'
 import { PromptTemplates } from '../components/settings/PromptTemplates'
+import { LessonsPanel } from '../components/settings/LessonsPanel'
 
 /** Lead-only (App wraps this route in LeadOnly): pipeline switches and prompt template versions. */
 export default function SettingsPage() {
@@ -12,6 +13,7 @@ export default function SettingsPage() {
         </p>
       </header>
       <PipelineSettings />
+      <LessonsPanel />
       <PromptTemplates />
     </div>
   )

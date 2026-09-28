@@ -4,7 +4,6 @@ const configWorkflowId = 'vbyjWhK4ZRN9uZUM';
 const kieBaseUrl = 'https://api.kie.ai';
 
 const kieClaudeCredential = newCredential('GPT Image 2 [DM-Kie]', 'w0sDpl2nll4HkF6h');
-const slackCredential = newCredential('DM HR', 'kZQVG6uMHQ7Xxu2B');
 
 const looseOptions = { caseSensitive: true, leftValue: '', typeValidation: 'loose', version: 1 };
 
@@ -36,9 +35,9 @@ const sampleInserted = { id: '8c7d6e5f-4a3b-4c2d-9e1f-0a9b8c7d6e5f', client_id: 
 const lessonsNote = sticky(
   '## DM Studio · WF-7 Lessons (pg_cron 02:00 UTC → /webhook/studio-lessons)\n' +
   'Nightly self-learning pass. The webhook has NO n8n authentication: **Load Config** runs the shared sub-workflow **WF-0 Studio Config** first, then **Secret OK?** compares the request header x-studio-secret with config.studioSecret and drops mismatches into **Rejected** (no-op). pg_cron sends the header, so the IF is the auth.\n\n' +
-  '**Config convention:** no n8n credentials except Kie and Slack (bound by id). Every URL and key is read as `$(\'Load Config\').first().json.<field>` (sbUrl, anonKey, studioSecret). Supabase REST calls send headers apikey = anonKey and x-studio-secret = studioSecret. **Paste locations:** (1) the WF-0 workflow id into the SDK const `configWorkflowId` (vbyjWhK4ZRN9uZUM) before creating this workflow; (2) keys are pasted ONLY in WF-0\'s "Studio Config" Set node, never here. Kie Claude = credential **GPT Image 2 [DM-Kie]** (w0sDpl2nll4HkF6h, same Kie key), Slack = **DM HR** (kZQVG6uMHQ7Xxu2B).\n\n' +
-  '**Flow:** Get Rejected Generations (rejection_reason not null, reviewed_at > now - 1 day, with cards.client_id + client name) → Group Per Client (one item per client: generation ids, notes, dominant rejection_reason) → Get Distill Templates (prompt_templates slugs **distill_system** / **distill_user**, EXTRACT.md §3.10, never inlined) → Get Existing Lessons (design_lessons, for the EXISTING RULEBOOK block) → Build Distill Request (Anthropic Messages body: model claude-sonnet-4-6, max_tokens 1200, system, one user message) → Kie Claude Distill (POST api.kie.ai/claude/v1/messages, header anthropic-version 2023-06-01, continueRegularOutput, retry 3×/5 s) → Parse Distill (lenient JSON from content[].text, tolerates a data string wrapper; up to 3 new_lessons per client) → Insert Lessons (design_lessons rows: client_id, category = dominant rejection_reason, rule, active=false, source_generation_ids; a lead activates them in the app) → Build Digest → Slack **#dm-studio** digest (continueRegularOutput, executeOnce).\n\n' +
-  'No rejected generations in the window → the run ends after Get Rejected Generations with nothing to post.',
+  '**Config convention:** no n8n credentials except Kie (bound by id). Every URL and key is read as `$(\'Load Config\').first().json.<field>` (sbUrl, anonKey, studioSecret). Supabase REST calls send headers apikey = anonKey and x-studio-secret = studioSecret. **Paste locations:** (1) the WF-0 workflow id into the SDK const `configWorkflowId` (vbyjWhK4ZRN9uZUM) before creating this workflow; (2) keys are pasted ONLY in WF-0\'s "Studio Config" Set node, never here.\n\n' +
+  '**Flow:** Get Rejected Generations (rejection_reason not null, reviewed_at > now - 1 day, with cards.client_id + client name) → Group Per Client (one item per client: generation ids, notes, dominant rejection_reason) → Get Distill Templates (prompt_templates slugs **distill_system** / **distill_user**, EXTRACT.md §3.10, never inlined) → Get Existing Lessons (design_lessons, for the EXISTING RULEBOOK block) → Build Distill Request (Anthropic Messages body: model claude-sonnet-4-6, max_tokens 1200, system, one user message) → Kie Claude Distill (POST api.kie.ai/claude/v1/messages, header anthropic-version 2023-06-01, continueRegularOutput, retry 3×/5 s) → Parse Distill (lenient JSON from content[].\n\n' +
+  'No rejected generations in the window → the run ends after Get Rejected Generations with nothing to insert.',
   { color: 4, width: 440, height: 860, position: [-500, 40] }
 );
 
@@ -318,26 +317,6 @@ const buildDigest = node({
   output: [{ text: ':mortar_board: *DM Studio lessons digest* — 1 client(s), 2 proposed rule(s), 2 inserted (inactive until a lead approves them in the app)\n• *Test Client* — 2 rejection(s) → 2 proposed rule(s)\n    ◦ [text_wrong] ' + sampleRule, clients: 1, proposed: 2, inserted: 2 }]
 });
 
-const slackDigest = node({
-  type: 'n8n-nodes-base.slack',
-  version: 2.3,
-  config: {
-    name: 'Slack Digest',
-    parameters: {
-      resource: 'message',
-      operation: 'post',
-      select: 'channel',
-      channelId: { __rl: true, mode: 'name', value: '#dm-studio' },
-      text: expr('{{ $json.text }}'),
-      otherOptions: {}
-    },
-    credentials: { slackApi: slackCredential },
-    executeOnce: true,
-    onError: 'continueRegularOutput',
-    position: [2880, 208]
-  },
-  output: [{ ok: true, channel: 'C0123456789', ts: '1790000000.000100' }]
-});
 
 const distillFailed = node({
   type: 'n8n-nodes-base.set',
@@ -373,5 +352,4 @@ export default workflow('dm-studio-wf7-lessons', 'DM Studio · WF-7 Lessons')
   .to(kieClaudeDistill)
   .to(parseDistill)
   .to(insertLessons)
-  .to(buildDigest)
-  .to(slackDigest);
+  .to(buildDigest);
