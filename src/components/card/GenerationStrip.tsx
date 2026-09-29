@@ -7,6 +7,7 @@ import { agoLabel } from './format'
 import { VERDICT_LABEL, qcVerdict } from './qc'
 import { STATUS_CLASS, STATUS_LABEL, VERDICT_CLASS, btnSecondary, btnSmall, checkerboard } from './styles'
 import { Badge, Panel, Spinner } from './ui'
+import { PlatformBadge } from './PlatformBadge'
 
 interface TileProps {
   generation: Generation
@@ -78,6 +79,7 @@ const GenerationTile = memo(function GenerationTile({
             QC {VERDICT_LABEL[verdict]}
           </Badge>
         )}
+        <PlatformBadge generation={g} />
       </div>
       <p className="text-[11px] text-neutral-500">{agoLabel(g.created_at, now)}</p>
       {!isCurrent && (

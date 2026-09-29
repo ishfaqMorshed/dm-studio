@@ -1,6 +1,7 @@
 import { useId, useMemo, useState, type FormEvent } from 'react'
 import { RefreshCw, Type, Undo2 } from 'lucide-react'
-import type { PrintTextLine, PrintTextRole } from '../../lib/types'
+import type { AiPlatform, PrintTextLine, PrintTextRole } from '../../lib/types'
+import { PlatformPicker } from '../PlatformPicker'
 import { btnGhost, btnPrimary, btnSecondary, inputCls, textareaCls } from './styles'
 import { Dialog, Field, Spinner } from './ui'
 
@@ -19,8 +20,8 @@ export interface TextChange {
  *   `regenerate` is queued so every new line lands in the same generation.
  */
 export type EditTextSubmit =
-  | { mode: 'single'; oldText: string; newText: string; instruction: string; updateBrief: boolean }
-  | { mode: 'multi'; lines: PrintTextLine[]; changes: TextChange[]; instruction: string }
+  | { mode: 'single'; oldText: string; newText: string; instruction: string; updateBrief: boolean; platform: AiPlatform }
+  | { mode: 'multi'; lines: PrintTextLine[]; changes: TextChange[]; instruction: string; platform: AiPlatform }
 
 const norm = (t: string) => t.trim()
 
@@ -31,11 +32,14 @@ const norm = (t: string) => t.trim()
  */
 export function EditTextDialog({
   lines,
+  defaultPlatform,
   busy,
   onClose,
   onSubmit,
 }: {
   lines: PrintTextLine[]
+  /** settings.ai_platform; the picker follows it until the designer chooses. */
+  defaultPlatform: AiPlatform
   busy: boolean
   onClose: () => void
   onSubmit: (args: EditTextSubmit) => void
@@ -47,6 +51,8 @@ export function EditTextDialog({
   const [otherNew, setOtherNew] = useState('')
   const [instruction, setInstruction] = useState('')
   const [updateBrief, setUpdateBrief] = useState(true)
+  const [pickedPlatform, setPickedPlatform] = useState<AiPlatform | null>(null)
+  const platform = pickedPlatform ?? defaultPlatform
 
   const changes = useMemo(
     () =>
@@ -88,14 +94,15 @@ export function EditTextDialog({
         lines: lines.map((l, i) => ({ role: l.role, text: norm(drafts[i] ?? l.text) })),
         changes: changes.map(({ oldText, newText }) => ({ oldText, newText })),
         instruction: note,
+        platform,
       })
       return
     }
     if (briefChanges === 1) {
       const c = changes[0]
-      onSubmit({ mode: 'single', oldText: c.oldText, newText: c.newText, instruction: note, updateBrief })
+      onSubmit({ mode: 'single', oldText: c.oldText, newText: c.newText, instruction: note, updateBrief, platform })
     } else {
-      onSubmit({ mode: 'single', oldText: otherOld.trim(), newText: otherNew.trim(), instruction: note, updateBrief: false })
+      onSubmit({ mode: 'single', oldText: otherOld.trim(), newText: otherNew.trim(), instruction: note, updateBrief: false, platform })
     }
   }
 
@@ -225,6 +232,14 @@ export function EditTextDialog({
             card goes through Editing once instead of once per line. The current image is rejected as “Wrong text”.
           </p>
         )}
+
+        <PlatformPicker
+          value={platform}
+          onChange={setPickedPlatform}
+          disabled={busy}
+          studioDefault={defaultPlatform}
+          size="sm"
+        />
 
         {problem && <p className="text-xs text-amber-700 dark:text-amber-300">{problem}</p>}
       </form>

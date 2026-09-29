@@ -4,6 +4,7 @@ import { useToast } from '../../lib/useToast'
 import { ACTIVE_JOB_STATUSES, type Generation } from '../../lib/types'
 import { btnSecondary, btnSmall } from './styles'
 import { Badge, Panel } from './ui'
+import { PlatformBadge } from './PlatformBadge'
 
 const chipCls = 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200'
 const preCls =
@@ -37,6 +38,7 @@ function EngineChips({ generation }: { generation: Generation }) {
           {resolution}
         </Badge>
       )}
+      <PlatformBadge generation={generation} />
     </>
   )
 }

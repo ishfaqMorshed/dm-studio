@@ -24,9 +24,12 @@ export function StyleCardForm({ doc, onChange, disabled = false, garmentColorSug
     composition: useId(),
     typoVibe: useId(),
     typoPlacement: useId(),
+    typoCase: useId(),
     background: useId(),
     mood: useId(),
+    subjects: useId(),
     forbid: useId(),
+    signatureMoves: useId(),
     garment: useId(),
   }
   const set = <K extends keyof StyleCardDoc>(key: K, value: StyleCardDoc[K]) => onChange({ ...doc, [key]: value })
@@ -111,7 +114,7 @@ export function StyleCardForm({ doc, onChange, disabled = false, garmentColorSug
             className={textarea}
           />
         </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-3">
           <Field id={ids.typoVibe} label="Typography vibe" hint="Print text is set in this style.">
             <input
               id={ids.typoVibe}
@@ -134,6 +137,17 @@ export function StyleCardForm({ doc, onChange, disabled = false, garmentColorSug
               className={inputCls}
             />
           </Field>
+          <Field id={ids.typoCase} label="Typography case" hint="UPPER · lower · Title · Mixed">
+            <input
+              id={ids.typoCase}
+              type="text"
+              value={doc.typography.case}
+              disabled={disabled}
+              onChange={(e) => set('typography', { ...doc.typography, case: e.target.value })}
+              placeholder="UPPER"
+              className={inputCls}
+            />
+          </Field>
         </div>
         <Field id={ids.background} label="Background" hint="Generations are always isolated on flat grey; say so here so the prompt and the Style Card agree.">
           <input
@@ -148,7 +162,7 @@ export function StyleCardForm({ doc, onChange, disabled = false, garmentColorSug
         </Field>
       </Section>
 
-      <Section title="Mood, limits and garments" hint="Type a word and press Enter or comma to add it.">
+      <Section title="Mood, subjects, limits and garments" hint="Type a word and press Enter or comma to add it.">
         <Field id={ids.mood} label="Mood" hint="Adjectives the artwork should feel like.">
           <TagInput
             id={ids.mood}
@@ -157,6 +171,26 @@ export function StyleCardForm({ doc, onChange, disabled = false, garmentColorSug
             disabled={disabled}
             placeholder="vintage, bold, outdoorsy"
             ariaLabel="Mood words"
+          />
+        </Field>
+        <Field id={ids.subjects} label="Subjects" hint="Typical subject matter across the client's designs.">
+          <TagInput
+            id={ids.subjects}
+            value={doc.subjects}
+            onChange={(v) => set('subjects', v)}
+            disabled={disabled}
+            placeholder="bears, mountains, pine forests"
+            ariaLabel="Subjects"
+          />
+        </Field>
+        <Field id={ids.signatureMoves} label="Signature moves" hint="What makes this client's designs recognisable.">
+          <TagInput
+            id={ids.signatureMoves}
+            value={doc.signature_moves}
+            onChange={(v) => set('signature_moves', v)}
+            disabled={disabled}
+            placeholder="circular badge frame, banner across the bottom"
+            ariaLabel="Signature moves"
           />
         </Field>
         <Field id={ids.forbid} label="Forbid" hint="Sent to the model as negatives and checked by QC.">

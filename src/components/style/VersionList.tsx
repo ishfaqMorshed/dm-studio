@@ -58,7 +58,7 @@ export function VersionList({
       <ul className="divide-y divide-neutral-200 border-t border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
         {versions.length === 0 && (
           <li className="px-4 py-8 text-center text-sm text-neutral-500">
-            No versions yet. One is drafted from the client's first card, or start one now.
+            No versions yet. Draft one from the reference library on the client panel, or start one now.
           </li>
         )}
         {versions.map((v) => {

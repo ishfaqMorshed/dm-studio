@@ -17,7 +17,17 @@ import {
   retryCard,
   setCurrentGeneration,
 } from '../lib/api'
-import { ACTIVE_JOB_STATUSES, errorMessage, isRecord, parsePrintText, type Generation, type Json, type PrintTextLine } from '../lib/types'
+import {
+  ACTIVE_JOB_STATUSES,
+  defaultAiPlatform,
+  errorMessage,
+  isRecord,
+  parsePrintText,
+  type AiPlatform,
+  type Generation,
+  type Json,
+  type PrintTextLine,
+} from '../lib/types'
 import { safeFileName } from '../lib/download'
 import { useCardFinJobs, useCardGenerations, useCardRow, useStyleCard } from '../components/card/useCardData'
 import { useNow } from '../components/card/useNow'
@@ -115,6 +125,11 @@ function CardView({ cardId }: { cardId: string }) {
   const resetSections = () => setDraft({ key: currentKey, baseSig, sections: baseSections })
 
   const price = formatUsd(settings?.per_card_price_usd)
+  // Preselected on Approve / Edit text / Edit region / Regenerate; each dialog sends the pick with its action.
+  const defaultPlatform = defaultAiPlatform(settings)
+  const openRouterModels = settings?.openrouter_models
+  const openRouterImageModel =
+    isRecord(openRouterModels) && typeof openRouterModels.image === 'string' ? openRouterModels.image : null
   const locked = card ? isStageLocked(card.stage) : true
   const fileBase = safeFileName(card?.clients?.name ?? 'design', 'design')
 
@@ -147,11 +162,11 @@ function CardView({ cardId }: { cardId: string }) {
 
   const closeDialog = () => setDialog(null)
 
-  function onApprove() {
+  function onApprove(platform: AiPlatform) {
     if (!card) return
     void run(
       'approve',
-      () => approveCard(card.id),
+      () => approveCard(card.id, platform),
       (c) => {
         upsertCard(c)
         void generations.refresh()
@@ -178,10 +193,10 @@ function CardView({ cardId }: { cardId: string }) {
   function onEditText(args: EditTextSubmit) {
     if (!card || !current) return
     if (args.mode === 'multi') {
-      onEditTextMulti(args.lines, args.changes, args.instruction)
+      onEditTextMulti(args.lines, args.changes, args.instruction, args.platform)
       return
     }
-    const { oldText, newText, instruction, updateBrief } = args
+    const { oldText, newText, instruction, updateBrief, platform } = args
     void run(
       'edit_text',
       async () => {
@@ -190,12 +205,20 @@ function CardView({ cardId }: { cardId: string }) {
           const idx = lines.findIndex((l) => l.text.trim() === oldText)
           if (idx >= 0) {
             const next = lines.map((l, i) => ({ role: l.role, text: i === idx ? newText : l.text }))
-            const { data, error: err } = await supabase.from('cards').update({ print_text: next }).eq('id', card.id).select('*').single()
+            // Keep the brief snapshot in step too, as the multi-line path does: later regenerates and QC read it.
+            const patch: { print_text: Json; brief_snapshot?: Json } = { print_text: next }
+            if (isRecord(card.brief_snapshot)) patch.brief_snapshot = { ...card.brief_snapshot, print_text: next }
+            const { data, error: err } = await supabase.from('cards').update(patch).eq('id', card.id).select('*').single()
             if (err) throw new Error(`The brief line was not updated (${err.message}), so nothing was queued.`)
             upsertCard(data)
           }
         }
-        return requestEdit(current.id, 'edit_text', { old_text: oldText, new_text: newText, instruction: instruction || null })
+        return requestEdit(current.id, 'edit_text', {
+          old_text: oldText,
+          new_text: newText,
+          instruction: instruction || null,
+          platform,
+        })
       },
       (child) => {
         generations.upsertLocal(child)
@@ -211,7 +234,7 @@ function CardView({ cardId }: { cardId: string }) {
    * brief snapshot, which the engine and QC read), rewrite the text slot of the magic
    * prompt, then queue ONE regenerate so every new line lands in the same generation.
    */
-  function onEditTextMulti(lines: PrintTextLine[], changes: TextChange[], instruction: string) {
+  function onEditTextMulti(lines: PrintTextLine[], changes: TextChange[], instruction: string, platform: AiPlatform) {
     if (!card || !current) return
     let basePrompt: Json | null = current.magic_prompt_json
     if (promptDirty) {
@@ -242,6 +265,7 @@ function CardView({ cardId }: { cardId: string }) {
           rejection_note: note,
           instruction: instruction || null,
           magic_prompt_json: prompt,
+          platform,
         })
       },
       (child) => {
@@ -253,14 +277,14 @@ function CardView({ cardId }: { cardId: string }) {
     )
   }
 
-  function onEditRegion({ rect, natural, instruction }: EditRegionSubmit) {
+  function onEditRegion({ rect, natural, instruction, platform }: EditRegionSubmit) {
     if (!card || !current) return
     void run(
       'edit_region',
       async () => {
         const blob = await buildMaskPng(natural.w, natural.h, rect)
         const maskPath = await uploadMask(card.id, current.id, blob)
-        return requestEdit(current.id, 'edit_region', { mask_path: maskPath, instruction })
+        return requestEdit(current.id, 'edit_region', { mask_path: maskPath, instruction, platform })
       },
       (child) => {
         generations.upsertLocal(child)
@@ -271,7 +295,7 @@ function CardView({ cardId }: { cardId: string }) {
     )
   }
 
-  function onRegenerate({ reason, note }: RegenerateSubmit) {
+  function onRegenerate({ reason, note, platform }: RegenerateSubmit) {
     if (!current) return
     let prompt: Json | null = null
     if (promptDirty) {
@@ -288,7 +312,10 @@ function CardView({ cardId }: { cardId: string }) {
         requestEdit(current.id, 'regenerate', {
           rejection_reason: reason,
           rejection_note: note || null,
+          // The note also steers the next attempt (prompt-engine renders it as the REGENERATION instruction).
+          instruction: note || null,
           magic_prompt_json: prompt,
+          platform,
         }),
       (child) => {
         generations.upsertLocal(child)
@@ -520,7 +547,9 @@ function CardView({ cardId }: { cardId: string }) {
           styleCard={styleCardState.styleCard}
           price={price}
           model={settings?.generation_model ?? null}
+          openRouterModel={openRouterImageModel}
           resolution={settings?.generation_resolution ?? null}
+          defaultPlatform={defaultPlatform}
           busy={busy === 'approve'}
           onClose={closeDialog}
           onConfirm={onApprove}
@@ -530,12 +559,19 @@ function CardView({ cardId }: { cardId: string }) {
         <AcceptDialog generation={current} busy={busy === 'accept'} onClose={closeDialog} onConfirm={onAccept} />
       )}
       {dialog === 'edit_text' && current && (
-        <EditTextDialog lines={parsePrintText(card.print_text)} busy={busy === 'edit_text'} onClose={closeDialog} onSubmit={onEditText} />
+        <EditTextDialog
+          lines={parsePrintText(card.print_text)}
+          defaultPlatform={defaultPlatform}
+          busy={busy === 'edit_text'}
+          onClose={closeDialog}
+          onSubmit={onEditText}
+        />
       )}
       {dialog === 'edit_region' && current && (
         <EditRegionDialog
           imageUrl={currentImage.url}
           imageBroken={currentImage.broken}
+          defaultPlatform={defaultPlatform}
           busy={busy === 'edit_region'}
           onClose={closeDialog}
           onSubmit={onEditRegion}
@@ -547,6 +583,7 @@ function CardView({ cardId }: { cardId: string }) {
           onSectionsChange={setSections}
           onResetSections={resetSections}
           promptDirty={promptDirty}
+          defaultPlatform={defaultPlatform}
           busy={busy === 'regenerate'}
           onClose={closeDialog}
           onSubmit={onRegenerate}

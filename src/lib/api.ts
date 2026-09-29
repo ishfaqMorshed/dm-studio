@@ -7,6 +7,7 @@ import type { PostgrestError } from '@supabase/supabase-js'
 import { REFS_BUCKET, storagePaths, supabase } from './supabase'
 import type { Json } from './database.types'
 import type {
+  AiPlatform,
   Card,
   CardStage,
   ClientReference,
@@ -35,9 +36,15 @@ function unwrap<T>(res: { data: T | null; error: PostgrestError | null }, what: 
 
 /* ---------- Staff RPCs ---------- */
 
-/** review → approved. Backend refuses without a locked Style Card or while paused. */
-export async function approveCard(cardId: string): Promise<Card> {
-  return unwrap(await supabase.rpc('approve_card', { p_card_id: cardId }), 'Approve')
+/**
+ * review → approved. Backend refuses without a locked Style Card or while paused.
+ * `platform` is stored on the first generation; omit it to follow settings.ai_platform.
+ */
+export async function approveCard(cardId: string, platform?: AiPlatform | null): Promise<Card> {
+  return unwrap(
+    await supabase.rpc('approve_card', { p_card_id: cardId, ...(platform ? { p_platform: platform } : {}) }),
+    'Approve',
+  )
 }
 
 export interface RequestEditPayload {
@@ -49,6 +56,8 @@ export interface RequestEditPayload {
   magic_prompt_json?: Json | null
   rejection_reason?: RejectionReason | null
   rejection_note?: string | null
+  /** AI platform for the child generation; omit to follow settings.ai_platform. */
+  platform?: AiPlatform | null
 }
 
 /**
@@ -56,6 +65,7 @@ export interface RequestEditPayload {
  * kind edit_text: {old_text, new_text, instruction}
  * kind edit_region: {mask_path, instruction}
  * kind regenerate: {rejection_reason, rejection_note, magic_prompt_json}
+ * Every kind also takes `platform` ('kie' | 'openrouter' | 'auto'), stored on the child.
  */
 export async function requestEdit(
   generationId: string,

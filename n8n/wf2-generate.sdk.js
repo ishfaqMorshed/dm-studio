@@ -387,7 +387,7 @@ const getGeneration = node({
           { name: 'Accept', value: 'application/vnd.pgrst.object+json' }
         ]
       },
-      options: { timeout: 15000 }
+      options: { timeout: 15000, response: { response: { responseFormat: 'json' } } }
     },
     retryOnFail: true,
     maxTries: 2,
@@ -749,8 +749,8 @@ const saveImagePath = node({
       },
       sendBody: true,
       specifyBody: 'json',
-      jsonBody: expr("{{ JSON.stringify({ image_path: $('Config').first().json.imagePath, vendor_job_id: $('Create Task').first().json.data.taskId, vendor: 'kie', reference_urls: $('List Input Paths').all().map((i) => i.json) }) }}"),
-      options: { timeout: 15000 }
+      jsonBody: expr("{{ JSON.stringify({ image_path: $('Config').first().json.imagePath, reference_urls: $('List Input Paths').all().map((i) => i.json) }) }}"),
+      options: { timeout: 15000, response: { response: { responseFormat: 'json' } } }
     },
     retryOnFail: true,
     maxTries: 3,
@@ -824,7 +824,7 @@ const buildQcRequest = node({
   config: {
     name: 'Build QC Request',
     parameters: {
-      jsCode: "const cfg = $('Config').first().json;\nconst gen = $('Get Generation').first().json;\nconst rows = $input.all().map((i) => i.json);\nconst tpl = rows.find((r) => r.slug === 'qc_prompt');\nif (!tpl || !tpl.body) throw new Error('prompt_templates: no active qc_prompt template');\nconst src = (gen.brief_snapshot && Array.isArray(gen.brief_snapshot.print_text)) ? gen.brief_snapshot.print_text : ((gen.cards && gen.cards.print_text) || []);\nconst lines = src.map((t) => String((t && t.text) || '').trim()).filter(Boolean);\nconst styleCard = gen.style_card_snapshot || {};\nconst imageUrl = $('Load Config').first().json.sbUrl + '/storage/v1' + String($('Sign Result').first().json.signedURL || '');\nconst vars = { EXPECTED_TEXT: lines.join('\\n'), TEXT_LINES: lines.length ? lines.join('\\n') : 'NONE', TEXT_LINES_JSON: JSON.stringify(lines), STYLE_CARD_JSON: JSON.stringify(styleCard), PALETTE_JSON: JSON.stringify(styleCard.palette || []), GARMENT_COLOR: (gen.cards && gen.cards.garment_color) || '' };\nlet text = String(tpl.body).replace(/\\{\\{\\s*([A-Z_]+)\\s*\\}\\}/g, (m, k) => (k in vars ? vars[k] : m));\n// EXTRACT.md section 3.8: the template wraps {{EXPECTED_TEXT}} in triple quotes itself; with no text the WHOLE line is replaced\nif (!lines.length) text = text.replace(/EXPECTED ON-DESIGN TEXT: \"\"\"[\\s\\S]*?\"\"\"/, 'EXPECTED ON-DESIGN TEXT: (none - the image must contain NO text at all)');\nif (!/STYLE_CARD_JSON|PALETTE_JSON/.test(tpl.body)) text += '\\n\\nSTYLE CARD (locked JSON for this client - report any palette or style violation):\\n' + vars.STYLE_CARD_JSON;\nif (!/EXPECTED_TEXT|TEXT_LINES/.test(tpl.body)) text += '\\n\\nEXACT TEXT LINES (each must appear verbatim, exactly once):\\n' + vars.TEXT_LINES;\nconst body = { messages: [{ role: 'user', content: [{ type: 'text', text }, { type: 'image_url', image_url: { url: imageUrl } }] }], response_format: { type: 'json_object' } };\nreturn { json: { body, text_lines: lines, expected_text: lines.join('\\n'), image_url: imageUrl, template_version: tpl.version } };"
+      jsCode: "const cfg = $('Config').first().json;\nconst gen = $('Get Generation').first().json;\nconst rows = $input.all().map((i) => i.json);\nconst tpl = rows.find((r) => r.slug === 'qc_prompt');\nif (!tpl || !tpl.body) throw new Error('no active qc_prompt template in prompt_templates');\nconst peText = ((($('Prompt Engine').first().json || {}).magic_prompt_json || {}).text || {}).lines;\n// QC checks exactly the text the prompt asked for (the engine's text slot); the brief snapshot is the fallback\nconst src = Array.isArray(peText) ? peText : ((gen.brief_snapshot && Array.isArray(gen.brief_snapshot.print_text)) ? gen.brief_snapshot.print_text : ((gen.cards && gen.cards.print_text) || []));\nconst lines = src.map((t) => String((t && t.text) || '').trim()).filter(Boolean);\nconst styleCard = gen.style_card_snapshot || {};\nconst imageUrl = $('Load Config').first().json.sbUrl + '/storage/v1' + String($('Sign Result').first().json.signedURL || '');\nconst vars = { EXPECTED_TEXT: lines.join('\\n'), TEXT_LINES: lines.length ? lines.join('\\n') : 'NONE', TEXT_LINES_JSON: JSON.stringify(lines), STYLE_CARD_JSON: JSON.stringify(styleCard), PALETTE_JSON: JSON.stringify(styleCard.palette || []), GARMENT_COLOR: (gen.cards && gen.cards.garment_color) || '' };\nlet text = String(tpl.body).replace(/\\{\\{\\s*([A-Z_]+)\\s*\\}\\}/g, (m, k) => (k in vars ? vars[k] : m));\n// EXTRACT.md section 3.8: the template wraps {{EXPECTED_TEXT}} in triple quotes itself; with no text the WHOLE line is replaced\nif (!lines.length) text = text.replace(/EXPECTED ON-DESIGN TEXT: \"\"\"[\\s\\S]*?\"\"\"/, 'EXPECTED ON-DESIGN TEXT: (none - the image must contain NO text at all)');\nif (!/STYLE_CARD_JSON|PALETTE_JSON/.test(tpl.body)) text += '\\n\\nSTYLE CARD (locked JSON for this client - report any palette or style violation):\\n' + vars.STYLE_CARD_JSON;\nif (!/EXPECTED_TEXT|TEXT_LINES/.test(tpl.body)) text += '\\n\\nEXACT TEXT LINES (each must appear verbatim, exactly once):\\n' + vars.TEXT_LINES;\nconst body = { messages: [{ role: 'user', content: [{ type: 'text', text }, { type: 'image_url', image_url: { url: imageUrl } }] }], response_format: { type: 'json_object' } };\nreturn { json: { body, text_lines: lines, expected_text: lines.join('\\n'), image_url: imageUrl, template_version: tpl.version } };"
     },
     onError: 'continueErrorOutput',
     position: [4560, 208]
@@ -839,7 +839,7 @@ const visionQc = node({
     name: 'Vision QC',
     parameters: {
       method: 'POST',
-      url: kieBaseUrl + '/gemini-3.1-pro/v1/chat/completions',
+      url: expr("https://api.kie.ai/{{ $('Prompt Engine').first().json.vision_model || 'gemini-3.1-pro' }}/v1/chat/completions"),
       authentication: 'genericCredentialType',
       genericAuthType: 'httpHeaderAuth',
       sendHeaders: true,
@@ -963,7 +963,7 @@ const buildCorrectivePrompt = node({
     name: 'Build Corrective Prompt',
     parameters: {
       mode: 'runOnceForEachItem',
-      jsCode: "const orig = $('Build Create Task').first().json;\nconst judge = $('QC Judge').first().json;\nconst rep = judge.qc_report || judge;\nconst qc = $('Build QC Request').first().json;\nconst rows = $('Get QC Templates').all().map((i) => i.json);\nconst tpl = rows.find((r) => r.slug === 'corrective_suffix');\nif (!tpl || !tpl.body) throw new Error('prompt_templates: no active corrective_suffix template');\nconst issues = (Array.isArray(rep.checks) ? rep.checks.filter((c) => c && c.pass === false).map((c) => c.note || c.name) : []).concat(Array.isArray(rep.style_violations) ? rep.style_violations : []).filter(Boolean);\nconst expected = (qc.text_lines || []).join('\\n');\nconst spaced = expected.split('').join(' ');\nconst vars = { CORRECTIVE_INSTRUCTION: String(rep.corrective_instruction || judge.corrective_instruction || ''), ISSUES: issues.join('; ') || 'render the text perfectly, keep the background one flat solid grey, remove all shadows', EXPECTED_TEXT: expected, EXPECTED_TEXT_SPACED: spaced, EXPECTED_TEXT_SPELLED: spaced, TEXT_LINES: expected || 'NONE' };\n// trim(): the seeded suffix starts with a blank line; exactly one blank line must separate the master prompt from CRITICAL CORRECTIONS\nlet suffix = String(tpl.body).replace(/\\{\\{\\s*([A-Z_]+)\\s*\\}\\}/g, (m, k) => (k in vars ? vars[k] : m)).trim();\n// EXTRACT.md section 3.9 no-text variant: replace the tail from '. The ONLY text in the image must read exactly:'\nif (!expected) suffix = suffix.replace(/\\. The ONLY text in the image must read exactly:[\\s\\S]*$/, '. The image must contain NO text at all - no words, letters, watermarks or signatures.');\nconst body = JSON.parse(JSON.stringify(orig.body));\nbody.input.prompt = (String(body.input.prompt || '').trim() + '\\n\\n' + suffix).slice(0, 20000);\nreturn { json: { body, attempt: 2, corrective_suffix: suffix, input_roles: orig.input_roles, text_lines: qc.text_lines || [] } };"
+      jsCode: "const orig = $('Build Create Task').first().json;\nconst judge = $('QC Judge').first().json;\nconst rep = judge.qc_report || judge;\nconst qc = $('Build QC Request').first().json;\nconst rows = $('Get QC Templates').all().map((i) => i.json);\nconst tpl = rows.find((r) => r.slug === 'corrective_suffix');\nif (!tpl || !tpl.body) throw new Error('no active corrective_suffix template in prompt_templates');\nconst issues = (Array.isArray(rep.checks) ? rep.checks.filter((c) => c && c.pass === false).map((c) => c.note || c.name) : []).concat(Array.isArray(rep.style_violations) ? rep.style_violations : []).filter(Boolean);\nconst expected = (qc.text_lines || []).join('\\n');\nconst spaced = expected.split('').join(' ');\nconst vars = { CORRECTIVE_INSTRUCTION: String(rep.corrective_instruction || judge.corrective_instruction || ''), ISSUES: issues.join('; ') || 'render the text perfectly, keep the background one flat solid grey, remove all shadows', EXPECTED_TEXT: expected, EXPECTED_TEXT_SPACED: spaced, EXPECTED_TEXT_SPELLED: spaced, TEXT_LINES: expected || 'NONE' };\n// trim(): the seeded suffix starts with a blank line; exactly one blank line must separate the master prompt from CRITICAL CORRECTIONS\nlet suffix = String(tpl.body).replace(/\\{\\{\\s*([A-Z_]+)\\s*\\}\\}/g, (m, k) => (k in vars ? vars[k] : m)).trim();\n// EXTRACT.md section 3.9 no-text variant: replace the tail from '. The ONLY text in the image must read exactly:'\nif (!expected) suffix = suffix.replace(/\\. The ONLY text in the image must read exactly:[\\s\\S]*$/, '. The image must contain NO text at all - no words, letters, watermarks or signatures.');\nconst body = JSON.parse(JSON.stringify(orig.body));\nbody.input.prompt = (String(body.input.prompt || '').trim() + '\\n\\n' + suffix).slice(0, 20000);\nreturn { json: { body, attempt: 2, corrective_suffix: suffix, input_roles: orig.input_roles, text_lines: qc.text_lines || [] } };"
     },
     onError: 'continueErrorOutput',
     position: [6000, 400]
@@ -1073,7 +1073,7 @@ const failMessage = node({
     name: 'Fail Message',
     parameters: {
       mode: 'runOnceForEachItem',
-      jsCode: "const j = $json || {};\nconst cfg = $('Config').first().json;\nconst text = (v) => (v === undefined || v === null || v === '' ? '' : (typeof v === 'object' ? String(v.message || v.description || JSON.stringify(v)) : String(v)));\nconst vendor = (typeof j.code === 'number' && j.code !== 200) ? ('Kie ' + j.code + ': ' + text(j.msg)) : '';\nconst message = (text(j.error) || vendor || text(j.failMsg) || text(j.message) || text(j.detail) || text(j.hint) || 'generation failed').slice(0, 500);\nreturn { json: { message, generationId: cfg.generationId, cardId: cfg.cardId } };"
+      jsCode: "const j = $json || {};\nconst cfg = $('Config').first().json;\nconst text = (v) => (v === undefined || v === null || v === '' ? '' : (typeof v === 'object' ? String(v.message || v.description || JSON.stringify(v)) : String(v)));\nconst vendor = (typeof j.code === 'number' && j.code !== 200) ? ('Kie ' + j.code + ': ' + text(j.msg)) : '';\nlet message = (text(j.error) || vendor || text(j.failMsg) || text(j.message) || text(j.detail) || text(j.hint) || 'generation failed').slice(0, 500);\nconst status = (j.error && typeof j.error === 'object' && (j.error.status || j.error.httpCode)) || '';\nconst inner = message.match(/message\\\\?\":\\\\?\"([^\"\\\\]+)/);\nif (inner) message = ($('OpenRouter Image').isExecuted ? 'OpenRouter: ' : '') + inner[1] + (status ? ' (HTTP ' + status + ')' : '');\nif ((String(status) === '401' || String(status) === '403') && $('OpenRouter Image').isExecuted) message = 'OpenRouter API key missing or invalid - add it in n8n WF-0 Studio Config (OpenRouter Config node)';\nreturn { json: { message, generationId: cfg.generationId, cardId: cfg.cardId } };"
     },
     position: [3360, 800]
   },
@@ -1143,6 +1143,200 @@ const cardFailed = node({
   output: [{ ...sampleCardEmbedded, stage: 'failed', last_error: 'Poll failed for task ' + sampleTaskId + ': generation failed' }]
 });
 
+// ---- AI platform: Switch (Kie / OpenRouter) + Auto fallback when Kie reports it is down ----
+const imagePlatform = switchCase({
+  version: 3.2,
+  config: {
+    name: 'Image Platform?',
+    parameters: {
+      rules: {
+        values: [
+          { outputKey: 'Kie', renameOutput: true, conditions: { options: looseOptions, conditions: [{ leftValue: expr("{{ $('Prompt Engine').first().json.platform || 'kie' }}"), operator: { type: 'string', operation: 'notEquals' }, rightValue: 'openrouter' }], combinator: 'and' } },
+          { outputKey: 'OpenRouter', renameOutput: true, conditions: { options: looseOptions, conditions: [{ leftValue: expr("{{ $('Prompt Engine').first().json.platform || 'kie' }}"), operator: { type: 'string', operation: 'equals' }, rightValue: 'openrouter' }], combinator: 'and' } }
+        ]
+      },
+      options: {}
+    },
+    position: [2040, 400]
+  },
+  output: [{}]
+});
+
+const kieImageDown = ifElse({
+  version: 2.2,
+  config: {
+    name: 'Kie Image Down?',
+    parameters: {
+      conditions: {
+        options: looseOptions,
+        conditions: [
+          { id: 'a1', leftValue: expr("{{ $('Prompt Engine').first().json.platform || 'kie' }}"), operator: { type: 'string', operation: 'equals' }, rightValue: 'auto' }
+        ],
+        combinator: 'and'
+      },
+      options: {}
+    },
+    position: [2520, 608]
+  },
+  output: [{}]
+});
+
+const buildOrImage = node({
+  type: 'n8n-nodes-base.code',
+  version: 2,
+  config: {
+    name: 'Build OpenRouter Image',
+    parameters: {
+      jsCode: "const pe = $('Prompt Engine').first().json;\nconst src = ($json.body && $json.body.input) ? $json.body : ($('Build Corrective Prompt').isExecuted ? $('Build Corrective Prompt').last().json.body : $('Build Create Task').first().json.body);\nif (!src || !src.input || !src.input.prompt) throw new Error('no image request to send to OpenRouter');\nconst models = pe.openrouter_models || {};\nconst refs = (src.input.input_urls || []).map((url) => ({ type: 'image_url', image_url: { url } }));\nconst body = { model: models.image || 'openai/gpt-image-2.5-sunburst', prompt: String(src.input.prompt).slice(0, 20000), n: 1, aspect_ratio: src.input.aspect_ratio || pe.aspect_ratio || '1:1', resolution: src.input.resolution || pe.resolution || '2K', output_format: 'png', background: 'opaque' };\nif (refs.length) body.input_references = refs;\nreturn { json: { body } };"
+    },
+    onError: 'continueErrorOutput',
+    position: [2280, 16]
+  },
+  output: [{}]
+});
+
+const markOpenRouter = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
+  config: {
+    name: 'Mark OpenRouter',
+    parameters: {
+      method: 'PATCH',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/generations?id=eq.{{ $('Config').first().json.generationId }}"),
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
+          { name: 'Content-Type', value: 'application/json' },
+          { name: 'Prefer', value: 'return=minimal' }
+        ]
+      },
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: expr("{{ JSON.stringify({ vendor: 'openrouter', model: $('Build OpenRouter Image').first().json.body.model, vendor_job_id: null, status: 'working' }) }}"),
+      options: { timeout: 15000 }
+    },
+    onError: 'continueRegularOutput',
+    alwaysOutputData: true,
+    position: [2520, 16]
+  },
+  output: [{}]
+});
+
+const orImage = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
+  config: {
+    name: 'OpenRouter Image',
+    parameters: {
+      method: 'POST',
+      url: 'https://openrouter.ai/api/v1/images',
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'Authorization', value: expr("Bearer {{ $('Load Config').first().json.openrouterKey }}") },
+          { name: 'Content-Type', value: 'application/json' },
+          { name: 'X-Title', value: 'DM Studio' }
+        ]
+      },
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: expr("{{ JSON.stringify($('Build OpenRouter Image').first().json.body) }}"),
+      options: { timeout: 300000 }
+    },
+    retryOnFail: true,
+    maxTries: 2,
+    waitBetweenTries: 5000,
+    onError: 'continueErrorOutput',
+    position: [2760, 16]
+  },
+  output: [{ created: 1790580000, data: [{ b64_json: 'iVBORw0KGgo=', media_type: 'image/png' }], usage: { cost: 0.04 } }]
+});
+
+const decodeOrImage = node({
+  type: 'n8n-nodes-base.code',
+  version: 2,
+  config: {
+    name: 'Decode OpenRouter Image',
+    parameters: {
+      jsCode: "const d = (Array.isArray($json.data) && $json.data[0]) || {};\nconst b64 = String(d.b64_json || '').replace(/^data:[^,]*,/, '');\nif (!b64) { const e = (typeof $json.error === 'object' && $json.error) || {}; throw new Error('OpenRouter returned no image - ' + String(e.message || (typeof $json.error === 'string' ? $json.error : '') || JSON.stringify($json).slice(0, 200)).replace(/:/g, '=')); }\nconst mime = d.media_type || 'image/png';\nconst ext = (mime.split('/')[1] || 'png').replace('jpeg', 'jpg');\nreturn { json: { vendor: 'openrouter', media_type: mime, cost_usd: ($json.usage && $json.usage.cost) || null }, binary: { data: { data: b64, mimeType: mime, fileName: 'openrouter.' + ext, fileExtension: ext } } };"
+    },
+    onError: 'continueErrorOutput',
+    position: [3000, 16]
+  },
+  output: [{ vendor: 'openrouter', media_type: 'image/png', cost_usd: 0.04 }]
+});
+
+const qcPlatform = switchCase({
+  version: 3.2,
+  config: {
+    name: 'QC Platform?',
+    parameters: {
+      rules: {
+        values: [
+          { outputKey: 'Kie', renameOutput: true, conditions: { options: looseOptions, conditions: [{ leftValue: expr("{{ $('Prompt Engine').first().json.platform || 'kie' }}"), operator: { type: 'string', operation: 'notEquals' }, rightValue: 'openrouter' }], combinator: 'and' } },
+          { outputKey: 'OpenRouter', renameOutput: true, conditions: { options: looseOptions, conditions: [{ leftValue: expr("{{ $('Prompt Engine').first().json.platform || 'kie' }}"), operator: { type: 'string', operation: 'equals' }, rightValue: 'openrouter' }], combinator: 'and' } }
+        ]
+      },
+      options: {}
+    },
+    position: [4680, 400]
+  },
+  output: [{}]
+});
+
+const kieQcDown = ifElse({
+  version: 2.2,
+  config: {
+    name: 'Kie QC Down?',
+    parameters: {
+      conditions: {
+        options: looseOptions,
+        conditions: [
+          { id: 'a1', leftValue: expr("{{ $('Prompt Engine').first().json.platform || 'kie' }}"), operator: { type: 'string', operation: 'equals' }, rightValue: 'auto' },
+          { id: 'a2', leftValue: expr("{{ $json.choices ? 'up' : 'down' }}"), operator: { type: 'string', operation: 'equals' }, rightValue: 'down' }
+        ],
+        combinator: 'and'
+      },
+      options: {}
+    },
+    position: [4920, 400]
+  },
+  output: [{}]
+});
+
+const orVisionQc = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
+  config: {
+    name: 'OpenRouter QC',
+    parameters: {
+      method: 'POST',
+      url: 'https://openrouter.ai/api/v1/chat/completions',
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'Authorization', value: expr("Bearer {{ $('Load Config').first().json.openrouterKey }}") },
+          { name: 'Content-Type', value: 'application/json' },
+          { name: 'X-Title', value: 'DM Studio' }
+        ]
+      },
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: expr("{{ JSON.stringify(Object.assign({}, $('Build QC Request').first().json.body, { model: ($('Prompt Engine').first().json.openrouter_models || {}).vision || 'google/gemini-3.1-pro-preview' })) }}"),
+      options: { timeout: 180000 }
+    },
+    retryOnFail: true,
+    maxTries: 2,
+    waitBetweenTries: 5000,
+    onError: 'continueRegularOutput',
+    alwaysOutputData: true,
+    position: [4920, 16]
+  },
+  output: [{ id: 'gen-or-sample', model: 'google/gemini-3.1-pro-preview', choices: [{ index: 0, message: { role: 'assistant', content: '{}' }, finish_reason: 'stop' }] }]
+});
+
 export default workflow('dm-studio-wf2-generate', 'DM Studio · WF-2 Generate')
   .add(generateNote)
   .add(generateWebhook)
@@ -1164,24 +1358,34 @@ export default workflow('dm-studio-wf2-generate', 'DM Studio · WF-2 Generate')
   .to(listInputPaths.onError(failMessage))
   .to(signInput.onError(failMessage))
   .to(buildCreateTask.onError(failMessage))
-  .to(createTask.onError(failMessage))
-  .to(taskCreated.onTrue(saveVendorJob).onFalse(failMessage))
+  .to(imagePlatform.onCase(0, createTask.onError(kieImageDown)).onCase(1, buildOrImage))
+  .add(createTask)
+  .to(taskCreated.onTrue(saveVendorJob).onFalse(kieImageDown))
   .add(saveVendorJob)
   .to(waitForCallback)
-  .to(pollUntilDone.onError(failMessage))
+  .to(pollUntilDone.onError(kieImageDown))
   .to(downloadResult.onError(failMessage))
   .to(uploadToGens.onError(failMessage))
   .to(saveImagePath.onError(failMessage))
   .to(signResult.onError(failMessage))
   .to(getQcTemplates.onError(failMessage))
   .to(buildQcRequest.onError(failMessage))
-  .to(visionQc)
+  .to(qcPlatform.onCase(0, visionQc).onCase(1, orVisionQc))
+  .add(visionQc)
+  .to(kieQcDown.onTrue(orVisionQc).onFalse(qcJudge))
+  .add(orVisionQc)
   .to(qcJudge.onError(failMessage))
   .to(decideRegen)
   .to(regenIf.onTrue(markAttempt2).onFalse(generationDone))
   .add(markAttempt2)
   .to(buildCorrectivePrompt.onError(failMessage))
-  .to(createTask)
+  .to(imagePlatform)
+  .add(kieImageDown.onTrue(buildOrImage).onFalse(failMessage))
+  .add(buildOrImage.onError(failMessage))
+  .to(markOpenRouter)
+  .to(orImage.onError(failMessage))
+  .to(decodeOrImage.onError(failMessage))
+  .to(uploadToGens)
   .add(generationDone)
   .to(setCurrentGeneration)
   .to(cardNeedsReview)

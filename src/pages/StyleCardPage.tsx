@@ -247,8 +247,9 @@ export default function StyleCardPage() {
             <div className="px-6 py-16 text-center">
               <p className="text-sm font-medium">No Style Card yet</p>
               <p className="mx-auto mt-1 max-w-sm text-xs text-neutral-500">
-                A draft is created from the client's first card automatically. To write one by hand now, start the
-                first version, fill in the form, then Lock it.
+                Draft one from the reference library on the client panel ("Draft Style Card from library"). Without a
+                library, the client's first card drafts one automatically. To write one by hand now, start the first
+                version, fill in the form, then Lock it.
               </p>
               <button
                 type="button"

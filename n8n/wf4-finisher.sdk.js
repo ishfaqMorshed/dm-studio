@@ -420,7 +420,7 @@ const buildUpscaleReq = node({
     name: 'Build Upscale Req',
     parameters: {
       mode: 'runOnceForEachItem',
-      jsCode: "const cfg = $('Load Config').first().json;\nconst initUrl = ($json.data && ($json.data.url || ($json.data.image && $json.data.image.url))) || '';\nif (!initUrl) throw new Error('imgbb did not return a url: ' + JSON.stringify($json).slice(0, 200));\nconst body = { key: cfg.mlKey, init_image: initUrl, model_id: cfg.upscaleModel || 'ultra_resolution', scale: Number(cfg.upscaleScale) || 4, face_enhance: 'false', webhook: null, track_id: null };\nreturn { json: { body, initUrl, startedAt: Date.now() } };"
+      jsCode: "const cfg = $('Load Config').first().json;\nconst initUrl = ($json.data && ($json.data.url || ($json.data.image && $json.data.image.url))) || '';\nif (!initUrl) throw new Error('imgbb did not return a url - ' + JSON.stringify($json).slice(0, 200).replace(/:/g, '='));\nconst body = { key: cfg.mlKey, init_image: initUrl, model_id: cfg.upscaleModel || 'ultra_resolution', scale: Number(cfg.upscaleScale) || 4, face_enhance: 'false', webhook: null, track_id: null };\nreturn { json: { body, initUrl, startedAt: Date.now() } };"
     },
     onError: 'continueErrorOutput',
     position: [1920, 208]

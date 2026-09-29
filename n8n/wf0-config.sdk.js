@@ -58,7 +58,29 @@ const studioConfig = node({
   output: [{ sbUrl: supabaseUrl, anonKey: 'sb_publishable_redacted', n8nBaseUrl: n8nBaseUrl, studioSecret: 'redacted', ideogramKey: 'redacted', imgbbKey: 'redacted', mlKey: 'redacted', upscaleModel: 'ultra_resolution', upscaleScale: 4 }]
 });
 
+// ---- AI platform: Switch (Kie / OpenRouter) + Auto fallback when Kie reports it is down ----
+const openRouterConfig = node({
+  type: 'n8n-nodes-base.set',
+  version: 3.4,
+  config: {
+    name: 'OpenRouter Config',
+    parameters: {
+      mode: 'manual',
+      assignments: {
+        assignments: [
+          { id: 'o1', name: 'openrouterKey', type: 'string', value: placeholder('Paste your OpenRouter API key (openrouter.ai/keys) - used when the AI platform is OpenRouter or Auto') }
+        ]
+      },
+      includeOtherFields: true,
+      options: {}
+    },
+    position: [480, 304]
+  },
+  output: [{ sbUrl: supabaseUrl, anonKey: 'sb_publishable_redacted', n8nBaseUrl: n8nBaseUrl, studioSecret: 'redacted', ideogramKey: 'redacted', imgbbKey: 'redacted', mlKey: 'redacted', upscaleModel: 'ultra_resolution', upscaleScale: 4, openrouterKey: 'redacted' }]
+});
+
 export default workflow('dm-studio-wf0-config', 'DM Studio · WF-0 Studio Config')
   .add(configNote)
   .add(configTrigger)
-  .to(studioConfig);
+  .to(studioConfig)
+  .to(openRouterConfig);

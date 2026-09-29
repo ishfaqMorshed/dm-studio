@@ -73,6 +73,7 @@ type Generation = {
   attempt: number; magic_prompt_json: MagicPrompt | null; style_card_id: string | null; style_card_version: number | null;
   style_card_snapshot: StyleCard | null; brief_snapshot: Record<string, unknown> | null; edit_instruction: string | null;
   old_text: string | null; new_text: string | null; mask_path: string | null; image_path: string | null; aspect_ratio: string | null;
+  platform: Platform | null;
 };
 type Card = {
   id: string; client_id: string; brief_text: string | null; print_text: TextLine[] | null; reference_paths: string[] | null;
@@ -80,7 +81,16 @@ type Card = {
   avoid_notes: string | null; similarity_tier: number | null; brief_snapshot: Record<string, unknown> | null;
 };
 type Client = { id: string; name: string; default_similarity_tier: number | null; model_override: string | null };
-type Settings = { generation_model: string; generation_resolution: string };
+type Platform = "kie" | "openrouter" | "auto";
+type OpenRouterModels = { vision?: string; image?: string; edit?: string; text?: string };
+type Settings = {
+  generation_model: string; generation_resolution: string; vision_model: string | null;
+  ai_platform: Platform | null; openrouter_models: OpenRouterModels | null;
+};
+const OPENROUTER_DEFAULTS: Required<OpenRouterModels> = {
+  vision: "google/gemini-3.1-pro-preview", image: "openai/gpt-image-2.5-sunburst", edit: "google/gemini-2.5-flash-image",
+  text: "anthropic/claude-sonnet-4.6",
+};
 type StyleCardRow = { id: string | null; version: number | null; json: StyleCard | null; status?: string };
 type Lesson = { client_id: string | null; category: string | null; rule: string };
 type Template = { slug: string; version: number; body: string };
@@ -121,12 +131,12 @@ async function handle(req: Request): Promise<Response> {
   // --- loads ---
   const gen = one(await pg<Generation[]>(ctx,
     "/generations?id=eq." + generationId +
-    "&select=id,card_id,parent_generation_id,kind,attempt,magic_prompt_json,style_card_id,style_card_version,style_card_snapshot,brief_snapshot,edit_instruction,old_text,new_text,mask_path,image_path,aspect_ratio"));
+    "&select=id,card_id,parent_generation_id,kind,attempt,magic_prompt_json,style_card_id,style_card_version,style_card_snapshot,brief_snapshot,edit_instruction,old_text,new_text,mask_path,image_path,aspect_ratio,platform"));
   if (!gen) return json(404, { error: "generation not found: " + generationId });
 
   const [card, settings, templates] = await Promise.all([
     pg<Card[]>(ctx, "/cards?id=eq." + gen.card_id + "&select=id,client_id,brief_text,print_text,reference_paths,reference_analysis,garment_color,placement,avoid_notes,similarity_tier,brief_snapshot").then(one),
-    pg<Settings[]>(ctx, "/settings?id=eq.1&select=generation_model,generation_resolution").then(one),
+    pg<Settings[]>(ctx, "/settings?id=eq.1&select=generation_model,generation_resolution,vision_model,ai_platform,openrouter_models").then(one),
     pg<Template[]>(ctx, "/prompt_templates?active=eq.true&select=slug,version,body&order=version.desc"),
   ]);
   if (!card) return json(422, { error: "card not found for generation: " + gen.card_id });
@@ -140,7 +150,7 @@ async function handle(req: Request): Promise<Response> {
   const [client, parent, lessonsRaw] = await Promise.all([
     pg<Client[]>(ctx, "/clients?id=eq." + card.client_id + "&select=id,name,default_similarity_tier,model_override").then(one),
     gen.parent_generation_id
-      ? pg<Generation[]>(ctx, "/generations?id=eq." + gen.parent_generation_id + "&select=id,card_id,parent_generation_id,kind,attempt,magic_prompt_json,style_card_id,style_card_version,style_card_snapshot,brief_snapshot,edit_instruction,old_text,new_text,mask_path,image_path,aspect_ratio").then(one)
+      ? pg<Generation[]>(ctx, "/generations?id=eq." + gen.parent_generation_id + "&select=id,card_id,parent_generation_id,kind,attempt,magic_prompt_json,style_card_id,style_card_version,style_card_snapshot,brief_snapshot,edit_instruction,old_text,new_text,mask_path,image_path,aspect_ratio,platform").then(one)
       : Promise.resolve(null),
     pg<Lesson[]>(ctx, "/design_lessons?active=eq.true&or=(client_id.is.null,client_id.eq." + card.client_id + ")&select=client_id,category,rule&order=created_at.asc"),
   ]);
@@ -193,6 +203,9 @@ async function handle(req: Request): Promise<Response> {
       new_text: gen.new_text ?? "",
       edit_rule: pickEditRule(tpl.tier_rules.body),
     });
+    // A regenerate works from the references (not the previous image), so it never inherits the TARGETED EDIT rule a
+    // parent edit_text / edit_region carried - it gets the card's similarity-tier rule back.
+    if (kind === "regenerate") magic.similarity_tier = { tier, rule: pickTierRule(tpl.tier_rules.body, tier) };
     magic.reference_reading.image_roles = imageRoleLabels(plan);
   } else {
     if (!card.reference_analysis || !Object.keys(card.reference_analysis).length) {
@@ -210,6 +223,12 @@ async function handle(req: Request): Promise<Response> {
       .map((l) => (l.category ? l.category + ": " : "") + l.rule.trim())
       .filter((l) => l.length > 2);
     const sc = renderStyleCard(styleCard.json ?? {});
+    // Reference text that IS the requested print text (clients often send a mockup of the design they want) must not
+    // be listed under "do NOT reproduce it" - that contradicts the exact-text block. Match ignoring case, spacing, punctuation.
+    const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+    const wanted = new Set(printText.map((l) => norm(String(l?.text ?? ""))).filter(Boolean));
+    const reading = readReference(card.reference_analysis);
+    reading.text_detected = reading.text_detected.filter((t) => !wanted.has(norm(t)));
     const printRules = tpl.print_rules?.body?.trim() || [tpl.background_rule.body.trim(), tpl.defects.body.trim()].join("\n\n");
 
     magic = {
@@ -217,7 +236,7 @@ async function handle(req: Request): Promise<Response> {
       style_card: { version: styleCard.version, prose: sc.prose, negatives: sc.negatives },
       lessons,
       exemplars,
-      reference_reading: { ...readReference(card.reference_analysis), image_roles: imageRoleLabels(plan) },
+      reference_reading: { ...reading, image_roles: imageRoleLabels(plan) },
       similarity_tier: { tier, rule: pickTierRule(tpl.tier_rules.body, tier) },
       brief: {
         description: str("brief_text", card.brief_text),
@@ -247,6 +266,10 @@ async function handle(req: Request): Promise<Response> {
   const aspect = (isEditKind && parent?.aspect_ratio) ? parent.aspect_ratio : pickAspect(tpl.placement_aspect?.body, placement);
   const resolution = settings.generation_resolution || "2K";
   const model = client.model_override?.trim() || settings.generation_model;
+  // Platform for this run: the designer's choice on the generation, else the studio default. "auto" starts on Kie;
+  // WF-2/WF-3 repeat a call on OpenRouter (and set vendor) only when Kie reports it is down.
+  const platform: Platform = gen.platform ?? settings.ai_platform ?? "kie";
+  const openrouter = { ...OPENROUTER_DEFAULTS, ...(settings.openrouter_models ?? {}) };
 
   // --- persist onto the generation row ---
   const patch: Record<string, unknown> = {
@@ -255,8 +278,9 @@ async function handle(req: Request): Promise<Response> {
     final_prompt: rendered,
     aspect_ratio: aspect,
     resolution,
-    model,
-    vendor: "kie",
+    model: platform === "openrouter" ? (isEditKind ? openrouter.edit : openrouter.image) : model,
+    vendor: platform === "openrouter" ? "openrouter" : "kie",
+    platform,
     reference_urls: plan,
   };
   if (!gen.style_card_snapshot || !Object.keys(gen.style_card_snapshot).length) {
@@ -279,6 +303,9 @@ async function handle(req: Request): Promise<Response> {
     aspect_ratio: aspect,
     resolution,
     model,
+    vision_model: settings.vision_model || "gemini-3.1-pro",
+    platform,
+    openrouter_models: openrouter,
     input_paths: plan,
     style_card_version: styleCard.version,
     templates: Object.fromEntries(Object.values(tpl).map((t) => [t.slug, t.version])),

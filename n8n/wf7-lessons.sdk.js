@@ -217,7 +217,7 @@ const buildDistillRequest = node({
   config: {
     name: 'Build Distill Request',
     parameters: {
-      jsCode: "const groups = $('Group Per Client').all().map((i) => i.json);\nconst tpls = $('Get Distill Templates').all().map((i) => i.json);\nconst lessons = $('Get Existing Lessons').all().map((i) => i.json).filter((l) => l && l.id && l.rule);\nconst sys = tpls.find((t) => t.slug === 'distill_system');\nconst usr = tpls.find((t) => t.slug === 'distill_user');\nif (!sys || !sys.body || !usr || !usr.body) throw new Error('prompt_templates: no active distill_system / distill_user template');\nreturn groups.map((g) => {\n  const mine = lessons.filter((l) => !l.client_id || l.client_id === g.client_id);\n  const existing = mine.length ? mine.map((l) => '- id:' + l.id + ' [' + (l.client_id ? 'client:' + (l.category || 'general') : 'global') + '] (freq 1) ' + String(l.rule).trim()).join('\\n') : '(none yet)';\n  const user = String(usr.body).replace(/^- id:\\{\\{LESSON_ID\\}\\}.*$/m, existing).replace(/^- \\[\\{\\{NICHE\\}\\}\\].*$/m, g.notes.join('\\n'));\n  const body = { model: 'claude-sonnet-4-6', max_tokens: 1200, system: String(sys.body), messages: [{ role: 'user', content: user }] };\n  return { json: Object.assign({}, g, { body, template_versions: { distill_system: sys.version, distill_user: usr.version } }) };\n});"
+      jsCode: "const groups = $('Group Per Client').all().map((i) => i.json);\nconst tpls = $('Get Distill Templates').all().map((i) => i.json);\nconst lessons = $('Get Existing Lessons').all().map((i) => i.json).filter((l) => l && l.id && l.rule);\nconst sys = tpls.find((t) => t.slug === 'distill_system');\nconst usr = tpls.find((t) => t.slug === 'distill_user');\nif (!sys || !sys.body || !usr || !usr.body) throw new Error('no active distill_system / distill_user template in prompt_templates');\nreturn groups.map((g) => {\n  const mine = lessons.filter((l) => !l.client_id || l.client_id === g.client_id);\n  const existing = mine.length ? mine.map((l) => '- id:' + l.id + ' [' + (l.client_id ? 'client:' + (l.category || 'general') : 'global') + '] (freq 1) ' + String(l.rule).trim()).join('\\n') : '(none yet)';\n  const user = String(usr.body).replace(/^- id:\\{\\{LESSON_ID\\}\\}.*$/m, existing).replace(/^- \\[\\{\\{NICHE\\}\\}\\].*$/m, g.notes.join('\\n'));\n  const body = { model: 'claude-sonnet-4-6', max_tokens: 1200, system: String(sys.body), messages: [{ role: 'user', content: user }] };\n  return { json: Object.assign({}, g, { body, template_versions: { distill_system: sys.version, distill_user: usr.version } }) };\n});"
     },
     onError: 'continueErrorOutput',
     position: [1680, 208]
@@ -265,7 +265,7 @@ const parseDistill = node({
     name: 'Parse Distill',
     parameters: {
       mode: 'runOnceForEachItem',
-      jsCode: "const g = $('Build Distill Request').item.json;\nlet payload = $json || {};\nif (typeof payload.data === 'string') { try { payload = JSON.parse(payload.data); } catch (e) { payload = $json; } }\nconst txt = Array.isArray(payload.content) ? payload.content.filter((c) => c && c.type === 'text').map((c) => c.text).join('\\n') : String(payload.text || payload.output_text || '');\nlet parsed = null;\ntry { const m = txt.replace(/```(?:json)?/g, '').match(/\\{[\\s\\S]*\\}/); parsed = m ? JSON.parse(m[0]) : null; } catch (e) { parsed = null; }\nconst proposed = parsed && Array.isArray(parsed.new_lessons) ? parsed.new_lessons : [];\nconst rows = proposed.map((l) => String((l && l.text) || '').trim()).filter(Boolean).slice(0, 3).map((rule) => ({ client_id: g.client_id, category: g.top_reason || 'other', rule: rule.slice(0, 220), active: false, source_generation_ids: g.generation_ids }));\nconst error = parsed ? '' : ('distill reply was not JSON' + (payload.error ? ': ' + String(payload.error.message || payload.error).slice(0, 200) : ''));\nreturn { json: { client_id: g.client_id, client_name: g.client_name, rejection_count: g.rejection_count, rows, rule_count: rows.length, updates: parsed && Array.isArray(parsed.updates) ? parsed.updates.slice(0, 20) : [], error } };"
+      jsCode: "const g = $('Build Distill Request').item.json;\nlet payload = $json || {};\nif (typeof payload.data === 'string') { try { payload = JSON.parse(payload.data); } catch (e) { payload = $json; } }\nconst txt = Array.isArray(payload.content) ? payload.content.filter((c) => c && c.type === 'text').map((c) => c.text).join('\\n') : String((payload.choices && payload.choices[0] && payload.choices[0].message && payload.choices[0].message.content) || payload.text || payload.output_text || '');\nlet parsed = null;\ntry { const m = txt.replace(/```(?:json)?/g, '').match(/\\{[\\s\\S]*\\}/); parsed = m ? JSON.parse(m[0]) : null; } catch (e) { parsed = null; }\nconst proposed = parsed && Array.isArray(parsed.new_lessons) ? parsed.new_lessons : [];\nconst rows = proposed.map((l) => String((l && l.text) || '').trim()).filter(Boolean).slice(0, 3).map((rule) => ({ client_id: g.client_id, category: g.top_reason || 'other', rule: rule.slice(0, 220), active: false, source_generation_ids: g.generation_ids }));\nconst error = parsed ? '' : ('distill reply was not JSON' + (payload.error ? ': ' + String(payload.error.message || payload.error).slice(0, 200) : ''));\nreturn { json: { client_id: g.client_id, client_name: g.client_name, rejection_count: g.rejection_count, rows, rule_count: rows.length, updates: parsed && Array.isArray(parsed.updates) ? parsed.updates.slice(0, 20) : [], error } };"
     },
     position: [2160, 208]
   },
@@ -339,6 +339,102 @@ const distillFailed = node({
   output: [{ skipped: true, reason: 'distill request could not be built (see the Build Distill Request error output)' }]
 });
 
+// ---- AI platform: Switch (Kie / OpenRouter) + Auto fallback when Kie reports it is down ----
+const getAiSettings = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
+  config: {
+    name: 'Get AI Settings',
+    parameters: {
+      method: 'GET',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/settings?id=eq.1&select=ai_platform,openrouter_models"),
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'Accept', value: 'application/vnd.pgrst.object+json' }
+        ]
+      },
+      options: { timeout: 15000, response: { response: { responseFormat: 'json' } } }
+    },
+    executeOnce: true,
+    alwaysOutputData: true,
+    onError: 'continueRegularOutput',
+    position: [1560, 16]
+  },
+  output: [{ ai_platform: 'kie', openrouter_models: { text: 'anthropic/claude-sonnet-4.6' } }]
+});
+
+const distillPlatform = switchCase({
+  version: 3.2,
+  config: {
+    name: 'Distill Platform?',
+    parameters: {
+      rules: {
+        values: [
+          { outputKey: 'Kie', renameOutput: true, conditions: { options: looseOptions, conditions: [{ leftValue: expr("{{ $('Get AI Settings').first().json.ai_platform || 'kie' }}"), operator: { type: 'string', operation: 'notEquals' }, rightValue: 'openrouter' }], combinator: 'and' } },
+          { outputKey: 'OpenRouter', renameOutput: true, conditions: { options: looseOptions, conditions: [{ leftValue: expr("{{ $('Get AI Settings').first().json.ai_platform || 'kie' }}"), operator: { type: 'string', operation: 'equals' }, rightValue: 'openrouter' }], combinator: 'and' } }
+        ]
+      },
+      options: {}
+    },
+    position: [1800, 16]
+  },
+  output: [{}]
+});
+
+const kieDistillDown = ifElse({
+  version: 2.2,
+  config: {
+    name: 'Kie Distill Down?',
+    parameters: {
+      conditions: {
+        options: looseOptions,
+        conditions: [
+          { id: 'a1', leftValue: expr("{{ $('Get AI Settings').first().json.ai_platform || 'kie' }}"), operator: { type: 'string', operation: 'equals' }, rightValue: 'auto' },
+          { id: 'a2', leftValue: expr("{{ Array.isArray($json.content) ? 'up' : 'down' }}"), operator: { type: 'string', operation: 'equals' }, rightValue: 'down' }
+        ],
+        combinator: 'and'
+      },
+      options: {}
+    },
+    position: [2040, 16]
+  },
+  output: [{}]
+});
+
+const orDistill = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
+  config: {
+    name: 'OpenRouter Distill',
+    parameters: {
+      method: 'POST',
+      url: 'https://openrouter.ai/api/v1/chat/completions',
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'Authorization', value: expr("Bearer {{ $('Load Config').first().json.openrouterKey }}") },
+          { name: 'Content-Type', value: 'application/json' },
+          { name: 'X-Title', value: 'DM Studio' }
+        ]
+      },
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: expr("{{ JSON.stringify({ model: ($('Get AI Settings').first().json.openrouter_models || {}).text || 'anthropic/claude-sonnet-4.6', max_tokens: $('Build Distill Request').item.json.body.max_tokens || 1200, messages: [{ role: 'system', content: $('Build Distill Request').item.json.body.system }].concat($('Build Distill Request').item.json.body.messages || []) }) }}"),
+      options: { timeout: 120000 }
+    },
+    retryOnFail: true,
+    maxTries: 2,
+    waitBetweenTries: 5000,
+    onError: 'continueRegularOutput',
+    alwaysOutputData: true,
+    position: [2040, -176]
+  },
+  output: [{ id: 'gen-or-distill', choices: [{ index: 0, message: { role: 'assistant', content: '{"new_lessons":[],"updates":[]}' }, finish_reason: 'stop' }] }]
+});
+
 export default workflow('dm-studio-wf7-lessons', 'DM Studio · WF-7 Lessons')
   .add(lessonsNote)
   .add(lessonsWebhook)
@@ -348,8 +444,12 @@ export default workflow('dm-studio-wf7-lessons', 'DM Studio · WF-7 Lessons')
   .to(groupPerClient)
   .to(getDistillTemplates)
   .to(getExistingLessons)
+  .to(getAiSettings)
   .to(buildDistillRequest.onError(distillFailed))
-  .to(kieClaudeDistill)
+  .to(distillPlatform.onCase(0, kieClaudeDistill).onCase(1, orDistill))
+  .add(kieClaudeDistill)
+  .to(kieDistillDown.onTrue(orDistill).onFalse(parseDistill))
+  .add(orDistill)
   .to(parseDistill)
   .to(insertLessons)
   .to(buildDigest);

@@ -201,7 +201,7 @@ const getSettings = node({
     name: 'Get Settings',
     parameters: {
       method: 'GET',
-      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/settings?select=max_style_refs,vision_model&limit=1"),
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/settings?select=max_style_refs,vision_model,ai_platform,openrouter_models&limit=1"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
@@ -216,7 +216,7 @@ const getSettings = node({
     alwaysOutputData: true,
     position: [1440, 304]
   },
-  output: [{ max_style_refs: 12, vision_model: 'gemini-3.1-pro' }]
+  output: [{ max_style_refs: 12, vision_model: 'gemini-3.1-pro', ai_platform: 'kie', openrouter_models: { vision: 'google/gemini-3.1-pro-preview', image: 'openai/gpt-image-2.5-sunburst', edit: 'google/gemini-2.5-flash-image', text: 'anthropic/claude-sonnet-4.6' } }]
 });
 
 const getTemplate = node({
@@ -235,7 +235,7 @@ const getTemplate = node({
           { name: 'Accept', value: 'application/vnd.pgrst.object+json' }
         ]
       },
-      options: { timeout: 15000 }
+      options: { timeout: 15000, response: { response: { responseFormat: 'json' } } }
     },
     executeOnce: true,
     retryOnFail: true,
@@ -330,7 +330,7 @@ const buildStyleRequest = node({
   config: {
     name: 'Build Style Request',
     parameters: {
-      jsCode: "const cfg = $('Load Config').first().json;\nconst tpl = $('Get Template').first().json;\nif (!tpl || !tpl.body) throw new Error('prompt_templates: no active style_profiler template');\nconst client = $('Get Client').first().json || {};\nconst refs = $('List Library').all().map((i) => i.json);\nconst urls = $input.all().map((i) => cfg.sbUrl + '/storage/v1' + String(i.json.signedURL || '')).filter((u) => /token=/.test(u));\nif (!urls.length) throw new Error('no signed library URLs');\nconst notes = refs.slice(0, urls.length).map((r, i) => 'Image ' + (i + 1) + ': ' + (r.note || 'no note')).join('\\n');\nconst vars = { CLIENT_NAME: client.name || '', CLIENT_NOTES: client.notes || '', GARMENT_COLORS: JSON.stringify(client.garment_colors || []), IMAGE_COUNT: String(urls.length), REFERENCE_NOTES: notes };\nconst text = String(tpl.body).replace(/\\{\\{\\s*([A-Z_]+)\\s*\\}\\}/g, (m, k) => (k in vars ? vars[k] : m));\nconst content = [{ type: 'text', text }].concat(urls.map((url) => ({ type: 'image_url', image_url: { url } })));\nreturn { json: { body: { messages: [{ role: 'user', content }], response_format: { type: 'json_object' } }, template_version: tpl.version, reference_count: urls.length } };"
+      jsCode: "const cfg = $('Load Config').first().json;\nconst tpl = $('Get Template').first().json;\nif (!tpl || !tpl.body) throw new Error('no active style_profiler template in prompt_templates');\nconst client = $('Get Client').first().json || {};\nconst refs = $('List Library').all().map((i) => i.json);\nconst urls = $input.all().map((i) => cfg.sbUrl + '/storage/v1' + String(i.json.signedURL || '')).filter((u) => /token=/.test(u));\nif (!urls.length) throw new Error('no signed library URLs');\nconst notes = refs.slice(0, urls.length).map((r, i) => 'Image ' + (i + 1) + ': ' + (r.note || 'no note')).join('\\n');\nconst vars = { CLIENT_NAME: client.name || '', CLIENT_NOTES: client.notes || '', GARMENT_COLORS: JSON.stringify(client.garment_colors || []), IMAGE_COUNT: String(urls.length), REFERENCE_NOTES: notes };\nconst text = String(tpl.body).replace(/\\{\\{\\s*([A-Z_]+)\\s*\\}\\}/g, (m, k) => (k in vars ? vars[k] : m));\nconst content = [{ type: 'text', text }].concat(urls.map((url) => ({ type: 'image_url', image_url: { url } })));\nreturn { json: { body: { messages: [{ role: 'user', content }], response_format: { type: 'json_object' } }, template_version: tpl.version, reference_count: urls.length } };"
     },
     onError: 'continueErrorOutput',
     position: [2640, 208]
@@ -345,7 +345,7 @@ const profileStyle = node({
     name: 'Profile Style',
     parameters: {
       method: 'POST',
-      url: kieBaseUrl + '/gemini-3.1-pro/v1/chat/completions',
+      url: expr("https://api.kie.ai/{{ $('Get Settings').first().json.vision_model || 'gemini-3.1-pro' }}/v1/chat/completions"),
       authentication: 'genericCredentialType',
       genericAuthType: 'httpHeaderAuth',
       sendHeaders: true,
@@ -376,7 +376,7 @@ const parseStyleCard = node({
     name: 'Parse Style Card',
     parameters: {
       mode: 'runOnceForEachItem',
-      jsCode: "const REQUIRED = ['medium', 'linework', 'shading', 'texture', 'palette', 'composition', 'typography', 'background', 'mood', 'subjects', 'forbid', 'signature_moves', 'garment_colors'];\nconst content = ($json.choices && $json.choices[0] && $json.choices[0].message && $json.choices[0].message.content) || '';\nconst cleaned = String(content).replace(/```json|```/g, '').trim();\nconst m = cleaned.match(/\\{[\\s\\S]*\\}/);\nlet card;\ntry { card = JSON.parse(m ? m[0] : cleaned); } catch (e) { throw new Error('style profiler returned no JSON: ' + cleaned.slice(0, 200)); }\nif (!card || typeof card !== 'object' || Array.isArray(card)) throw new Error('style profiler returned no object');\nconst missing = REQUIRED.filter((k) => !(k in card));\nif (missing.length) throw new Error('style card missing keys: ' + missing.join(', '));\nif (!Array.isArray(card.palette) || !card.palette.length) throw new Error('style card palette is empty');\nreturn { json: { style_card: card, template_version: $('Build Style Request').first().json.template_version, reference_count: $('Build Style Request').first().json.reference_count } };"
+      jsCode: "if (!$json.choices) { const e = (typeof $json.error === 'object' && $json.error) || {}; const via = $('OpenRouter Profile Style').isExecuted ? ($('Profile Style').isExecuted ? 'Kie and OpenRouter' : 'OpenRouter') : 'Kie'; let why = String($json.msg || e.message || (typeof $json.error === 'string' ? $json.error : '') || 'no reply'); const inner = why.match(/message\\\\?\":\\\\?\"([^\"\\\\]+)/); if (inner) why = inner[1]; const code = $json.code || e.status || e.httpCode || e.code || '?'; if (via !== 'Kie' && (String(code) === '401' || String(code) === '403')) why = 'OpenRouter API key missing or invalid - add it in n8n WF-0 Studio Config (OpenRouter Config node)'; throw new Error('Vision service unavailable (' + via + ' error ' + code + ' - ' + why.replace(/:/g, ' -').slice(0, 160) + '). Nothing was changed; try again in a few minutes.'); }\nconst REQUIRED = ['medium', 'linework', 'shading', 'texture', 'palette', 'composition', 'typography', 'background', 'mood', 'subjects', 'forbid', 'signature_moves', 'garment_colors'];\nconst content = ($json.choices && $json.choices[0] && $json.choices[0].message && $json.choices[0].message.content) || '';\nconst cleaned = String(content).replace(/```json|```/g, '').trim();\nconst m = cleaned.match(/\\{[\\s\\S]*\\}/);\nlet card;\ntry { card = JSON.parse(m ? m[0] : cleaned); } catch (e) { throw new Error('style profiler returned no JSON - reply was ' + cleaned.slice(0, 200).replace(/:/g, '=')); }\nif (!card || typeof card !== 'object' || Array.isArray(card)) throw new Error('style profiler returned no object');\nconst missing = REQUIRED.filter((k) => !(k in card));\nif (missing.length) throw new Error('style card missing keys - ' + missing.join(', '));\nif (!Array.isArray(card.palette) || !card.palette.length) throw new Error('style card palette is empty');\nreturn { json: { style_card: card, template_version: $('Build Style Request').first().json.template_version, reference_count: $('Build Style Request').first().json.reference_count } };"
     },
     onError: 'continueErrorOutput',
     position: [3120, 208]
@@ -421,7 +421,7 @@ const extractStyleCardId = node({
     name: 'Extract Style Card Id',
     parameters: {
       mode: 'runOnceForEachItem',
-      jsCode: "const j = $json;\nconst first = Array.isArray(j) ? j[0] : j;\nlet id = '';\nif (typeof first === 'string') id = first;\nelse if (first && typeof first === 'object') id = first.id || first.style_card_id || first.data || first.new_style_card_version || '';\nif (id && typeof id === 'object') id = id.id || '';\nif (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id))) throw new Error('new_style_card_version returned no id: ' + JSON.stringify(j).slice(0, 200));\nreturn { json: { style_card_id: String(id), version: (first && typeof first === 'object' && first.version) || null } };"
+      jsCode: "const j = $json;\nconst first = Array.isArray(j) ? j[0] : j;\nlet id = '';\nif (typeof first === 'string') id = first;\nelse if (first && typeof first === 'object') id = first.id || first.style_card_id || first.data || first.new_style_card_version || '';\nif (id && typeof id === 'object') id = id.id || '';\nif (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id))) throw new Error('new_style_card_version returned no id - ' + JSON.stringify(j).slice(0, 200).replace(/:/g, '='));\nreturn { json: { style_card_id: String(id), version: (first && typeof first === 'object' && first.version) || null } };"
     },
     onError: 'continueErrorOutput',
     position: [3600, 208]
@@ -525,6 +525,76 @@ const draftFailed = node({
   output: [{ ...sampleRequest, status: 'failed', last_error: 'style card missing keys: signature_moves' }]
 });
 
+// ---- AI platform: Switch (Kie / OpenRouter) + Auto fallback when Kie reports it is down ----
+const stylePlatform = switchCase({
+  version: 3.2,
+  config: {
+    name: 'Style Platform?',
+    parameters: {
+      rules: {
+        values: [
+          { outputKey: 'Kie', renameOutput: true, conditions: { options: looseOptions, conditions: [{ leftValue: expr("{{ $('Get Settings').first().json.ai_platform || 'kie' }}"), operator: { type: 'string', operation: 'notEquals' }, rightValue: 'openrouter' }], combinator: 'and' } },
+          { outputKey: 'OpenRouter', renameOutput: true, conditions: { options: looseOptions, conditions: [{ leftValue: expr("{{ $('Get Settings').first().json.ai_platform || 'kie' }}"), operator: { type: 'string', operation: 'equals' }, rightValue: 'openrouter' }], combinator: 'and' } }
+        ]
+      },
+      options: {}
+    },
+    position: [2760, 400]
+  },
+  output: [{}]
+});
+
+const kieStyleDown = ifElse({
+  version: 2.2,
+  config: {
+    name: 'Kie Style Down?',
+    parameters: {
+      conditions: {
+        options: looseOptions,
+        conditions: [
+          { id: 'a1', leftValue: expr("{{ $('Get Settings').first().json.ai_platform || 'kie' }}"), operator: { type: 'string', operation: 'equals' }, rightValue: 'auto' },
+          { id: 'a2', leftValue: expr("{{ $json.choices ? 'up' : 'down' }}"), operator: { type: 'string', operation: 'equals' }, rightValue: 'down' }
+        ],
+        combinator: 'and'
+      },
+      options: {}
+    },
+    position: [3000, 400]
+  },
+  output: [{}]
+});
+
+const orProfileStyle = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
+  config: {
+    name: 'OpenRouter Profile Style',
+    parameters: {
+      method: 'POST',
+      url: 'https://openrouter.ai/api/v1/chat/completions',
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'Authorization', value: expr("Bearer {{ $('Load Config').first().json.openrouterKey }}") },
+          { name: 'Content-Type', value: 'application/json' },
+          { name: 'X-Title', value: 'DM Studio' }
+        ]
+      },
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: expr("{{ JSON.stringify(Object.assign({}, $('Build Style Request').first().json.body, { model: ($('Get Settings').first().json.openrouter_models || {}).vision || 'google/gemini-3.1-pro-preview' })) }}"),
+      options: { timeout: 180000 }
+    },
+    retryOnFail: true,
+    maxTries: 2,
+    waitBetweenTries: 5000,
+    onError: 'continueRegularOutput',
+    alwaysOutputData: true,
+    position: [3000, 16]
+  },
+  output: [{ id: 'gen-or-sample', model: 'google/gemini-3.1-pro-preview', choices: [{ index: 0, message: { role: 'assistant', content: '{}' }, finish_reason: 'stop' }] }]
+});
+
 export default workflow('dm-studio-wf1b-style-draft', 'DM Studio · WF-1b Style Draft')
   .add(styleDraftNote)
   .add(styleDraftWebhook)
@@ -539,7 +609,10 @@ export default workflow('dm-studio-wf1b-style-draft', 'DM Studio · WF-1b Style 
   .to(hasLibrary.onTrue(signLibraryRef.onError(failMessage)).onFalse(emptyLibrary))
   .add(signLibraryRef)
   .to(buildStyleRequest.onError(failMessage))
-  .to(profileStyle.onError(failMessage))
+  .to(stylePlatform.onCase(0, profileStyle.onError(kieStyleDown)).onCase(1, orProfileStyle))
+  .add(profileStyle)
+  .to(kieStyleDown.onTrue(orProfileStyle).onFalse(parseStyleCard))
+  .add(orProfileStyle)
   .to(parseStyleCard.onError(failMessage))
   .to(newStyleCardVersion.onError(failMessage))
   .to(extractStyleCardId.onError(failMessage))

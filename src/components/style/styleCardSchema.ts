@@ -26,17 +26,19 @@ export interface StyleCardDoc {
   texture: string
   palette: PaletteEntry[]
   composition: string
-  typography: { vibe: string; placement: string }
+  typography: { vibe: string; placement: string; case: string }
   background: string
   mood: string[]
+  subjects: string[]
   forbid: string[]
+  signature_moves: string[]
   garment_colors: string[]
   /** Keys outside the schema, preserved verbatim. */
   extra: Record<string, Json>
 }
 
 /** Suggested palette roles (free text is allowed). */
-export const PALETTE_WEIGHTS = ['dominant', 'accent', 'outline', 'highlight', 'shadow'] as const
+export const PALETTE_WEIGHTS = ['dominant', 'secondary', 'accent', 'outline', 'highlight', 'shadow'] as const
 
 const KNOWN_KEYS: ReadonlySet<string> = new Set([
   'version',
@@ -49,7 +51,9 @@ const KNOWN_KEYS: ReadonlySet<string> = new Set([
   'typography',
   'background',
   'mood',
+  'subjects',
   'forbid',
+  'signature_moves',
   'garment_colors',
 ])
 
@@ -68,10 +72,12 @@ export function emptyStyleCard(): StyleCardDoc {
     texture: '',
     palette: [],
     composition: '',
-    typography: { vibe: '', placement: '' },
+    typography: { vibe: '', placement: '', case: '' },
     background: '',
     mood: [],
+    subjects: [],
     forbid: [],
+    signature_moves: [],
     garment_colors: [],
     extra: {},
   }
@@ -130,9 +136,9 @@ export function normalizeStyleCard(json: Json | null | undefined): StyleCardDoc 
 
   const typography = json.typography
   if (isRecord(typography)) {
-    doc.typography = { vibe: str(typography.vibe), placement: str(typography.placement) }
+    doc.typography = { vibe: str(typography.vibe), placement: str(typography.placement), case: str(typography.case) }
   } else if (typeof typography === 'string') {
-    doc.typography = { vibe: typography, placement: '' }
+    doc.typography = { vibe: typography, placement: '', case: '' }
   }
 
   const palette = json.palette
@@ -141,7 +147,9 @@ export function normalizeStyleCard(json: Json | null | undefined): StyleCardDoc 
   }
 
   doc.mood = strList(json.mood)
+  doc.subjects = strList(json.subjects)
   doc.forbid = strList(json.forbid)
+  doc.signature_moves = strList(json.signature_moves)
   doc.garment_colors = strList(json.garment_colors)
 
   for (const [k, v] of Object.entries(json)) {
@@ -165,10 +173,16 @@ export function styleCardToJson(doc: StyleCardDoc): Record<string, Json> {
       .map((p) => ({ name: clean(p.name), hex: clean(p.hex), weight: clean(p.weight) }))
       .filter((p) => p.name || p.hex || p.weight),
     composition: clean(doc.composition),
-    typography: { vibe: clean(doc.typography.vibe), placement: clean(doc.typography.placement) },
+    typography: {
+      vibe: clean(doc.typography.vibe),
+      placement: clean(doc.typography.placement),
+      case: clean(doc.typography.case),
+    },
     background: clean(doc.background),
     mood: cleanList(doc.mood),
+    subjects: cleanList(doc.subjects),
     forbid: cleanList(doc.forbid),
+    signature_moves: cleanList(doc.signature_moves),
     garment_colors: cleanList(doc.garment_colors),
   }
   for (const [k, v] of Object.entries(doc.extra)) {

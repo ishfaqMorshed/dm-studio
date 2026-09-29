@@ -22,6 +22,17 @@ export type StyleCardUpdate = TablesUpdate<'style_cards'>
 export type Profile = Tables<'profiles'>
 export type Settings = Tables<'settings'>
 export type SettingsUpdate = TablesUpdate<'settings'>
+/**
+ * `settings.openrouter_models` (jsonb): the OpenRouter model id per job. `vision` reads
+ * references and judges QC, `image` generates, `edit` runs Edit text / Edit region, `text`
+ * writes lessons. The row may carry more keys; the Settings form keeps them on save.
+ */
+export interface OpenRouterModels {
+  vision: string
+  image: string
+  edit: string
+  text: string
+}
 export type PromptTemplate = Tables<'prompt_templates'>
 export type PromptTemplateInsert = TablesInsert<'prompt_templates'>
 export type DesignLesson = Tables<'design_lessons'>
@@ -60,6 +71,51 @@ export type GenerationResolution = (typeof GENERATION_RESOLUTIONS)[number]
 
 export function isGenerationResolution(v: unknown): v is GenerationResolution {
   return typeof v === 'string' && (GENERATION_RESOLUTIONS as readonly string[]).includes(v)
+}
+
+/* ---------- AI platform (settings.ai_platform, generations.platform / vendor) ---------- */
+
+/**
+ * Where the AI steps run. `kie` and `openrouter` send every step to that platform (same
+ * models); `auto` tries Kie first and repeats on OpenRouter any call Kie reports as down.
+ */
+export const AI_PLATFORMS = ['kie', 'openrouter', 'auto'] as const
+export type AiPlatform = (typeof AI_PLATFORMS)[number]
+
+export const AI_PLATFORM_LABEL: Record<AiPlatform, string> = {
+  kie: 'Kie',
+  openrouter: 'OpenRouter',
+  auto: 'Auto',
+}
+
+/** One line under the picker for the selected option. */
+export const AI_PLATFORM_HINT: Record<AiPlatform, string> = {
+  kie: 'Every AI step runs on Kie',
+  openrouter: 'Every AI step runs on OpenRouter, same models',
+  auto: 'Kie first; switches to OpenRouter if Kie is down',
+}
+
+export function isAiPlatform(v: unknown): v is AiPlatform {
+  return typeof v === 'string' && (AI_PLATFORMS as readonly string[]).includes(v)
+}
+
+/** `settings.ai_platform` as a known value; anything else (or no settings yet) falls back to Kie. */
+export function defaultAiPlatform(settings: Pick<Settings, 'ai_platform'> | null | undefined): AiPlatform {
+  const v = settings?.ai_platform
+  return isAiPlatform(v) ? v : 'kie'
+}
+
+/**
+ * Chip text for the platform that produced a generation: `vendor` is what actually ran it
+ * ('kie' | 'openrouter'), `platform` what the designer picked. "Auto · OpenRouter" when the
+ * designer picked Auto. Null while nothing has run yet (vendor is null).
+ */
+export function generationPlatformLabel(g: Pick<Generation, 'vendor' | 'platform'>): string | null {
+  const raw = g.vendor?.trim()
+  if (!raw) return null
+  const key = raw.toLowerCase()
+  const name = key === 'kie' || key === 'openrouter' ? AI_PLATFORM_LABEL[key] : raw
+  return g.platform === 'auto' ? `${AI_PLATFORM_LABEL.auto} · ${name}` : name
 }
 
 export const GENERATION_KIND_LABEL: Record<GenerationKind, string> = {

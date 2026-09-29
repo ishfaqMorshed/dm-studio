@@ -374,6 +374,7 @@ export type Database = {
           new_text: string | null
           old_text: string | null
           parent_generation_id: string | null
+          platform: string | null
           qc_report: Json | null
           reference_urls: Json | null
           rejection_note: string | null
@@ -416,6 +417,7 @@ export type Database = {
           new_text?: string | null
           old_text?: string | null
           parent_generation_id?: string | null
+          platform?: string | null
           qc_report?: Json | null
           reference_urls?: Json | null
           rejection_note?: string | null
@@ -458,6 +460,7 @@ export type Database = {
           new_text?: string | null
           old_text?: string | null
           parent_generation_id?: string | null
+          platform?: string | null
           qc_report?: Json | null
           reference_urls?: Json | null
           rejection_note?: string | null
@@ -561,6 +564,7 @@ export type Database = {
       }
       settings: {
         Row: {
+          ai_platform: string
           generation_model: string
           generation_resolution: string
           id: number
@@ -568,12 +572,14 @@ export type Database = {
           max_active_generations: number
           max_style_refs: number
           n8n_base_url: string
+          openrouter_models: Json
           per_card_price_usd: number
           pipeline_paused: boolean
           updated_at: string
           vision_model: string
         }
         Insert: {
+          ai_platform?: string
           generation_model?: string
           generation_resolution?: string
           id?: number
@@ -581,12 +587,14 @@ export type Database = {
           max_active_generations?: number
           max_style_refs?: number
           n8n_base_url?: string
+          openrouter_models?: Json
           per_card_price_usd?: number
           pipeline_paused?: boolean
           updated_at?: string
           vision_model?: string
         }
         Update: {
+          ai_platform?: string
           generation_model?: string
           generation_resolution?: string
           id?: number
@@ -594,6 +602,7 @@ export type Database = {
           max_active_generations?: number
           max_style_refs?: number
           n8n_base_url?: string
+          openrouter_models?: Json
           per_card_price_usd?: number
           pipeline_paused?: boolean
           updated_at?: string
@@ -736,7 +745,7 @@ export type Database = {
         }
       }
       approve_card: {
-        Args: { p_card_id: string }
+        Args: { p_card_id: string; p_platform?: string }
         Returns: {
           approved_at: string | null
           approved_by: string | null
@@ -797,6 +806,7 @@ export type Database = {
           new_text: string | null
           old_text: string | null
           parent_generation_id: string | null
+          platform: string | null
           qc_report: Json | null
           reference_urls: Json | null
           rejection_note: string | null
@@ -1109,6 +1119,7 @@ export type Database = {
           new_text: string | null
           old_text: string | null
           parent_generation_id: string | null
+          platform: string | null
           qc_report: Json | null
           reference_urls: Json | null
           rejection_note: string | null

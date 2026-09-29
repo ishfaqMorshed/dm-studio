@@ -186,7 +186,7 @@ const throwFailure = node({
     name: 'Throw Failure',
     parameters: {
       mode: 'runOnceForEachItem',
-      jsCode: "const msg = String($json.failMsg || 'vendor job failed').slice(0, 500);\nthrow new Error('Poll failed for task ' + ($json.taskId || '?') + ': ' + msg);"
+      jsCode: "const msg = String($json.failMsg || 'vendor job failed').slice(0, 500);\nthrow new Error('Poll failed for task ' + ($json.taskId || '?') + ' - ' + String(msg).replace(/:/g, ' -'));"
     },
     position: [1200, 496]
   },

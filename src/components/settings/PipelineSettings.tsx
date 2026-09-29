@@ -4,12 +4,18 @@ import { useSettings } from '../../lib/useSettings'
 import { useToast } from '../../lib/useToast'
 import {
   GENERATION_RESOLUTIONS,
+  defaultAiPlatform,
   errorMessage,
   isGenerationResolution,
+  isRecord,
+  type AiPlatform,
+  type Json,
+  type OpenRouterModels,
   type Settings,
   type SettingsUpdate,
 } from '../../lib/types'
-import { GENERATION_DEFAULTS } from './generationDefaults'
+import { PlatformPicker } from '../PlatformPicker'
+import { GENERATION_DEFAULTS, OPENROUTER_MODEL_DEFAULTS } from './generationDefaults'
 
 interface Draft {
   price: string
@@ -19,6 +25,11 @@ interface Draft {
   generationResolution: string
   visionModel: string
   maxStyleRefs: string
+  aiPlatform: AiPlatform
+  orVision: string
+  orImage: string
+  orEdit: string
+  orText: string
 }
 
 type DraftErrors = Partial<Record<keyof Draft, string>>
@@ -31,9 +42,37 @@ const DRAFT_KEYS: readonly (keyof Draft)[] = [
   'generationResolution',
   'visionModel',
   'maxStyleRefs',
+  'aiPlatform',
+  'orVision',
+  'orImage',
+  'orEdit',
+  'orText',
 ]
 
+/** Draft field ↔ `settings.openrouter_models` key, in form order. */
+const OPENROUTER_FIELDS = [
+  ['orVision', 'vision'],
+  ['orImage', 'image'],
+  ['orEdit', 'edit'],
+  ['orText', 'text'],
+] as const satisfies ReadonlyArray<readonly [keyof Draft, keyof OpenRouterModels]>
+
+/** `settings.openrouter_models` with the column default for any key that is missing or blank. */
+function parseOpenRouterModels(json: Json | null | undefined): OpenRouterModels {
+  const out: OpenRouterModels = { ...OPENROUTER_MODEL_DEFAULTS }
+  if (!isRecord(json)) return out
+  for (const [, key] of OPENROUTER_FIELDS) {
+    const v = json[key]
+    if (typeof v === 'string' && v.trim()) out[key] = v.trim()
+  }
+  return out
+}
+
+/** OpenRouter ids are `<org>/<model>`, no spaces. */
+const OPENROUTER_ID = /^[^\s/]+\/\S+$/
+
 function toDraft(s: Settings): Draft {
+  const models = parseOpenRouterModels(s.openrouter_models)
   return {
     price: s.per_card_price_usd.toFixed(2),
     maxGenerations: String(s.max_active_generations),
@@ -42,6 +81,11 @@ function toDraft(s: Settings): Draft {
     generationResolution: s.generation_resolution,
     visionModel: s.vision_model,
     maxStyleRefs: String(s.max_style_refs),
+    aiPlatform: defaultAiPlatform(s),
+    orVision: models.vision,
+    orImage: models.image,
+    orEdit: models.edit,
+    orText: models.text,
   }
 }
 
@@ -92,6 +136,23 @@ function validate(d: Draft, current: Settings): { patch: SettingsUpdate; errors:
   const refs = parseRefCount(d.maxStyleRefs)
   if (refs === null) errors.maxStyleRefs = 'Enter a whole number from 1 to 100'
   else if (refs !== current.max_style_refs) patch.max_style_refs = refs
+  if (d.aiPlatform !== current.ai_platform) patch.ai_platform = d.aiPlatform
+  const savedModels = parseOpenRouterModels(current.openrouter_models)
+  const nextModels: OpenRouterModels = { ...savedModels }
+  let modelsValid = true
+  for (const [field, key] of OPENROUTER_FIELDS) {
+    const id = d[field].trim()
+    if (!OPENROUTER_ID.test(id)) {
+      errors[field] = `Enter an OpenRouter model id like ${OPENROUTER_MODEL_DEFAULTS[key]}`
+      modelsValid = false
+    } else nextModels[key] = id
+  }
+  const stored = isRecord(current.openrouter_models) ? current.openrouter_models : {}
+  // Compare with the stored JSON, not the parsed view, so a key the row is missing gets written.
+  if (modelsValid && OPENROUTER_FIELDS.some(([, key]) => stored[key] !== nextModels[key])) {
+    // Keep keys this form does not know about (a later job type, a flag the workers read).
+    patch.openrouter_models = { ...stored, ...nextModels }
+  }
   return { patch, errors }
 }
 
@@ -122,6 +183,54 @@ function UseDefault({ show, disabled, onClick }: { show: boolean; disabled: bool
       <RotateCcw className="h-3 w-3" aria-hidden="true" />
       Use default
     </button>
+  )
+}
+
+/** One OpenRouter model id input with its "Use default" link and hint. */
+function ModelField({
+  id,
+  label,
+  value,
+  defaultValue,
+  error,
+  disabled,
+  onChange,
+  children,
+}: {
+  id: string
+  label: string
+  value: string
+  defaultValue: string
+  error?: string
+  disabled: boolean
+  onChange: (next: string) => void
+  children: ReactNode
+}) {
+  return (
+    <div className="text-sm">
+      <div className="mb-1 flex items-baseline justify-between gap-2">
+        <label htmlFor={id} className="font-medium">
+          {label}
+        </label>
+        <UseDefault show={value !== defaultValue} disabled={disabled} onClick={() => onChange(defaultValue)} />
+      </div>
+      <input
+        id={id}
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={defaultValue}
+        autoComplete="off"
+        spellCheck={false}
+        aria-invalid={Boolean(error)}
+        aria-describedby={`${id}-hint`}
+        disabled={disabled}
+        className={`${inputCls} font-mono`}
+      />
+      <Hint id={`${id}-hint`} error={error}>
+        {children} Default <code className={codeCls}>{defaultValue}</code>.
+      </Hint>
+    </div>
   )
 }
 
@@ -208,7 +317,7 @@ export function PipelineSettings() {
           Pipeline
         </h2>
         <p className="text-xs text-neutral-500">
-          Pause switch, per-card price shown on Approve, how many jobs run at once, and the models the engine calls.
+          Pause switch, per-card price shown on Approve, how many jobs run at once, the models the engine calls and the AI platform they run on.
         </p>
       </div>
 
@@ -459,6 +568,77 @@ export function PipelineSettings() {
                     from library&rdquo;; the rest are ignored. Default {GENERATION_DEFAULTS.max_style_refs}.
                   </Hint>
                 </div>
+              </div>
+            </div>
+
+            <div className="space-y-3 border-t border-neutral-200 pt-4 dark:border-neutral-800">
+              <div>
+                <h3 className="text-sm font-semibold">AI platform</h3>
+                <p className="text-xs text-neutral-500">
+                  Where the AI steps run. Intake, Style Card drafts and the nightly lessons always use this default; the card
+                  page preselects it on Approve, Edit text, Edit region and Regenerate, where a designer can pick another
+                  platform for that one run.
+                </p>
+              </div>
+              <PlatformPicker
+                label="Studio default"
+                value={view.aiPlatform}
+                onChange={(aiPlatform) => edit({ aiPlatform })}
+                disabled={saving}
+                className="sm:max-w-sm"
+              />
+              <div>
+                <h4 className="text-sm font-medium">OpenRouter models</h4>
+                <p className="text-xs text-neutral-500">
+                  Model ids used when a step runs on OpenRouter: always with OpenRouter, and with Auto for any call Kie
+                  reports as down. They should be the same models the Kie ids above point to.
+                </p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <ModelField
+                  id="openrouter-vision"
+                  label="Vision & QC"
+                  value={view.orVision}
+                  defaultValue={OPENROUTER_MODEL_DEFAULTS.vision}
+                  error={errors.orVision}
+                  disabled={saving}
+                  onChange={(orVision) => edit({ orVision })}
+                >
+                  Reads a card&apos;s references, drafts Style Cards and judges QC.
+                </ModelField>
+                <ModelField
+                  id="openrouter-image"
+                  label="Image generation"
+                  value={view.orImage}
+                  defaultValue={OPENROUTER_MODEL_DEFAULTS.image}
+                  error={errors.orImage}
+                  disabled={saving}
+                  onChange={(orImage) => edit({ orImage })}
+                >
+                  Approve and Regenerate, with the references attached.
+                </ModelField>
+                <ModelField
+                  id="openrouter-edit"
+                  label="Image edits"
+                  value={view.orEdit}
+                  defaultValue={OPENROUTER_MODEL_DEFAULTS.edit}
+                  error={errors.orEdit}
+                  disabled={saving}
+                  onChange={(orEdit) => edit({ orEdit })}
+                >
+                  Edit text and Edit region (Kie runs them on <code className={codeCls}>google/nano-banana-edit</code>).
+                </ModelField>
+                <ModelField
+                  id="openrouter-text"
+                  label="Lessons"
+                  value={view.orText}
+                  defaultValue={OPENROUTER_MODEL_DEFAULTS.text}
+                  error={errors.orText}
+                  disabled={saving}
+                  onChange={(orText) => edit({ orText })}
+                >
+                  Writes the nightly lessons from designer rejections.
+                </ModelField>
               </div>
             </div>
 

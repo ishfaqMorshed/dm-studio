@@ -1,6 +1,7 @@
 import { useId, useState, type FormEvent } from 'react'
 import { RefreshCw } from 'lucide-react'
-import { REJECTION_REASONS, REJECTION_REASON_LABEL, type RejectionReason } from '../../lib/types'
+import { REJECTION_REASONS, REJECTION_REASON_LABEL, type AiPlatform, type RejectionReason } from '../../lib/types'
+import { PlatformPicker } from '../PlatformPicker'
 import { MagicPromptEditor } from './MagicPromptEditor'
 import type { PromptSection } from './magicPrompt'
 import { btnPrimary, btnSecondary, selectCls, textareaCls } from './styles'
@@ -9,6 +10,7 @@ import { Dialog, Field, Spinner } from './ui'
 export interface RegenerateSubmit {
   reason: RejectionReason
   note: string
+  platform: AiPlatform
 }
 
 /**
@@ -20,6 +22,7 @@ export function RegenerateDialog({
   onSectionsChange,
   onResetSections,
   promptDirty,
+  defaultPlatform,
   busy,
   onClose,
   onSubmit,
@@ -28,6 +31,8 @@ export function RegenerateDialog({
   onSectionsChange: (next: PromptSection[]) => void
   onResetSections: () => void
   promptDirty: boolean
+  /** settings.ai_platform; the picker follows it until the designer chooses. */
+  defaultPlatform: AiPlatform
   busy: boolean
   onClose: () => void
   onSubmit: (args: RegenerateSubmit) => void
@@ -35,12 +40,14 @@ export function RegenerateDialog({
   const formId = useId()
   const [reason, setReason] = useState<RejectionReason | ''>('')
   const [note, setNote] = useState('')
+  const [pickedPlatform, setPickedPlatform] = useState<AiPlatform | null>(null)
+  const platform = pickedPlatform ?? defaultPlatform
   const canSubmit = reason !== '' && !busy
 
   function submit(e: FormEvent) {
     e.preventDefault()
     if (reason === '' || !canSubmit) return
-    onSubmit({ reason, note: note.trim() })
+    onSubmit({ reason, note: note.trim(), platform })
   }
 
   return (
@@ -89,6 +96,13 @@ export function RegenerateDialog({
               placeholder="e.g. the bear looks like the reference too closely"
             />
           </Field>
+          <PlatformPicker
+            value={platform}
+            onChange={setPickedPlatform}
+            disabled={busy}
+            studioDefault={defaultPlatform}
+            size="sm"
+          />
         </div>
 
         <div>

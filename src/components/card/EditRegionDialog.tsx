@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type PointerEvent } from 'react'
 import { Crop, Eraser, ImageOff } from 'lucide-react'
+import type { AiPlatform } from '../../lib/types'
+import { PlatformPicker } from '../PlatformPicker'
 import { normalizeRect, rectToPixels, rectTooSmall, type FractionRect } from './mask'
 import { btnPrimary, btnSecondary, btnSmall, checkerboard, inputCls, textareaCls } from './styles'
 import { Dialog, Field, Spinner } from './ui'
@@ -8,6 +10,7 @@ export interface EditRegionSubmit {
   rect: FractionRect
   natural: { w: number; h: number }
   instruction: string
+  platform: AiPlatform
 }
 
 interface Size {
@@ -23,12 +26,15 @@ interface Size {
 export function EditRegionDialog({
   imageUrl,
   imageBroken,
+  defaultPlatform,
   busy,
   onClose,
   onSubmit,
 }: {
   imageUrl: string | null
   imageBroken: boolean
+  /** settings.ai_platform; the picker follows it until the designer chooses. */
+  defaultPlatform: AiPlatform
   busy: boolean
   onClose: () => void
   onSubmit: (args: EditRegionSubmit) => void
@@ -41,6 +47,8 @@ export function EditRegionDialog({
   const [display, setDisplay] = useState<Size>({ w: 0, h: 0 })
   const [rect, setRect] = useState<FractionRect | null>(null)
   const [instruction, setInstruction] = useState('')
+  const [pickedPlatform, setPickedPlatform] = useState<AiPlatform | null>(null)
+  const platform = pickedPlatform ?? defaultPlatform
 
   // Keep the overlay the same size as the displayed image.
   useEffect(() => {
@@ -125,7 +133,7 @@ export function EditRegionDialog({
   function submit(e: FormEvent) {
     e.preventDefault()
     if (!rect || !natural || !canSubmit) return
-    onSubmit({ rect, natural, instruction: instruction.trim() })
+    onSubmit({ rect, natural, instruction: instruction.trim(), platform })
   }
 
   return (
@@ -218,6 +226,13 @@ export function EditRegionDialog({
               data-autofocus
             />
           </Field>
+          <PlatformPicker
+            value={platform}
+            onChange={setPickedPlatform}
+            disabled={busy}
+            studioDefault={defaultPlatform}
+            size="sm"
+          />
           <p className="text-xs text-neutral-500">
             The mask is a white rectangle on black at full image size. After the edit, QC measures drift outside the mask and
             flags anything above 3 %.

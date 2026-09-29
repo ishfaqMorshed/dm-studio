@@ -9,3 +9,14 @@ export const GENERATION_DEFAULTS = {
   vision_model: 'gemini-3.1-pro',
   max_style_refs: 12,
 } as const
+
+/**
+ * Default of `settings.openrouter_models`: the OpenRouter id of each model the studio
+ * also runs on Kie (Kie runs edits on google/nano-banana-edit).
+ */
+export const OPENROUTER_MODEL_DEFAULTS = {
+  vision: 'google/gemini-3.1-pro-preview',
+  image: 'openai/gpt-image-2.5-sunburst',
+  edit: 'google/gemini-2.5-flash-image',
+  text: 'anthropic/claude-sonnet-4.6',
+} as const

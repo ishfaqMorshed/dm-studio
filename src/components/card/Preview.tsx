@@ -9,11 +9,13 @@ import {
   GENERATION_KIND_LABEL,
   REJECTION_REASON_LABEL,
   errorMessage,
+  generationPlatformLabel,
   type Generation,
 } from '../../lib/types'
 import { agoLabel, formatDateTime, formatPct, shortId } from './format'
 import { STATUS_CLASS, STATUS_LABEL, btnSecondary, btnSmall, checkerboard } from './styles'
 import { Badge, Panel, Spinner } from './ui'
+import { PlatformBadge } from './PlatformBadge'
 
 const BLINK_MS = 700
 const DRIFT_FLAG_PCT = 3
@@ -177,7 +179,8 @@ function GenerationMeta({ generation: g }: { generation: Generation }) {
   const driftHigh = typeof g.drift_pct === 'number' && g.drift_pct > DRIFT_FLAG_PCT
   const rows: Array<[string, React.ReactNode]> = []
   rows.push(['Status', <Badge key="s" className={STATUS_CLASS[g.status]}>{STATUS_LABEL[g.status]}</Badge>])
-  if (g.model || g.vendor) rows.push(['Model', [g.vendor, g.model].filter(Boolean).join(' · ')])
+  if (generationPlatformLabel(g)) rows.push(['Platform', <PlatformBadge key="p" generation={g} />])
+  if (g.model) rows.push(['Model', g.model])
   if (g.style_card_version !== null) rows.push(['Style Card', `v${g.style_card_version}`])
   if (g.kind === 'edit_text' && (g.old_text || g.new_text)) rows.push(['Text edit', `“${g.old_text ?? ''}” → “${g.new_text ?? ''}”`])
   if (g.edit_instruction) rows.push(['Instruction', g.edit_instruction])
