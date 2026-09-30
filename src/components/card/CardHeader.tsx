@@ -8,7 +8,7 @@ import { formatDate, isPastDate, shortId } from './format'
 import type { CardRow } from './useCardData'
 
 /** Chip text per `cards.source`; the fuller CARD_SOURCE_LABEL goes in the tooltip. */
-const SOURCE_CHIP: Record<CardSource, string> = { form: 'Form', designer: 'Designer', duplicate: 'Duplicate' }
+const SOURCE_CHIP: Record<CardSource, string> = { form: 'Form', designer: 'Designer', duplicate: 'Duplicate', style_test: 'Style test' }
 
 /** Where the card came from. Unknown values (hand-edited rows) pass through unchanged. */
 function sourceChipFor(source: string | null | undefined): { label: string; title: string } | null {

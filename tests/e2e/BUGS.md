@@ -129,3 +129,47 @@ Or do the same in the n8n UI: on each listed node, Options → Response → Resp
 ## E2E-014 · S6 · blocker · Retry on a card that failed during intake never re-ran intake
 - **Actual:** retry_card moved the card back to `intake` ("retried") but the intake webhook trigger was `AFTER INSERT` only, so nothing happened; the card sat in Intake for 18 h.
 - **Fix:** migration studio_16: `cards_notify_intake` fires `after insert or update of stage` when a card enters intake (event `card.retried`). **Retest:** the stuck card was re-notified by hand and reached review; a new Retry now fires by itself.
+
+---
+
+## Run 4 (2026-09-30): the user's own edits, then the card-page redesign
+
+## E2E-015 · S4 · blocker · Changing several text lines re-rendered the whole design
+- **Steps:** on a generated card, Edit text → change two lines → Apply.
+- **Actual:** the multi-line path updated the brief and queued a *regenerate*, so the subject, layout and style changed together with the text (the user's screenshot: "when i changed the text it also changed the image style").
+- **Fix:** multi-line edits are an in-place `edit_text` on the current image (prompt-engine v6: old/new text empty = the lines are already rewritten in the magic prompt; WF-3 receives the previous image). **Retest:** PASS — only the lettering changed.
+
+## E2E-016 · S4 · major · A region edit changed pixels outside the marked rectangle
+- **Actual:** the edit model (Nano Banana / gpt-image) treats the mask as a hint; trees outside the rectangle were recoloured.
+- **Fix:** WF-3 now pastes the edited rectangle back onto the parent image (Edit Image nodes: information → resize to the original size → crop to the scaled `mask_rect` → composite at x,y; `generations.mask_rect`, migration studio_17). **Retest:** PASS — 0 px differ outside the rectangle.
+
+## E2E-017 · S3 · major · QC verdict flipped between near-identical generations
+- **Actual:** gen 1 failed on "palette contains an extra colour" and "text is upper case", gen 2 passed; the judge was free-texting style compliance.
+- **Fix:** Build QC Request sends a structured STYLE CARD block; `palette_ok` strictness comes from `card.rules.palette_mode` (strict / flexible); letter case is never a violation (the client's text-case rule is applied at intake). **Retest:** PASS on the same card.
+
+## Card-page redesign (commit 2c90fc2) — QA leftovers, all minor
+- Multi-line Apply button still reads "Apply text changes" when only the brief lines changed (wording).
+- After Apply, focus is lost while the generations list refreshes (returns to the body; should stay on the picture).
+- At 560 px the auto-scroll to the edit form stops ~16 px short of the form's top edge.
+- The status line under the picture is empty for a moment while generations load (shows nothing instead of "Loading…").
+
+## Onboarding (2026-09-30)
+- Backend live (migration studio_18): `clients.style_brief`, `client_references.excluded`, text case at intake, `approve_card(p_card_id, p_platform, p_style_card_id)`, `create_style_test_card`, style_profiler v2 with `rules` + `evidence`. Verified: draft v3 for the E2E client carries rules/evidence; test card 262c5998 rendered with the draft card and passed QC.
+- Wizard UI (drop → brief → analyse → test render → lock; hide `source='style_test'` cards from Board/Completed/counts) built by workflow wf_6f58a798-47e — see REPORT.md once it lands.
+- Harness note: subagents cannot call `preview_start` ("Dev servers are not available for this session") and the attempt stops the running dev server; start it from the main session and tell subagents to `navigate` only.
+
+---
+
+## Run 5 (2026-09-30): onboarding wizard (workflow wf_6f58a798-47e - 2 designs, judge, implementer, spec + code review, browser QA, fix, QA re-check)
+
+Built: `/clients/:id/onboard` with 4 steps (Drop the designs → Written brief & lock parameters → Analyse → Test & lock), URL-addressable (`?step=`, `?draft=`), reachable from the client panel ("Onboard client" is the primary action until a Style Card is locked). QA on the E2E client: uploads via DataTransfer, notes, tick/untick with the 4-of-8 warning, brief save + reload, one Analyse (draft v4, $0.02), one Test render (card 1f250bbe, QC Pass, $0.10), style_test cards absent from Board / Completed / counts, no console errors, no horizontal scroll at 560 px. Test client restored afterwards (uploads deleted, brief and ticks back).
+
+Fixed before merge (12): Lock unreachable while a test card sat in review/stuck; a re-analysis hidden behind a pinned `?draft=`; cleared Notes not saved (RPC coalesce → always send `p_notes`); 1 Hz re-render of the whole wizard; a 30 s poll reverting an optimistic tick/note; step flash + focus steal before data loaded; stuck test card with no way out (Skip); failed strip drawn at the wrong phase; "locked" success text for a superseded version.
+
+Left as follow-ups:
+- WF-1b `reference_ids` (needs the WF-1b swap, see below); until then the evidence panel reconstructs the order and shows the "uploaded together" caveat; remove the caveat in DesignsStep.tsx / EvidencePanel.tsx afterwards.
+- Coverage gap (not driven for real): over-cap "Not read" badge (needs 17+ images), failed-analysis panel, paused pipeline, designer (non-lead) session, one real Lock. Exercise once on a throwaway client.
+- Post-QA fixes applied by hand: a failed test render from another session now shows its error + Retry in step 4 (hook falls back to the newest failed card); lock line wording under a failed render.
+
+## WF-1b swap (pending the user)
+The corrected WF-1b (`baCsaUp7HdrrSf2i`: library order `created_at.desc,id.desc`, `reference_ids` written into the draft, hard fail when an image cannot be signed) is created and verified but unpublished; `CsohPMosybjBoP8s` is still live. Swap = deactivate old, set Error workflow = WF-6 on the new one, activate new; then run one Analyse and confirm `style_cards.json.reference_ids` is present.

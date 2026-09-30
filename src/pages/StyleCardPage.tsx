@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, RefreshCw } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { newStyleCardVersion } from '../lib/api'
@@ -28,6 +28,7 @@ async function fetchStyleCardPage(clientId: string): Promise<{ client: Client | 
 /** /clients/:id/style — every Style Card version for one client, with the draft editor. */
 export default function StyleCardPage() {
   const { id: clientId } = useParams<{ id: string }>()
+  const [searchParams] = useSearchParams()
   const toast = useToast()
 
   const [client, setClient] = useState<Client | null>(null)
@@ -97,6 +98,16 @@ export default function StyleCardPage() {
     window.addEventListener('beforeunload', onBeforeUnload)
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [dirty])
+
+  // `?version=<style_card_id>` (from the client panel / onboarding wizard) picks that version once
+  // the list is here. One shot per URL value (the designer may switch afterwards), applied during
+  // render the React-documented way rather than in an effect.
+  const requestedVersion = searchParams.get('version')
+  const [appliedVersion, setAppliedVersion] = useState<string | null>(null)
+  if (!loading && requestedVersion && appliedVersion !== requestedVersion && versions.some((v) => v.id === requestedVersion)) {
+    setAppliedVersion(requestedVersion)
+    setSelectedId(requestedVersion)
+  }
 
   const currentLocked = useMemo(() => versions.find((v) => v.status === 'locked') ?? null, [versions])
   const openDraft = useMemo(() => versions.find((v) => v.status === 'draft') ?? null, [versions])

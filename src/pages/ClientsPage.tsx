@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertTriangle, Check, Copy, Loader2, PanelRight, Pencil, Plus, RefreshCw, RotateCw } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { errorMessage, type Client } from '../lib/types'
+import { VISIBLE_CARD_SOURCE_EXCLUDED, errorMessage, type Client } from '../lib/types'
 import { useProfile } from '../lib/useProfile'
 import { useToast } from '../lib/useToast'
 import { ClientDialog } from '../components/clientPanel/ClientDialog'
@@ -43,6 +43,7 @@ async function fetchClientRows(): Promise<ClientRow[]> {
         .from('cards')
         .select('id', { count: 'exact', head: true })
         .eq('client_id', c.id)
+        .neq('source', VISIBLE_CARD_SOURCE_EXCLUDED)
       return error ? null : count
     }),
   )
@@ -293,13 +294,17 @@ function ClientTableRow({
       </td>
       <td className="px-4 py-3 align-top">
         <Link
-          to={`/clients/${client.id}/style`}
+          to={lockedVersion !== null ? `/clients/${client.id}/style` : `/clients/${client.id}/onboard`}
           className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium outline-none ring-neutral-900/10 focus-visible:ring-4 dark:ring-white/20 ${
             lockedVersion !== null
               ? 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/50'
               : 'bg-red-50 text-red-800 hover:bg-red-100 dark:bg-red-950/40 dark:text-red-300 dark:hover:bg-red-900/50'
           }`}
-          title={lockedVersion !== null ? 'Open the Style Card editor' : 'No locked Style Card: cards cannot be approved. Open the editor to lock one.'}
+          title={
+            lockedVersion !== null
+              ? 'Open the Style Card editor'
+              : 'Start onboarding: drop designs, analyse, test, lock'
+          }
         >
           {lockedVersion !== null ? (
             <>

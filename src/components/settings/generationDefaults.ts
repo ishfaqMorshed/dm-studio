@@ -7,7 +7,7 @@ export const GENERATION_DEFAULTS = {
   generation_model: 'gpt-image-2-5-sunburst-image-to-image',
   generation_resolution: '2K',
   vision_model: 'gemini-3.1-pro',
-  max_style_refs: 12,
+  max_style_refs: 16,
 } as const
 
 /**

@@ -6,16 +6,9 @@ import { useToast } from '../../lib/useToast'
 import { btnPrimary, btnSecondary, hintCls, inputCls, labelCls } from '../style/classes'
 import { Modal } from '../style/Modal'
 import { TagInput } from '../style/TagInput'
+import { SIMILARITY_TIERS, SIMILARITY_TIER_HINT } from './tiers'
 
 /* ---------- Add / edit client dialog (lead only; RLS enforces it too) ---------- */
-
-const TIERS = [
-  { value: 1, label: '1 · Style only, new subject' },
-  { value: 2, label: '2 · Loosely inspired by the references' },
-  { value: 3, label: '3 · Balanced (default)' },
-  { value: 4, label: '4 · Close to the references' },
-  { value: 5, label: '5 · As close as possible' },
-] as const
 
 const PX_MIN = 300
 const PX_MAX = 20_000
@@ -218,13 +211,13 @@ export function ClientDialog({
             onChange={(e) => setForm({ ...form, default_similarity_tier: Number(e.target.value) })}
             className={inputCls}
           >
-            {TIERS.map((t) => (
+            {SIMILARITY_TIERS.map((t) => (
               <option key={t.value} value={t.value}>
                 {t.label}
               </option>
             ))}
           </select>
-          <p className={hintCls}>How close new designs may sit to the client's references. Designers can change it per card.</p>
+          <p className={hintCls}>{SIMILARITY_TIER_HINT}</p>
         </div>
 
         <label htmlFor={ids.active} className="flex items-start gap-2 text-sm">

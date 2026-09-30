@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, PauseCircle, Play, RotateCcw } from 'lucide-react'
+import { AlertTriangle, ArrowRight, PauseCircle, Play, RotateCcw, WandSparkles } from 'lucide-react'
 import { GENS_BUCKET, supabase } from '../lib/supabase'
 import { useToast } from '../lib/useToast'
 import { useProfile } from '../lib/useProfile'
@@ -555,6 +555,25 @@ function CardView({ cardId }: { cardId: string }) {
   return (
     <div className="space-y-4">
       <CardHeader card={card} now={now} executionLinks={executionLinks} onDuplicate={onDuplicate} busy={busy} />
+
+      {card.source === 'style_test' && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center gap-3 rounded-2xl border border-neutral-200 bg-neutral-100 px-4 py-3 text-sm text-neutral-800 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200"
+        >
+          <WandSparkles className="h-5 w-5 shrink-0 text-neutral-500" aria-hidden="true" />
+          <p className="min-w-0 flex-1">
+            Onboarding test render for {card.clients?.name ?? 'this client'}: hidden from the board and Completed.
+          </p>
+          <Link
+            to={`/clients/${card.client_id}/onboard?step=test`}
+            className="inline-flex items-center gap-1 rounded font-medium underline underline-offset-2 outline-none focus-visible:ring-4 focus-visible:ring-neutral-900/10 dark:ring-white/20"
+          >
+            Back to the wizard
+            <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </Link>
+        </div>
+      )}
 
       {failureMessage !== null && (
         <div

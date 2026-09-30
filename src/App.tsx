@@ -14,6 +14,7 @@ import CompletedPage from './pages/CompletedPage'
 import ClientsPage from './pages/ClientsPage'
 import ClientPanelPage from './pages/ClientPanelPage'
 import StyleCardPage from './pages/StyleCardPage'
+import OnboardingPage from './pages/OnboardingPage'
 import SettingsPage from './pages/SettingsPage'
 
 export default function App() {
@@ -34,6 +35,7 @@ export default function App() {
               <Route path="/completed" element={<CompletedPage />} />
               <Route path="/clients" element={<ClientsPage />} />
               <Route path="/clients/:id" element={<ClientPanelPage />} />
+              <Route path="/clients/:id/onboard" element={<OnboardingPage />} />
               <Route path="/clients/:id/style" element={<StyleCardPage />} />
               <Route
                 path="/settings"

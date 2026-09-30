@@ -1,4 +1,4 @@
-# DM Studio — status (updated 2026-09-24)
+# DM Studio — status (updated 2026-09-30)
 
 One page the user can open at any time. Three lists: done / ongoing / to-do. Mirror into SOP section 11 when the SOP is republished as v1.2.
 
@@ -15,18 +15,22 @@ One page the user can open at any time. Three lists: done / ongoing / to-do. Mir
 - Requirements audit (`docs/audit/`): 109 requirements traced; report in `docs/audit/audit-report.md`.
 - T-Shirt Engine `DcdygzBz5GAoy2Zg` read-only check: n8n version history shows exactly one saved version (2026-09-21 05:33 UTC, "via MCP"), created before the read-only extract of 2026-09-24 and before any DM Studio workflow work in n8n; nothing in this repo writes to that id. The 2026-09-21 save itself can only be inspected by the user (see to-do).
 
+- 2026-09-28/29 — nine workflows published (WF-0…WF-7; finisher paths `studio-finisher-dispatch/worker`, Slack removed, WF-6 bound as Error workflow). AI platform switch Kie / OpenRouter / Auto (two full lanes in WF-1/1b/2/3/7, Auto = Kie first then OpenRouter; key in WF-0 "OpenRouter Config"; picker in Settings and on Approve / Edit text / Edit region / Regenerate). E2E S1–S6 PASS on the OpenRouter lane (`tests/e2e/REPORT.md`, bugs E2E-001…014 in `tests/e2e/BUGS.md`).
+- 2026-09-30 — edits are surgical: multi-line text edits stay on the same image (prompt-engine v6), region edits are pasted back pixel-exact (WF-3 Edit Image chain, `generations.mask_rect`), QC judges style from structured rules (case never a violation). Card page redesigned image-first (click the picture → text slots from the magic prompt; one stage action; collapsed detail panels) — commit 2c90fc2. Onboarding backend (studio_18): `clients.style_brief`, per-image tick/untick (`client_references.excluded`), text case applied at intake, `approve_card(…, p_style_card_id)` test render with a draft card, `create_style_test_card`, style_profiler v2 (brief tokens, `rules`, `evidence`).
+
+- 2026-09-30 — Onboarding wizard `/clients/:id/onboard`: drop 5–16 designs (tick/untick, per-image note, profiler-order numbering) → written brief & lock parameters (`clients.style_brief`, tier, garment colours; saved through `save_onboarding_brief`, any staff) → Analyse (~$0.02, live progress) → visual Style Card (swatches, typography, chips cross-checked against the brief, per-image evidence with exception warnings, stale-rules banner) → Test render (~$0.10, hidden `style_test` card, auto-approve with the draft) → Lock. Migration studio_19 (test-card order, `max_style_refs` 16, `save_onboarding_brief`).
+
 ## Ongoing
 
-- Requirements audit follow-through: closing the OPS gaps (R42, R45, R46, R74, R90, R102, R104). This page and the README/contract updates are part of it.
+- WF-1b swap to `baCsaUp7HdrrSf2i` (deterministic image order + `reference_ids` in drafts) — created and verified, waiting for the user to deactivate `CsohPMosybjBoP8s` / activate the new one (see `tests/e2e/BUGS.md` → Run 5).
+- Card-page redesign QA leftovers (4 minor, listed in `tests/e2e/BUGS.md` → Run 4).
 
 ## To-do (in order; who)
 
-1. **User — n8n WF-0** `vbyjWhK4ZRN9uZUM`, node "Studio Config": paste `studioSecret` (`select value from private.secrets where key = 'studio_secret'` in the Supabase SQL editor), `ideogramKey`, `imgbbKey`, `mlKey`. Verify the Kie nodes still bind "GPT Image 2 [DM-Kie]" / "Gemini 3.1 Pro [DM-Kie]" and Slack binds "DM HR".
-2. **User — publish** in this order: WF-0, WF-5, **WF-6**, then WF-2, WF-3, WF-1, WF-1b, WF-4, WF-7.
-3. **User — Error workflow binding**: after WF-6 is published (n8n refuses an unpublished error workflow), open WF-1, WF-1b, WF-2, WF-3, WF-4 → Settings → Error workflow → "DM Studio · WF-6 Error" → Save. (The connector's `update_workflow` can set `settings.errorWorkflow`, but only once WF-6 has a published version; it was tried on 2026-09-24 and refused for that reason.)
-4. **User — delete superseded workflows** `62DdRaJTr7rIsPFP` (old WF-4) and `3QD6HDEtWWcBYFbD` (stray WF-5); move the nine workflows into folder "Print on demand" `QKT7A5gRiL349k8X` if any sit at the project root.
-5. **Assistant — end-to-end acceptance** (`docs/generation-spec.md` section 6) on Test Client as soon as 1–3 are done: upload 6 library images → Draft Style Card → lock → New card with 2 refs → review with reference_analysis → Approve → needs_review within 3 min with image + qc_report (≥ 9 checks) + rendered_prompt containing the text line and two Style Card tokens → Accept → delivered at 300 DPI on Completed. Diagnose any failure from the n8n execution and `cards.last_error` / `generations.last_error`, fix, re-run.
-6. **User + assistant — GitHub + Vercel** (README "Deploy to Vercel"): user creates the GitHub repo and confirms the push; import in Vercel with `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`; deploy. Nothing to add in Supabase Auth unless magic links are enabled.
-7. **User — T-Shirt Engine** `DcdygzBz5GAoy2Zg`: open its version history in the n8n UI and confirm the single 2026-09-21 "via MCP" save was your own session (no earlier version exists to diff against).
-8. **Assistant — SOP v1.2** (artifact 5X8MwSR1VeEiSdChvvDBUA): update sections 01, 02, 05, 06, 07, 08, 11, 12 from `docs/generation-spec.md` + `docs/n8n-config-contract.md`; fix the rule "secrets never in Set nodes" (now: keys live only in WF-0's Set node); mirror this page into section 11.
-9. Before production: upgrade the Supabase project from free tier (pauses after 7 idle days); delete the test lead user and the "Test Client (phase 1)" rows.
+1. **User — E2E-004 decision:** n8n executions store the vendor keys in node outputs. Options: set every workflow's "Save successful executions" to none (errors only) and rotate the Kie / OpenRouter / Ideogram / imgbb / ModelsLab keys once, or leave as is on a private instance.
+2. **Assistant — Kie-lane retest** (S2–S4 with `settings.ai_platform = kie`) as soon as Kie Gemini answers again; `openrouter` stays the default until then.
+3. **Assistant — finish the onboarding wizard** (workflow running), then commit and update `tests/e2e/REPORT.md`; fix the 4 card-page minors and E2E-009 (Edit region pixel fields append).
+4. **User + assistant — GitHub + Vercel** (README "Deploy to Vercel"): user creates the GitHub repo and confirms the push (branch `e2e-openrouter-platform` holds everything since 2026-09-28; merge to main first); import in Vercel with `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`; deploy.
+5. **Assistant — SOP v1.2** (artifact 5X8MwSR1VeEiSdChvvDBUA): update sections 01, 02, 05, 06, 07, 08, 11, 12 from `docs/generation-spec.md` + `docs/n8n-config-contract.md` + the platform switch + onboarding; mirror this page into section 11.
+6. Larger prints: OpenRouter `openai/gpt-image-2.5-sunburst` returns 1024 px (Kie returns 2K) → finals are 3072 px / 10.2 in at 300 DPI; test `size` / `quality` on the OpenRouter Images API if bigger prints are needed.
+7. Before production: upgrade the Supabase project from free tier (pauses after 7 idle days); delete the test lead user, the "Test Client (phase 1)" rows and the E2E test client's cards.

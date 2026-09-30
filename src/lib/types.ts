@@ -52,14 +52,22 @@ export type { Json }
 export const ACTIVE_JOB_STATUSES: readonly JobStatus[] = ['queued', 'dispatched', 'working']
 
 /** `cards.source` is plain text in the DB; these are the values the RPCs write. */
-export const CARD_SOURCES = ['form', 'designer', 'duplicate'] as const
+export const CARD_SOURCES = ['form', 'designer', 'duplicate', 'style_test'] as const
 export type CardSource = (typeof CARD_SOURCES)[number]
 
 export const CARD_SOURCE_LABEL: Record<CardSource, string> = {
   form: 'Client form',
   designer: 'Created by designer',
   duplicate: 'Duplicated',
+  style_test: 'Style Card test render',
 }
+
+/**
+ * Onboarding test renders (`create_style_test_card`) are real cards that run the real pipeline,
+ * but they are hidden from the board, Completed and the client's card counts. Every list that
+ * hides them filters on this one value; they stay reachable at /card/:id and in the wizard.
+ */
+export const VISIBLE_CARD_SOURCE_EXCLUDED: CardSource = 'style_test'
 
 export function isCardSource(v: unknown): v is CardSource {
   return typeof v === 'string' && (CARD_SOURCES as readonly string[]).includes(v)

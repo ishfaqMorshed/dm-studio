@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, ArrowLeft, Check, Loader2, MousePointerClick, Pencil, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Check, MousePointerClick, Pencil, RefreshCw, WandSparkles } from 'lucide-react'
 import { useClientScope } from '../lib/useClientScope'
 import { useProfile } from '../lib/useProfile'
 import { useSettings } from '../lib/useSettings'
@@ -9,17 +9,20 @@ import { useToast } from '../lib/useToast'
 import { NewCardDialog } from '../components/board/NewCardDialog'
 import { CardsSummary } from '../components/clientPanel/CardsSummary'
 import { ClientDialog } from '../components/clientPanel/ClientDialog'
+import { ClientLoadState } from '../components/clientPanel/ClientLoadState'
 import { FormLinkPanel } from '../components/clientPanel/FormLinkPanel'
 import { ReferenceLibrary } from '../components/clientPanel/ReferenceLibrary'
 import { StyleCardSection } from '../components/clientPanel/StyleCardSection'
 import { useClientCardCounts } from '../components/clientPanel/useClientCardCounts'
 import { useClientPanel } from '../components/clientPanel/useClientPanel'
 import { useReferenceLibrary } from '../components/clientPanel/useReferenceLibrary'
-import { btnPrimary, btnSecondary, iconBtn, panelCls } from '../components/style/classes'
+import { useRefreshOnDraftDone } from '../components/clientPanel/useRefreshOnDraftDone'
+import { btnPrimary, btnSecondary, iconBtn } from '../components/style/classes'
 
 /**
  * /clients/:id — one client's panel: form link, reference library, Style Card status and
- * drafting, cards by stage, New card. The Style Card editor stays at /clients/:id/style.
+ * drafting, cards by stage, New card. The Style Card editor stays at /clients/:id/style and
+ * the guided onboarding (drop designs → brief → analyse → test → lock) at /clients/:id/onboard.
  * Keyed on the id so every hook restarts when the URL moves to another client.
  */
 export default function ClientPanelPage() {
@@ -42,25 +45,11 @@ function ClientPanel({ clientId }: { clientId: string }) {
   const [newCardOpen, setNewCardOpen] = useState(false)
 
   // A finished draft is a new style_cards row: reload the versions so the Style Card section shows it.
-  const doneKey = useMemo(
-    () =>
-      requests.requests
-        .filter((r) => r.status === 'done')
-        .map((r) => r.id)
-        .sort()
-        .join(','),
-    [requests.requests],
-  )
-  const seenDone = useRef<string | null>(null)
-  const refreshPanel = panel.refresh
-  useEffect(() => {
-    if (requests.loading) return
-    if (seenDone.current !== null && doneKey !== seenDone.current) void refreshPanel()
-    seenDone.current = doneKey
-  }, [doneKey, requests.loading, refreshPanel])
+  useRefreshOnDraftDone(requests, panel.refresh)
 
   const client = panel.client
   const isSelected = scope.selectedClientId === clientId
+  const onboardLink = `/clients/${clientId}/onboard`
 
   function selectClient() {
     if (!client) return
@@ -68,46 +57,13 @@ function ClientPanel({ clientId }: { clientId: string }) {
     navigate({ pathname: '/board', search: `?client=${encodeURIComponent(client.id)}` })
   }
 
-  if (panel.loading) {
-    return (
-      <div className="flex justify-center py-24 text-neutral-400" role="status" aria-label="Loading client">
-        <Loader2 className="h-6 w-6 animate-spin" />
-      </div>
-    )
-  }
+  const loadState = (
+    <ClientLoadState loading={panel.loading} error={panel.error} client={client} onRetry={() => void panel.refresh()} />
+  )
+  if (panel.loading || !client) return loadState
 
-  if (panel.error && !client) {
-    return (
-      <div className={`${panelCls} mx-auto mt-8 max-w-md p-6 text-center`}>
-        <AlertTriangle className="mx-auto mb-2 h-6 w-6 text-red-500" />
-        <p className="text-sm font-medium">Could not load this client</p>
-        <p className="mt-1 text-xs text-neutral-500">{panel.error}</p>
-        <div className="mt-4 flex justify-center gap-2">
-          <Link to="/clients" className={btnSecondary}>
-            <ArrowLeft className="h-4 w-4" />
-            Clients
-          </Link>
-          <button type="button" onClick={() => void panel.refresh()} className={btnPrimary}>
-            <RefreshCw className="h-4 w-4" />
-            Try again
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  if (!client) {
-    return (
-      <div className={`${panelCls} mx-auto mt-8 max-w-md p-6 text-center`}>
-        <p className="text-sm font-medium">Client not found</p>
-        <p className="mt-1 text-xs text-neutral-500">This link does not point to a client you can see.</p>
-        <Link to="/clients" className={`${btnSecondary} mt-4`}>
-          <ArrowLeft className="h-4 w-4" />
-          Back to Clients
-        </Link>
-      </div>
-    )
-  }
+  // Without a locked Style Card the wizard is the one thing to do here; with one it is a secondary tool.
+  const needsOnboarding = !panel.currentLocked
 
   return (
     <div className="space-y-4">
@@ -165,6 +121,18 @@ function ClientPanel({ clientId }: { clientId: string }) {
               Edit
             </button>
           )}
+          <Link
+            to={onboardLink}
+            className={needsOnboarding ? btnPrimary : btnSecondary}
+            title={
+              needsOnboarding
+                ? 'Drop past designs, write the brief, analyse, test render, lock the Style Card'
+                : 'Re-analyse the library, test a draft, lock the next version'
+            }
+          >
+            <WandSparkles className="h-4 w-4" />
+            {needsOnboarding ? 'Onboard client' : 'Onboarding wizard'}
+          </Link>
           <button
             type="button"
             onClick={selectClient}
@@ -176,7 +144,7 @@ function ClientPanel({ clientId }: { clientId: string }) {
                   : 'Scope the board, Completed and new cards to this client, then open the board'
                 : 'Inactive clients are not offered in the client selector. Edit the client to reactivate it.'
             }
-            className={btnPrimary}
+            className={needsOnboarding ? btnSecondary : btnPrimary}
           >
             <MousePointerClick className="h-4 w-4" />
             {isSelected ? 'Open board' : 'Select this client'}
@@ -193,6 +161,7 @@ function ClientPanel({ clientId }: { clientId: string }) {
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="min-w-0 space-y-4">
           <ReferenceLibrary
+            clientId={client.id}
             clientName={client.name}
             library={library}
             maxRefs={settings?.max_style_refs ?? null}
@@ -204,8 +173,9 @@ function ClientPanel({ clientId }: { clientId: string }) {
             versions={panel.versions}
             currentLocked={panel.currentLocked}
             drafts={panel.drafts}
-            libraryCount={library.refs.length}
+            tickedCount={library.refs.filter((r) => !r.excluded).length}
             libraryLoading={library.loading}
+            maxRefs={settings?.max_style_refs ?? null}
             requests={requests}
             isLead={isLead}
             n8nBase={settings?.n8n_base_url}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { AlertTriangle, Loader2, Lock } from 'lucide-react'
 import { btnPrimary, btnSecondary, hintCls, inputCls, labelCls } from './classes'
 import { Modal } from './Modal'
@@ -14,10 +14,12 @@ interface Props {
   busy: boolean
   onCancel: () => void
   onConfirm: (note: string) => void
+  /** Extra context above the note (e.g. the onboarding wizard's "no test render" warning). */
+  extra?: ReactNode
 }
 
 /** Confirms a lock: note, what it means, and anything the schema check found. */
-export function LockDialog({ open, version, clientName, issues, willSaveFirst, busy, onCancel, onConfirm }: Props) {
+export function LockDialog({ open, version, clientName, issues, willSaveFirst, busy, onCancel, onConfirm, extra }: Props) {
   const [note, setNote] = useState('')
   const blocked = issues.blocking.length > 0
 
@@ -73,6 +75,7 @@ export function LockDialog({ open, version, clientName, issues, willSaveFirst, b
             </ul>
           </div>
         )}
+        {extra}
         <div>
           <label htmlFor="lock-note" className={labelCls}>
             Note (optional)

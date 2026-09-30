@@ -5,12 +5,14 @@
  */
 import type { PostgrestError } from '@supabase/supabase-js'
 import { REFS_BUCKET, storagePaths, supabase } from './supabase'
-import type { Json } from './database.types'
+import type { Database, Json } from './database.types'
 import type {
   AiPlatform,
   Card,
   CardStage,
+  Client,
   ClientReference,
+  ClientUpdate,
   FinJob,
   Generation,
   GenerationKind,
@@ -19,6 +21,7 @@ import type {
   StyleCard,
   StyleDraftRequest,
 } from './types'
+import { isRecord } from './types'
 
 function rpcError(error: PostgrestError | null, fallback: string): Error {
   if (!error) return new Error(fallback)
@@ -39,10 +42,16 @@ function unwrap<T>(res: { data: T | null; error: PostgrestError | null }, what: 
 /**
  * review → approved. Backend refuses without a locked Style Card or while paused.
  * `platform` is stored on the first generation; omit it to follow settings.ai_platform.
+ * `styleCardId` renders with that version of the client's Style Card (draft or locked) instead of
+ * the locked one: the onboarding test render. The backend refuses an empty card or another client's.
  */
-export async function approveCard(cardId: string, platform?: AiPlatform | null): Promise<Card> {
+export async function approveCard(cardId: string, platform?: AiPlatform | null, styleCardId?: string | null): Promise<Card> {
   return unwrap(
-    await supabase.rpc('approve_card', { p_card_id: cardId, ...(platform ? { p_platform: platform } : {}) }),
+    await supabase.rpc('approve_card', {
+      p_card_id: cardId,
+      ...(platform ? { p_platform: platform } : {}),
+      ...(styleCardId ? { p_style_card_id: styleCardId } : {}),
+    }),
     'Approve',
   )
 }
@@ -305,6 +314,82 @@ export async function deleteClientReference(row: Pick<ClientReference, 'id' | 'p
   if (res.error) throw rpcError(res.error, 'Remove reference failed')
 }
 
+/**
+ * Edits one library image: its one-line note and/or whether the profiler skips it
+ * (`excluded`). Any staff member may do this (client_references_staff_update).
+ */
+export async function updateClientReference(
+  id: string,
+  patch: { note?: string | null; excluded?: boolean },
+): Promise<ClientReference> {
+  return unwrap(await supabase.from('client_references').update(patch).eq('id', id).select('*').single(), 'Update reference')
+}
+
+/* ---------- Client row (lead only: clients_lead_write) ---------- */
+
+/**
+ * True when a write was refused by RLS: Postgres 42501, or PostgREST's "0 rows" answer to
+ * `.single()` after an UPDATE the policy silently filtered out.
+ */
+export function isPermissionError(e: unknown): boolean {
+  const code = isRecord(e) && typeof e.code === 'string' ? e.code : null
+  if (code === '42501' || code === 'PGRST116') return true
+  const msg = e instanceof Error ? e.message : isRecord(e) && typeof e.message === 'string' ? e.message : ''
+  return /permission denied|not allowed|row-level security|0 rows|multiple \(or no\) rows|JSON object requested/i.test(msg)
+}
+
+const CLIENT_WRITE_REFUSED = "Saving was refused: only a lead can change this client's brief."
+
+/**
+ * PATCH the client row (style_brief, default tier, garment colours, notes…). Only leads pass
+ * `clients_lead_write`; for anyone else the update touches 0 rows and this throws
+ * "Saving was refused: only a lead can change this client's brief."
+ */
+export async function updateClient(clientId: string, patch: ClientUpdate): Promise<Client> {
+  const res = await supabase.from('clients').update(patch).eq('id', clientId).select('*').single()
+  if (res.error) {
+    if (isPermissionError(res.error)) throw new Error(CLIENT_WRITE_REFUSED)
+    throw rpcError(res.error, 'Save client failed')
+  }
+  if (!res.data) throw new Error(CLIENT_WRITE_REFUSED)
+  return res.data
+}
+
+export interface OnboardingBriefPatch {
+  style_brief: Json
+  default_similarity_tier: number
+  garment_colors: string[]
+  notes: string | null
+}
+
+/** PostgREST's answer when an RPC is not deployed (studio_19 not applied yet). */
+function isMissingFunction(error: PostgrestError): boolean {
+  return error.code === 'PGRST202' || /could not find the function/i.test(error.message)
+}
+
+/**
+ * Saves the onboarding brief through `save_onboarding_brief` (studio_19: any staff member, only
+ * these four fields). Where that RPC is not deployed yet it falls back to the plain client
+ * PATCH, which RLS limits to leads. `p_notes` is always sent: the RPC coalesces a missing value
+ * to the old notes, so a cleared field goes over as '' (the profiler and intake read '' and
+ * null the same way).
+ */
+export async function saveOnboardingBrief(clientId: string, patch: OnboardingBriefPatch): Promise<Client> {
+  const res = await supabase.rpc('save_onboarding_brief', {
+    p_client_id: clientId,
+    p_style_brief: patch.style_brief,
+    p_default_similarity_tier: patch.default_similarity_tier,
+    p_garment_colors: patch.garment_colors,
+    p_notes: patch.notes ?? '',
+  })
+  if (!res.error && res.data) return res.data
+  if (res.error && !isMissingFunction(res.error)) {
+    if (isPermissionError(res.error)) throw new Error(CLIENT_WRITE_REFUSED)
+    throw rpcError(res.error, 'Save brief failed')
+  }
+  return updateClient(clientId, patch)
+}
+
 /* ---------- Style Card drafting (style_draft_requests) ---------- */
 
 /**
@@ -333,6 +418,44 @@ export async function listStyleDraftRequests(clientId: string, limit = 10): Prom
     .order('created_at', { ascending: false })
     .limit(limit)
   if (res.error) throw rpcError(res.error, 'Load draft requests failed')
+  return res.data ?? []
+}
+
+/* ---------- Style Card test render (onboarding step 4) ---------- */
+
+/**
+ * Creates the hidden `style_test` card for the client: stage intake, text = the client's name +
+ * "EST. 2026", references = the newest 3 ticked library images. WF-1 reads the references and
+ * moves it to review by itself; then `approveCard(card.id, null, draftId)` renders with the draft.
+ * The backend refuses an inactive client or an empty library.
+ */
+export async function createStyleTestCard(clientId: string): Promise<Card> {
+  return unwrap(await supabase.rpc('create_style_test_card', { p_client_id: clientId }), 'Test render')
+}
+
+/** The joined slice of the current generation a test-render tile needs. */
+export interface TestCardGeneration {
+  id: string
+  image_path: string | null
+  status: Database['public']['Enums']['job_status']
+  qc_report: Json | null
+}
+
+/** A `style_test` card with its current generation joined (optional: realtime payloads carry the bare row). */
+export interface TestCard extends Card {
+  current_generation?: TestCardGeneration | null
+}
+
+/** The client's test renders, newest first. The FK hint is needed because cards and generations link both ways. */
+export async function listStyleTestCards(clientId: string, limit = 6): Promise<TestCard[]> {
+  const res = await supabase
+    .from('cards')
+    .select('*, current_generation:generations!cards_current_generation_fk(id, image_path, status, qc_report)')
+    .eq('client_id', clientId)
+    .eq('source', 'style_test')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (res.error) throw rpcError(res.error, 'Load test renders failed')
   return res.data ?? []
 }
 

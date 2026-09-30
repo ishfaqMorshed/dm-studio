@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/useAuth'
+import { VISIBLE_CARD_SOURCE_EXCLUDED } from '../../lib/types'
 import { useRealtimeTable } from '../../lib/useRealtimeTable'
 import { useTableEvents } from './useTableEvents'
 import type { BoardCard } from './types'
@@ -13,7 +14,8 @@ const BOARD_SELECT =
   '*, client:clients(name), current_generation:generations!cards_current_generation_fk(id, image_path, status)'
 
 async function fetchBoardCards(clientId: string | null): Promise<BoardCard[]> {
-  let query = supabase.from('cards').select(BOARD_SELECT)
+  // Onboarding test renders run the real pipeline but never sit on the board.
+  let query = supabase.from('cards').select(BOARD_SELECT).neq('source', VISIBLE_CARD_SOURCE_EXCLUDED)
   if (clientId) query = query.eq('client_id', clientId)
   const { data, error } = await query.order('stage_entered_at', { ascending: true })
   if (error) throw error
@@ -45,6 +47,8 @@ export function useBoardData(clientId: string | null): BoardData {
     fetch,
     filter: clientId ? `client_id=eq.${clientId}` : undefined,
     enabled,
+    // A hidden test card's realtime row must not be merged into the board.
+    onEvent: (p) => p.eventType === 'DELETE' || (p.new as Partial<BoardCard>).source !== VISIBLE_CARD_SOURCE_EXCLUDED,
   })
 
   // A finished generation sets image_path on generations, not on cards.

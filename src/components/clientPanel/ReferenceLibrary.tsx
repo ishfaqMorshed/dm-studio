@@ -1,5 +1,6 @@
-import { useId, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
-import { ImageOff, ImagePlus, Loader2, RefreshCw, Trash2, Upload } from 'lucide-react'
+import { useId, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { ArrowRight, ImageOff, ImagePlus, Loader2, RefreshCw, Trash2, Upload } from 'lucide-react'
 import { REFS_BUCKET } from '../../lib/supabase'
 import { errorMessage, type ClientReference } from '../../lib/types'
 import { useSignedUrl } from '../../lib/useSignedUrl'
@@ -8,7 +9,8 @@ import { btnPrimary, btnSecondary, iconBtn } from '../style/classes'
 import { ConfirmDialog } from '../style/ConfirmDialog'
 import { formatDateTime } from '../style/format'
 import { Section } from './Section'
-import { LIBRARY_ACCEPT, LIBRARY_FALLBACK_MAX, LIBRARY_MIN_RECOMMENDED, pickLibraryFiles } from './libraryFiles'
+import { LIBRARY_ACCEPT, LIBRARY_FALLBACK_MAX, LIBRARY_MIN_RECOMMENDED } from './libraryFiles'
+import { useLibraryDrop } from './useLibraryDrop'
 import type { ReferenceLibrary as Library } from './useReferenceLibrary'
 
 /** Transparent-PNG checkerboard behind thumbnails (same as the card page). */
@@ -18,14 +20,16 @@ const checkerboard =
 /**
  * The client's reference library: past designs the vision pass reads when it drafts the
  * Style Card. Multi-file upload (PNG/JPG/WebP, 15 MB each), per-image delete, count against
- * `settings.max_style_refs`.
+ * `settings.max_style_refs`. Ticking, unticking and notes live in the onboarding wizard.
  */
 export function ReferenceLibrary({
+  clientId,
   clientName,
   library,
   maxRefs,
   isLead,
 }: {
+  clientId: string
   clientName: string
   library: Library
   /** `settings.max_style_refs`, or null while settings load. */
@@ -35,53 +39,14 @@ export function ReferenceLibrary({
   const toast = useToast()
   const inputId = useId()
   const inputRef = useRef<HTMLInputElement>(null)
-  const [dragging, setDragging] = useState(false)
   const [removing, setRemoving] = useState<ClientReference | null>(null)
   const [removeBusy, setRemoveBusy] = useState(false)
 
   const cap = maxRefs ?? LIBRARY_FALLBACK_MAX
   const count = library.refs.length
-  const room = cap - count
-  const full = !library.loading && room <= 0
+  const ticked = library.refs.filter((r) => !r.excluded).length
   const overCap = count > cap
-
-  async function addFiles(files: File[]) {
-    if (library.uploading || files.length === 0) return
-    const pick = pickLibraryFiles(files, room)
-    if (pick.rejected.length) {
-      const shown = pick.rejected.slice(0, 3).join(' ')
-      const more = pick.rejected.length - 3
-      toast.error(`${shown}${more > 0 ? ` And ${more} more file${more === 1 ? '' : 's'} were skipped.` : ''}`)
-    }
-    if (pick.overflow > 0) {
-      toast.error(
-        pick.accepted.length
-          ? `The library holds at most ${cap} images. Adding the first ${pick.accepted.length}; ${pick.overflow} did not fit.`
-          : `The library is full (${count} of ${cap}). Remove an image before adding another${isLead ? ', or raise the limit in Settings' : ''}.`,
-      )
-    }
-    if (!pick.accepted.length) return
-    try {
-      const rows = await library.add(pick.accepted)
-      toast.success(`${rows.length} image${rows.length === 1 ? '' : 's'} added to ${clientName}'s library`)
-    } catch (e) {
-      toast.error(`Upload failed: ${errorMessage(e)}`)
-    }
-  }
-
-  function onPick(e: ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files ? Array.from(e.target.files) : []
-    // Reset so picking the same file again after a failure fires onChange.
-    e.target.value = ''
-    void addFiles(files)
-  }
-
-  function onDrop(e: DragEvent<HTMLDivElement>) {
-    e.preventDefault()
-    setDragging(false)
-    if (library.uploading) return
-    void addFiles(Array.from(e.dataTransfer.files))
-  }
+  const drop = useLibraryDrop({ library, cap, clientName, isLead })
 
   async function confirmRemove() {
     if (!removing) return
@@ -97,7 +62,13 @@ export function ReferenceLibrary({
     }
   }
 
-  const countLabel = library.loading ? 'Loading…' : maxRefs === null ? `${count}` : `${count} of ${maxRefs}`
+  const countLabel = library.loading
+    ? 'Loading…'
+    : ticked !== count
+      ? `${ticked} ticked of ${count}`
+      : maxRefs === null
+        ? `${count}`
+        : `${count} of ${maxRefs}`
   const belowRecommended = !library.loading && count > 0 && count < LIBRARY_MIN_RECOMMENDED
 
   return (
@@ -117,7 +88,19 @@ export function ReferenceLibrary({
           </span>
         </span>
       }
-      subtitle={`Upload ${LIBRARY_MIN_RECOMMENDED}–${cap} past designs that show ${clientName}'s look. These are read when drafting the Style Card; they are not attached to individual cards.`}
+      subtitle={
+        <>
+          Upload {LIBRARY_MIN_RECOMMENDED}–{cap} past designs that show {clientName}'s look. These are read when drafting
+          the Style Card; they are not attached to individual cards.{' '}
+          <Link
+            to={`/clients/${clientId}/onboard?step=designs`}
+            className="inline-flex items-center gap-0.5 font-medium text-neutral-700 underline underline-offset-2 dark:text-neutral-300"
+          >
+            Tick, untick and annotate in the onboarding wizard
+            <ArrowRight className="h-3 w-3" aria-hidden="true" />
+          </Link>
+        </>
+      }
       actions={
         <>
           <input
@@ -127,15 +110,15 @@ export function ReferenceLibrary({
             multiple
             accept={LIBRARY_ACCEPT}
             className="sr-only"
-            disabled={library.uploading || full}
-            onChange={onPick}
+            disabled={library.uploading || drop.full}
+            onChange={drop.onPick}
           />
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            disabled={library.uploading || full || library.loading}
+            disabled={library.uploading || drop.full || library.loading}
             title={
-              full
+              drop.full
                 ? `Library full (${count} of ${cap}). Remove an image to add another.`
                 : 'PNG, JPG or WebP, up to 15 MB each'
             }
@@ -170,14 +153,11 @@ export function ReferenceLibrary({
       )}
 
       <div
-        onDragOver={(e) => {
-          e.preventDefault()
-          if (!library.uploading && !full) setDragging(true)
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}
+        onDragOver={drop.onDragOver}
+        onDragLeave={drop.onDragLeave}
+        onDrop={drop.onDrop}
         className={`rounded-xl border-2 border-dashed p-2 transition ${
-          dragging
+          drop.dragging
             ? 'border-neutral-900 bg-neutral-100 dark:border-white dark:bg-neutral-800/60'
             : 'border-transparent'
         }`}
@@ -255,8 +235,8 @@ function LibraryTile({
         href={url ?? undefined}
         target="_blank"
         rel="noreferrer"
-        aria-label={`Open ${label} full size`}
-        title={`${label} · added ${formatDateTime(ref_.created_at)}`}
+        aria-label={`Open ${label} full size${ref_.excluded ? ' (skipped by the analysis)' : ''}`}
+        title={`${label} · added ${formatDateTime(ref_.created_at)}${ref_.excluded ? ' · unticked for the analysis' : ''}`}
         className={`block aspect-square overflow-hidden rounded-xl border border-neutral-200 outline-none focus-visible:ring-4 focus-visible:ring-neutral-900/10 dark:border-neutral-800 ${checkerboard}`}
       >
         {broken ? (
@@ -265,11 +245,25 @@ function LibraryTile({
             <span className="text-[10px]">Missing</span>
           </div>
         ) : url ? (
-          <img src={url} alt={label} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+          <img
+            src={url}
+            alt={label}
+            loading="lazy"
+            decoding="async"
+            className={`h-full w-full object-cover ${ref_.excluded ? 'opacity-50 grayscale' : ''}`}
+          />
         ) : (
           <div className="h-full w-full animate-pulse bg-neutral-200/60 dark:bg-neutral-800/60" />
         )}
       </a>
+      {ref_.excluded && (
+        <span
+          className="absolute left-1.5 top-1.5 rounded-full bg-neutral-200/95 px-2 py-0.5 text-[10px] font-medium text-neutral-700 dark:bg-neutral-700/95 dark:text-neutral-200"
+          title="Unticked for the analysis"
+        >
+          Skipped
+        </span>
+      )}
       <button
         type="button"
         onClick={onRemove}

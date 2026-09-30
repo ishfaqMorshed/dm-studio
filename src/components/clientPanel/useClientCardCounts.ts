@@ -1,11 +1,11 @@
 import { useCallback, useMemo } from 'react'
 import { STAGES } from '../../lib/stage'
 import { supabase } from '../../lib/supabase'
-import type { Card, CardStage } from '../../lib/types'
+import { VISIBLE_CARD_SOURCE_EXCLUDED, type Card, type CardStage } from '../../lib/types'
 import { useAuth } from '../../lib/useAuth'
 import { useRealtimeTable } from '../../lib/useRealtimeTable'
 
-type StageRow = Pick<Card, 'id' | 'client_id' | 'stage'>
+type StageRow = Pick<Card, 'id' | 'client_id' | 'stage' | 'source'>
 
 export interface ClientCardCounts {
   counts: Record<CardStage, number>
@@ -27,7 +27,11 @@ export function useClientCardCounts(clientId: string): ClientCardCounts {
   const enabled = Boolean(user)
 
   const fetch = useCallback(async (): Promise<StageRow[]> => {
-    const { data, error } = await supabase.from('cards').select('id, client_id, stage').eq('client_id', clientId)
+    const { data, error } = await supabase
+      .from('cards')
+      .select('id, client_id, stage, source')
+      .eq('client_id', clientId)
+      .neq('source', VISIBLE_CARD_SOURCE_EXCLUDED)
     if (error) throw error
     return data
   }, [clientId])
@@ -37,6 +41,8 @@ export function useClientCardCounts(clientId: string): ClientCardCounts {
     filter: `client_id=eq.${clientId}`,
     fetch,
     enabled,
+    // Onboarding test renders are not counted.
+    onEvent: (p) => p.eventType === 'DELETE' || (p.new as Partial<StageRow>).source !== VISIBLE_CARD_SOURCE_EXCLUDED,
   })
 
   return useMemo(() => {

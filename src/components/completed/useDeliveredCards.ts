@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
+import { VISIBLE_CARD_SOURCE_EXCLUDED } from '../../lib/types'
 import { useRealtimeTable, type UseRealtimeTableResult } from '../../lib/useRealtimeTable'
 import type { DeliveredCard } from './finals'
 
@@ -17,7 +18,7 @@ const SELECT =
  */
 export function useDeliveredCards(clientId: string | null = null): UseRealtimeTableResult<DeliveredCard> {
   const fetch = useCallback(async (): Promise<DeliveredCard[]> => {
-    let query = supabase.from('cards').select(SELECT).eq('stage', 'delivered')
+    let query = supabase.from('cards').select(SELECT).eq('stage', 'delivered').neq('source', VISIBLE_CARD_SOURCE_EXCLUDED)
     if (clientId) query = query.eq('client_id', clientId)
     const { data, error } = await query.order('stage_entered_at', { ascending: false })
     if (error) throw new Error(error.message)

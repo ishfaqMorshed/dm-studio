@@ -131,6 +131,7 @@ export type Database = {
           client_id: string
           created_at: string
           created_by: string | null
+          excluded: boolean
           id: string
           note: string | null
           path: string
@@ -139,6 +140,7 @@ export type Database = {
           client_id: string
           created_at?: string
           created_by?: string | null
+          excluded?: boolean
           id?: string
           note?: string | null
           path: string
@@ -147,6 +149,7 @@ export type Database = {
           client_id?: string
           created_at?: string
           created_by?: string | null
+          excluded?: boolean
           id?: string
           note?: string | null
           path?: string
@@ -172,6 +175,7 @@ export type Database = {
           model_override: string | null
           name: string
           notes: string | null
+          style_brief: Json
           target_px_h: number
           target_px_w: number
           updated_at: string
@@ -186,6 +190,7 @@ export type Database = {
           model_override?: string | null
           name: string
           notes?: string | null
+          style_brief?: Json
           target_px_h?: number
           target_px_w?: number
           updated_at?: string
@@ -200,6 +205,7 @@ export type Database = {
           model_override?: string | null
           name?: string
           notes?: string | null
+          style_brief?: Json
           target_px_h?: number
           target_px_w?: number
           updated_at?: string
@@ -368,6 +374,7 @@ export type Database = {
           last_error: string | null
           magic_prompt_json: Json | null
           mask_path: string | null
+          mask_rect: Json | null
           model: string | null
           n8n_execution_id: string | null
           needs_regen: boolean | null
@@ -411,6 +418,7 @@ export type Database = {
           last_error?: string | null
           magic_prompt_json?: Json | null
           mask_path?: string | null
+          mask_rect?: Json | null
           model?: string | null
           n8n_execution_id?: string | null
           needs_regen?: boolean | null
@@ -454,6 +462,7 @@ export type Database = {
           last_error?: string | null
           magic_prompt_json?: Json | null
           mask_path?: string | null
+          mask_rect?: Json | null
           model?: string | null
           n8n_execution_id?: string | null
           needs_regen?: boolean | null
@@ -745,7 +754,7 @@ export type Database = {
         }
       }
       approve_card: {
-        Args: { p_card_id: string; p_platform?: string }
+        Args: { p_card_id: string; p_platform?: string; p_style_card_id?: string }
         Returns: {
           approved_at: string | null
           approved_by: string | null
@@ -800,6 +809,7 @@ export type Database = {
           last_error: string | null
           magic_prompt_json: Json | null
           mask_path: string | null
+          mask_rect: Json | null
           model: string | null
           n8n_execution_id: string | null
           needs_regen: boolean | null
@@ -847,6 +857,44 @@ export type Database = {
           p_reference_paths: string[]
           p_similarity_tier?: number
         }
+        Returns: {
+          approved_at: string | null
+          approved_by: string | null
+          avoid_notes: string | null
+          brief_snapshot: Json | null
+          brief_text: string
+          client_id: string
+          client_submission: Json
+          created_at: string
+          current_generation_id: string | null
+          due_on: string | null
+          garment_color: string | null
+          id: string
+          last_error: string | null
+          n8n_execution_id: string | null
+          placement: string | null
+          previous_stage: Database["public"]["Enums"]["card_stage"] | null
+          print_text: Json
+          reference_analysis: Json | null
+          reference_paths: string[]
+          similarity_tier: number | null
+          source: string
+          stage: Database["public"]["Enums"]["card_stage"]
+          stage_entered_at: string
+          stage_note: string | null
+          style_card_id: string | null
+          style_card_version: number | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "cards"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_style_test_card: {
+        Args: { p_client_id: string }
         Returns: {
           approved_at: string | null
           approved_by: string | null
@@ -1113,6 +1161,7 @@ export type Database = {
           last_error: string | null
           magic_prompt_json: Json | null
           mask_path: string | null
+          mask_rect: Json | null
           model: string | null
           n8n_execution_id: string | null
           needs_regen: boolean | null
@@ -1198,6 +1247,36 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "cards"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      save_onboarding_brief: {
+        Args: {
+          p_client_id: string
+          p_default_similarity_tier?: number
+          p_garment_colors?: string[]
+          p_notes?: string
+          p_style_brief: Json
+        }
+        Returns: {
+          active: boolean
+          created_at: string
+          default_similarity_tier: number
+          form_token: string
+          garment_colors: string[]
+          id: string
+          model_override: string | null
+          name: string
+          notes: string | null
+          style_brief: Json
+          target_px_h: number
+          target_px_w: number
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "clients"
           isOneToOne: true
           isSetofReturn: false
         }
