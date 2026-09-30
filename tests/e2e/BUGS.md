@@ -116,3 +116,16 @@ Or do the same in the n8n UI: on each listed node, Options → Response → Resp
 - Duplicate copies the reference analysis, so the copy lands in review without a second vision call (the api.ts comment says "intake").
 - Not clicked in the browser by the tester (left to the user): Completed → Download PNG / Download all (the same file was fetched and verified through Storage), and Delete (permanent).
 - E2E-004 (secrets stored in n8n executions) is still open, waiting for a decision.
+
+---
+
+## Run 3 (2026-09-30): the user's first own card
+
+## E2E-013 · S2 · blocker · intake failed when the references were three unrelated designs
+- **Steps:** Board → New card with 3 references that are different designs (a labrador, a panda, two pitbulls), brief "Make a racoon in a happy mood", 3 text lines.
+- **Actual:** the vision model answered with a JSON **array** (one analysis per image) instead of one object; Parse Analysis only accepted an object → "reference analysis is neither JSON nor a STYLE block - reply was [" → card failed (WF-1 exec 92321).
+- **Fix:** Parse Analysis parses the whole reply first; an array is reduced to IMAGE 1 (the design to re-create) with the other images summarised in `notes` as supporting references. Live + published. **Retest:** PASS — card 6e54e616 reached review with the analysis.
+
+## E2E-014 · S6 · blocker · Retry on a card that failed during intake never re-ran intake
+- **Actual:** retry_card moved the card back to `intake` ("retried") but the intake webhook trigger was `AFTER INSERT` only, so nothing happened; the card sat in Intake for 18 h.
+- **Fix:** migration studio_16: `cards_notify_intake` fires `after insert or update of stage` when a card enters intake (event `card.retried`). **Retest:** the stuck card was re-notified by hand and reached review; a new Retry now fires by itself.
