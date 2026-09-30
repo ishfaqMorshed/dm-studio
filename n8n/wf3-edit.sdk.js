@@ -661,7 +661,7 @@ const buildQcRequest = node({
   config: {
     name: 'Build QC Request',
     parameters: {
-      jsCode: "const cfg = $('Load Config').first().json;\nconst gen = $('Get Generation').first().json;\nconst rows = $input.all().map((i) => i.json);\nconst tpl = rows.find((r) => r.slug === 'qc_prompt');\nif (!tpl || !tpl.body) throw new Error('no active qc_prompt template in prompt_templates');\nconst peText = ((($('Prompt Engine').first().json || {}).magic_prompt_json || {}).text || {}).lines;\n// QC checks exactly the text the prompt asked for (the engine's text slot); the brief snapshot is the fallback\nconst src = Array.isArray(peText) ? peText : ((gen.brief_snapshot && Array.isArray(gen.brief_snapshot.print_text)) ? gen.brief_snapshot.print_text : ((gen.cards && gen.cards.print_text) || []));\nlet lines = src.map((t) => String((t && t.text) || '').trim()).filter(Boolean);\nif (!Array.isArray(peText) && gen.kind === 'edit_text' && gen.old_text && gen.new_text) lines = lines.map((l) => (l === String(gen.old_text).trim() ? String(gen.new_text).trim() : l));\nconst styleCard = gen.style_card_snapshot || {};\nconst imageUrl = cfg.sbUrl + '/storage/v1' + String($('Sign Result').first().json.signedURL || '');\nconst vars = { EXPECTED_TEXT: lines.join('\\n'), TEXT_LINES: lines.length ? lines.join('\\n') : 'NONE', TEXT_LINES_JSON: JSON.stringify(lines), STYLE_CARD_JSON: JSON.stringify(styleCard), PALETTE_JSON: JSON.stringify(styleCard.palette || []), GARMENT_COLOR: (gen.cards && gen.cards.garment_color) || '' };\nlet text = String(tpl.body).replace(/\\{\\{\\s*([A-Z_]+)\\s*\\}\\}/g, (m, k) => (k in vars ? vars[k] : m));\nif (!lines.length) text = text.replace(/EXPECTED ON-DESIGN TEXT: \"\"\"[\\s\\S]*?\"\"\"/, 'EXPECTED ON-DESIGN TEXT: (none - the image must contain NO text at all)');\nif (!/STYLE_CARD_JSON|PALETTE_JSON/.test(tpl.body)) text += '\\n\\nSTYLE CARD (locked JSON for this client - report any palette or style violation):\\n' + vars.STYLE_CARD_JSON;\nif (!/EXPECTED_TEXT|TEXT_LINES/.test(tpl.body)) text += '\\n\\nEXACT TEXT LINES (each must appear verbatim, exactly once):\\n' + vars.TEXT_LINES;\nconst body = { messages: [{ role: 'user', content: [{ type: 'text', text }, { type: 'image_url', image_url: { url: imageUrl } }] }], response_format: { type: 'json_object' } };\nreturn { json: { body, text_lines: lines, expected_text: lines.join('\\n'), image_url: imageUrl, template_version: tpl.version } };"
+      jsCode: "const cfg = $('Load Config').first().json;\nconst gen = $('Get Generation').first().json;\nconst rows = $input.all().map((i) => i.json);\nconst tpl = rows.find((r) => r.slug === 'qc_prompt');\nif (!tpl || !tpl.body) throw new Error('no active qc_prompt template in prompt_templates');\nconst peText = ((($('Prompt Engine').first().json || {}).magic_prompt_json || {}).text || {}).lines;\n// QC checks exactly the text the prompt asked for (the engine's text slot); the brief snapshot is the fallback\nconst src = Array.isArray(peText) ? peText : ((gen.brief_snapshot && Array.isArray(gen.brief_snapshot.print_text)) ? gen.brief_snapshot.print_text : ((gen.cards && gen.cards.print_text) || []));\nlet lines = src.map((t) => String((t && t.text) || '').trim()).filter(Boolean);\nif (!Array.isArray(peText) && gen.kind === 'edit_text' && gen.old_text && gen.new_text) lines = lines.map((l) => (l === String(gen.old_text).trim() ? String(gen.new_text).trim() : l));\nconst styleCard = gen.style_card_snapshot || {};\nconst imageUrl = cfg.sbUrl + '/storage/v1' + String($('Sign Result').first().json.signedURL || '');\nconst vars = { EXPECTED_TEXT: lines.join('\\n'), TEXT_LINES: lines.length ? lines.join('\\n') : 'NONE', TEXT_LINES_JSON: JSON.stringify(lines), STYLE_CARD_JSON: JSON.stringify(styleCard), PALETTE_JSON: JSON.stringify(styleCard.palette || []), GARMENT_COLOR: (gen.cards && gen.cards.garment_color) || '' };\nlet text = String(tpl.body).replace(/\\{\\{\\s*([A-Z_]+)\\s*\\}\\}/g, (m, k) => (k in vars ? vars[k] : m));\nif (!lines.length) text = text.replace(/EXPECTED ON-DESIGN TEXT: \"\"\"[\\s\\S]*?\"\"\"/, 'EXPECTED ON-DESIGN TEXT: (none - the image must contain NO text at all)');\nif (!/STYLE_CARD_JSON|PALETTE_JSON/.test(tpl.body)) text += '\\n\\nSTYLE CARD (the locked look for this client, JSON below). Add two keys to your JSON: \"palette_ok\" (' + ((styleCard.rules || {}).palette_mode === 'flexible' ? 'true unless a LARGE, obvious area uses a colour clearly outside the palette - small natural accents are allowed' : 'true only when every colour in the artwork belongs to the palette or is a shade of one; small natural details count') + ') and \"style_violations\" (array of short strings, [] when none: only a forbidden element from \"forbid\", or a palette problem). These style keys NEVER change \"pass\" or the 9 checks. Letter case, font and wording of the text are defined ONLY by the EXPECTED ON-DESIGN TEXT above - never report them as a violation.\\n' + vars.STYLE_CARD_JSON;\nif (!/EXPECTED_TEXT|TEXT_LINES/.test(tpl.body)) text += '\\n\\nEXACT TEXT LINES (each must appear verbatim, exactly once):\\n' + vars.TEXT_LINES;\nconst body = { messages: [{ role: 'user', content: [{ type: 'text', text }, { type: 'image_url', image_url: { url: imageUrl } }] }], response_format: { type: 'json_object' } };\nreturn { json: { body, text_lines: lines, expected_text: lines.join('\\n'), image_url: imageUrl, template_version: tpl.version } };"
     },
     onError: 'continueErrorOutput',
     position: [4800, 304]
@@ -1097,6 +1097,109 @@ const orVisionQc = node({
   output: [{ id: 'gen-or-sample', model: 'google/gemini-3.1-pro-preview', choices: [{ index: 0, message: { role: 'assistant', content: '{}' }, finish_reason: 'stop' }] }]
 });
 
+// ---- Region edits: paste the edited rectangle back onto the untouched parent image (everything outside stays identical) ----
+const regionEdit = ifElse({
+  version: 2.2,
+  config: {
+    name: 'Region Edit?',
+    parameters: {
+      conditions: {
+        options: looseOptions,
+        conditions: [
+          { id: 'r1', leftValue: expr("{{ $('Edit Context').first().json.kind }}"), operator: { type: 'string', operation: 'equals' }, rightValue: 'edit_region' },
+          { id: 'r2', leftValue: expr("{{ $('Get Generation').first().json.mask_rect ? 'yes' : 'no' }}"), operator: { type: 'string', operation: 'equals' }, rightValue: 'yes' }
+        ],
+        combinator: 'and'
+      },
+      options: {}
+    },
+    position: [3600, 496]
+  },
+  output: [{}]
+});
+
+const downloadOriginal = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
+  config: {
+    name: 'Download Original',
+    parameters: {
+      method: 'GET',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/storage/v1{{ $('Sign Input').all()[0].json.signedURL }}"),
+      options: { response: { response: { responseFormat: 'file', outputPropertyName: 'original' } }, timeout: 120000 }
+    },
+    retryOnFail: true,
+    maxTries: 2,
+    waitBetweenTries: 3000,
+    onError: 'continueErrorOutput',
+    position: [3840, 688]
+  },
+  output: [{}]
+});
+
+const bothImages = merge({
+  version: 3.2,
+  config: { name: 'Both Images', parameters: { mode: 'combine', combineBy: 'combineByPosition', options: {} }, position: [4080, 592] },
+  output: [{}]
+});
+
+const originalSize = node({
+  type: 'n8n-nodes-base.editImage',
+  version: 1,
+  config: { name: 'Original Size', parameters: { operation: 'information', dataPropertyName: 'original' }, onError: 'continueErrorOutput', position: [4320, 592] },
+  output: [{ size: { width: 1024, height: 1024 } }]
+});
+
+const fitEdit = node({
+  type: 'n8n-nodes-base.editImage',
+  version: 1,
+  config: {
+    name: 'Fit Edit To Original',
+    parameters: { operation: 'resize', dataPropertyName: 'data', width: expr('{{ $('Original Size').first().json.size.width }}'), height: expr('{{ $('Original Size').first().json.size.height }}'), resizeOption: 'ignoreAspectRatio' },
+    onError: 'continueErrorOutput',
+    position: [4560, 592]
+  },
+  output: [{}]
+});
+
+const cropEdit = node({
+  type: 'n8n-nodes-base.editImage',
+  version: 1,
+  config: {
+    name: 'Crop Edit To Region',
+    parameters: { operation: 'crop', dataPropertyName: 'data', width: expr('{{ Math.max(1, Math.round($('Get Generation').first().json.mask_rect.w * $('Original Size').first().json.size.width / $('Get Generation').first().json.mask_rect.width)) }}'), height: expr('{{ Math.max(1, Math.round($('Get Generation').first().json.mask_rect.h * $('Original Size').first().json.size.height / $('Get Generation').first().json.mask_rect.height)) }}'), positionX: expr('{{ Math.round($('Get Generation').first().json.mask_rect.x * $('Original Size').first().json.size.width / $('Get Generation').first().json.mask_rect.width) }}'), positionY: expr('{{ Math.round($('Get Generation').first().json.mask_rect.y * $('Original Size').first().json.size.height / $('Get Generation').first().json.mask_rect.height) }}') },
+    onError: 'continueErrorOutput',
+    position: [4800, 592]
+  },
+  output: [{}]
+});
+
+const compositeRegion = node({
+  type: 'n8n-nodes-base.editImage',
+  version: 1,
+  config: {
+    name: 'Composite Region',
+    parameters: { operation: 'composite', dataPropertyName: 'original', dataPropertyNameComposite: 'data', operator: 'Over', positionX: expr('{{ Math.round($('Get Generation').first().json.mask_rect.x * $('Original Size').first().json.size.width / $('Get Generation').first().json.mask_rect.width) }}'), positionY: expr('{{ Math.round($('Get Generation').first().json.mask_rect.y * $('Original Size').first().json.size.height / $('Get Generation').first().json.mask_rect.height) }}') },
+    onError: 'continueErrorOutput',
+    position: [5040, 592]
+  },
+  output: [{}]
+});
+
+const useComposite = node({
+  type: 'n8n-nodes-base.code',
+  version: 2,
+  config: {
+    name: 'Use Composite',
+    parameters: {
+      jsCode: "const it = $input.first();\nif (!it.binary || !it.binary.original) throw new Error('composite produced no image');\nreturn [{ json: Object.assign({}, it.json, { composited: true }), binary: { data: it.binary.original } }];"
+    },
+    onError: 'continueErrorOutput',
+    position: [5280, 592]
+  },
+  output: [{ composited: true }]
+});
+
 export default workflow('dm-studio-wf3-edit', 'DM Studio · WF-3 Edit')
   .add(editNote)
   .add(editWebhook)
@@ -1117,7 +1220,18 @@ export default workflow('dm-studio-wf3-edit', 'DM Studio · WF-3 Edit')
   .add(saveVendorJob)
   .to(pollUntilDone.onError(kieImageDown))
   .to(downloadResult.onError(failMessage))
-  .to(uploadToGens.onError(failMessage))
+  .to(regionEdit.onTrue(downloadOriginal.onError(failMessage)).onFalse(uploadToGens.onError(failMessage)))
+  .add(regionEdit)
+  .to(bothImages.input(0))
+  .add(downloadOriginal)
+  .to(bothImages.input(1))
+  .add(bothImages)
+  .to(originalSize.onError(failMessage))
+  .to(fitEdit.onError(failMessage))
+  .to(cropEdit.onError(failMessage))
+  .to(compositeRegion.onError(failMessage))
+  .to(useComposite.onError(failMessage))
+  .to(uploadToGens)
   .to(saveImagePath.onError(failMessage))
   .to(signResult.onError(failMessage))
   .to(getQcTemplates.onError(failMessage))
@@ -1135,7 +1249,7 @@ export default workflow('dm-studio-wf3-edit', 'DM Studio · WF-3 Edit')
   .to(markOpenRouter)
   .to(orImage.onError(failMessage))
   .to(decodeOrImage.onError(failMessage))
-  .to(uploadToGens)
+  .to(regionEdit)
   .add(failMessage)
   .to(generationFailed)
   .to(cardFailed);

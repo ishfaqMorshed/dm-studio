@@ -18,6 +18,8 @@ export type StyleCard = {
   forbid?: string[];
   signature_moves?: string[];
   garment_colors?: string[];
+  /** Lock parameters from onboarding (studio_18): how hard each part of the card binds a design. */
+  rules?: { palette_mode?: "strict" | "flexible"; text_case?: string; lock_typography?: boolean; lock_composition?: boolean };
   [k: string]: unknown;
 };
 
@@ -216,14 +218,21 @@ export function renderStyleCard(card: StyleCard): { prose: string; negatives: st
       return label ? (w ? label + " (" + w + ")" : label) : "";
     })
     .filter(Boolean);
-  if (pal.length) parts.push("Palette - use ONLY these colours: " + pal.join(", ") + ".");
-  if (s(card.composition)) parts.push("Composition: " + s(card.composition) + ".");
+  const rules = card.rules ?? {};
+  if (pal.length) {
+    parts.push(rules.palette_mode === "flexible"
+      ? "Palette - lead with these colours (small natural accents are allowed): " + pal.join(", ") + "."
+      : "Palette - use ONLY these colours: " + pal.join(", ") + ".");
+  }
+  if (s(card.composition)) {
+    parts.push((rules.lock_composition === false ? "Composition (a guide - adapt it to the brief): " : "Composition: ") + s(card.composition) + ".");
+  }
   const ty = [
     s(card.typography?.vibe),
     s(card.typography?.placement) ? "placed " + s(card.typography?.placement) : "",
     s(card.typography?.case) ? s(card.typography?.case) + " case" : "",
   ].filter(Boolean).join(", ");
-  if (ty) parts.push("Typography: " + ty + ".");
+  if (ty) parts.push((rules.lock_typography === false ? "Typography (a guide - adapt it to the brief): " : "Typography: ") + ty + ".");
   if (s(card.background)) parts.push("Background: " + s(card.background) + ".");
   const mood = list(card.mood);
   if (mood.length) parts.push("Mood: " + mood.join(", ") + ".");
@@ -292,7 +301,10 @@ export function applyEdit(
   const oldText = s(opts.old_text);
   const newText = s(opts.new_text);
 
-  if (kind === "edit_text") {
+  if (kind === "edit_text" && oldText === "" && newText === "") {
+    // Multi-line text edit: the caller already rewrote text.lines on the base prompt and lists every change in the
+    // instruction. Nothing to swap here; the exact-text block below carries the new lines.
+  } else if (kind === "edit_text") {
     // The old line is matched after whitespace/case normalisation. An unmatched old_text is refused rather than
     // appended: appending would leave both the old and the new text in the exact-text block (violates text-once).
     const norm = (t: unknown) => s(t).toLowerCase().replace(/\s+/g, " ");
