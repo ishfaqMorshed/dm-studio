@@ -8,7 +8,7 @@ export const STEP_LABEL: Record<StepId, string> = {
   designs: 'Drop the designs',
   brief: 'Written brief',
   analyse: 'Analyse',
-  test: 'Test & lock',
+  test: 'Lock & test',
 }
 
 /** Shorter label for the Continue button: "Next: written brief →". */
@@ -16,7 +16,7 @@ export const STEP_SHORT: Record<StepId, string> = {
   designs: 'the designs',
   brief: 'written brief',
   analyse: 'analyse',
-  test: 'test & lock',
+  test: 'lock & test',
 }
 
 export function isStepId(v: unknown): v is StepId {
@@ -86,6 +86,14 @@ export interface StepSummaryData {
   testVerdict: string | null
 }
 
+/** The render states that append to the step-4 summary while the pipeline is (or should be) on a card. */
+const RENDER_LIVE: Partial<Record<StepSummaryData['test'], { text: string; state: StepState }>> = {
+  rendering: { text: 'rendering…', state: 'busy' },
+  waiting: { text: 'test card at review', state: 'attention' },
+  stuck: { text: 'render stuck', state: 'attention' },
+  failed: { text: 'render failed', state: 'attention' },
+}
+
 /** Summaries come from persisted data only, so they survive a reload. */
 export function stepSummaries(d: StepSummaryData): StepSummary[] {
   const designs: StepSummary = {
@@ -122,36 +130,33 @@ export function stepSummaries(d: StepSummaryData): StepSummary[] {
     analyse = { id: 'analyse', label: STEP_LABEL.analyse, summary: 'Not run', state: 'todo' }
   }
 
+  // Step 4: the lock first, then the render of the locked version after a separator.
   let test: StepSummary
-  if (d.draft?.locked) {
+  const live = RENDER_LIVE[d.test]
+  if (d.draft?.locked && d.draft.superseded) {
     test = {
       id: 'test',
       label: STEP_LABEL.test,
-      summary: d.draft.superseded
-        ? `v${d.draft.version} superseded${d.lockedVersion !== null ? ` · v${d.lockedVersion} is current` : ''}`
-        : `v${d.draft.version} locked`,
+      summary: `v${d.draft.version} superseded${d.lockedVersion !== null ? ` · v${d.lockedVersion} is current` : ''}`,
       state: 'done',
     }
-  } else if (d.test === 'rendering') {
-    test = { id: 'test', label: STEP_LABEL.test, summary: 'Rendering…', state: 'busy', since: d.renderingSince }
-  } else if (d.test === 'waiting') {
-    test = { id: 'test', label: STEP_LABEL.test, summary: 'Test card waiting at review', state: 'attention' }
-  } else if (d.test === 'stuck') {
-    test = { id: 'test', label: STEP_LABEL.test, summary: 'Test render stuck', state: 'attention' }
-  } else if (d.test === 'failed') {
-    test = { id: 'test', label: STEP_LABEL.test, summary: 'Test render failed', state: 'attention' }
-  } else if (d.test === 'rendered') {
-    test = {
-      id: 'test',
-      label: STEP_LABEL.test,
-      summary: d.testVerdict ? `Rendered, ${d.testVerdict}` : 'Rendered',
-      state: 'todo',
+  } else if (d.draft?.locked) {
+    const base = `v${d.draft.version} locked`
+    if (live) {
+      test = { id: 'test', label: STEP_LABEL.test, summary: `${base} · ${live.text}`, state: live.state, since: live.state === 'busy' ? d.renderingSince : null }
+    } else if (d.test === 'rendered') {
+      test = { id: 'test', label: STEP_LABEL.test, summary: `${base} · ${d.testVerdict ?? 'rendered'}`, state: 'done' }
+    } else {
+      test = { id: 'test', label: STEP_LABEL.test, summary: base, state: 'done' }
     }
+  } else if (d.draft) {
+    // A draft renders only once locked. A render still in flight was started before that rule, or belongs to
+    // another version; a failed one may be older too. Keep them visible so Retry / Skip are found.
+    test = live
+      ? { id: 'test', label: STEP_LABEL.test, summary: `Not locked yet · ${live.text}`, state: live.state, since: live.state === 'busy' ? d.renderingSince : null }
+      : { id: 'test', label: STEP_LABEL.test, summary: 'Not locked yet', state: 'todo' }
   } else {
-    const parts: string[] = []
-    if (d.lockedVersion !== null) parts.push(`v${d.lockedVersion} locked`)
-    if (d.draft) parts.push(`v${d.draft.version} not tested`)
-    test = { id: 'test', label: STEP_LABEL.test, summary: parts.join(' · ') || 'Not yet', state: 'todo' }
+    test = { id: 'test', label: STEP_LABEL.test, summary: d.lockedVersion !== null ? `v${d.lockedVersion} locked` : 'Not yet', state: 'todo' }
   }
 
   return [designs, brief, analyse, test].map((s) => (s.id === d.active ? { ...s, state: 'active' } : s))

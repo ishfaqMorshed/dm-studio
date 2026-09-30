@@ -894,7 +894,12 @@ export type Database = {
         }
       }
       create_style_test_card: {
-        Args: { p_client_id: string }
+        Args: {
+          p_client_id: string
+          p_lines?: Json
+          p_style_card_id?: string
+          p_subject?: string
+        }
         Returns: {
           approved_at: string | null
           approved_by: string | null

@@ -182,7 +182,7 @@ export const AnalyseStep = forwardRef<HTMLHeadingElement, Props>(function Analys
       }
       onBack={onBack}
       onContinue={onContinue}
-      continueLabel={shown ? `Next: test v${shown.version}` : `Next: ${STEP_SHORT.test}`}
+      continueLabel={shown ? (shown.status === 'locked' ? `Next: test v${shown.version}` : `Next: lock & test v${shown.version}`) : `Next: ${STEP_SHORT.test}`}
       continueDisabledReason={continueReason}
     >
       <div className="space-y-5">

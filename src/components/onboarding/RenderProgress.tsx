@@ -40,7 +40,7 @@ function phaseIndex(phase: RenderPhase, card: TestCard): number {
 export function RenderProgress({
   card,
   phase,
-  draftVersion,
+  version,
   approveError,
   approving,
   retrying,
@@ -49,11 +49,13 @@ export function RenderProgress({
   onGenerateNow,
   onRetry,
   onNewRender,
+  newRenderDisabledReason = null,
   onSkip,
 }: {
   card: TestCard
   phase: RenderPhase
-  draftVersion: number
+  /** The Style Card version the card renders with (named in the status lines). */
+  version: number
   approveError: string | null
   approving: boolean
   retrying: boolean
@@ -62,6 +64,8 @@ export function RenderProgress({
   onGenerateNow: () => void
   onRetry: () => void
   onNewRender: () => void
+  /** Why a new render (and, for a draft, the lock before it) cannot start now; disables that button. */
+  newRenderDisabledReason?: string | null
   /** Leave this card behind (it stays reachable at /card/:id) so the step is free again. */
   onSkip: () => void
 }) {
@@ -79,13 +83,13 @@ export function RenderProgress({
         : phase === 'intake'
           ? 'Reading the 3 reference images…'
           : phase === 'approving'
-            ? `Starting the generation with draft v${draftVersion}…`
+            ? `Starting the generation with v${version}…`
             : phase === 'needs_generate'
               ? approveError
                 ? 'The generation could not be started.'
                 : 'References read. Ready to generate.'
               : phase === 'generating'
-                ? `Generating the design with draft v${draftVersion} and running QC…`
+                ? `Generating the design with v${version} and running QC…`
                 : 'Done.'
 
   const skipButton = (
@@ -154,7 +158,7 @@ export function RenderProgress({
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={onGenerateNow} disabled={approving} className={btnPrimary}>
               {approving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Sparkles className="h-4 w-4" aria-hidden="true" />}
-              {approveError ? 'Generate again' : `Generate with v${draftVersion}`} · {TEST_RENDER_COST_LABEL}
+              {approveError ? 'Generate again' : `Generate with v${version}`} · {TEST_RENDER_COST_LABEL}
             </button>
             {skipButton}
           </div>
@@ -179,7 +183,13 @@ export function RenderProgress({
               {retrying ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <RotateCcw className="h-4 w-4" aria-hidden="true" />}
               Retry
             </button>
-            <button type="button" onClick={onNewRender} className={btnSecondary}>
+            <button
+              type="button"
+              onClick={onNewRender}
+              disabled={newRenderDisabledReason !== null}
+              title={newRenderDisabledReason ?? undefined}
+              className={btnSecondary}
+            >
               Start a new test render
             </button>
             {n8nUrl && (
@@ -198,7 +208,7 @@ export function RenderProgress({
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             <span>
               {phase === 'needs_generate'
-                ? `Waiting at review since ${formatDateTime(card.stage_entered_at)}. Generate with v${draftVersion}, or skip it and start a new test render.`
+                ? `Waiting at review since ${formatDateTime(card.stage_entered_at)}. Generate with v${version}, or skip it and start a new test render.`
                 : 'Taking longer than usual: the pipeline has not moved this card. The card page shows the queue and any error; you can also skip it and start a new test render.'}
             </span>
           </p>

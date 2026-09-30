@@ -423,14 +423,32 @@ export async function listStyleDraftRequests(clientId: string, limit = 10): Prom
 
 /* ---------- Style Card test render (onboarding step 4) ---------- */
 
+export interface TestRenderOptions {
+  /** What the design shows (200 characters max). Omit to use the Style Card's first subject. */
+  subject?: string
+  /** 1–3 lines of lettering, `[{role, text}]`. Omit for the client's name in upper case + "EST. 2026". */
+  lines?: { role: string; text: string }[]
+  /** The version whose subjects supply the default subject; recorded on the card (`client_submission.style_card_id`). */
+  styleCardId?: string
+}
+
 /**
- * Creates the hidden `style_test` card for the client: stage intake, text = the client's name +
- * "EST. 2026", references = the newest 3 ticked library images. WF-1 reads the references and
- * moves it to review by itself; then `approveCard(card.id, null, draftId)` renders with the draft.
- * The backend refuses an inactive client or an empty library.
+ * Creates the hidden `style_test` card for the client: stage intake, an explicit SUBJECT (the
+ * lettering never changes it), the text lines, references = the newest 3 ticked library images.
+ * WF-1 reads the references and moves it to review by itself; then `approveCard(card.id, null,
+ * styleCardId)` renders with that version. The backend refuses an inactive client, an empty
+ * library, a missing or over-long subject, more than 3 lines or an empty line.
  */
-export async function createStyleTestCard(clientId: string): Promise<Card> {
-  return unwrap(await supabase.rpc('create_style_test_card', { p_client_id: clientId }), 'Test render')
+export async function createStyleTestCard(clientId: string, opts?: TestRenderOptions): Promise<Card> {
+  return unwrap(
+    await supabase.rpc('create_style_test_card', {
+      p_client_id: clientId,
+      ...(opts?.subject !== undefined ? { p_subject: opts.subject } : {}),
+      ...(opts?.lines !== undefined ? { p_lines: opts.lines } : {}),
+      ...(opts?.styleCardId !== undefined ? { p_style_card_id: opts.styleCardId } : {}),
+    }),
+    'Test render',
+  )
 }
 
 /** The joined slice of the current generation a test-render tile needs. */

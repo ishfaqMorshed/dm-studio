@@ -173,3 +173,15 @@ Left as follow-ups:
 
 ## WF-1b swap (pending the user)
 The corrected WF-1b (`baCsaUp7HdrrSf2i`: library order `created_at.desc,id.desc`, `reference_ids` written into the draft, hard fail when an image cannot be signed) is created and verified but unpublished; `CsohPMosybjBoP8s` is still live. Swap = deactivate old, set Error workflow = WF-6 on the new one, activate new; then run one Analyse and confirm `style_cards.json.reference_ids` is present.
+
+## E2E-018 · onboarding · major · The test render's subject was dictated by the headline text
+- **Steps:** onboard a real client (Happy Hour Farm, typed as "Chicken Happy Hour"; Style Card draft v2 subjects = Highland cows) → step 4 Test render.
+- **Actual:** three chickens. The test card's headline was the client's NAME in upper case, so the prompt carried "CHICKEN HAPPY HOUR" and the model drew what the words named; the Style Card's subjects were only a soft hint ("pick a subject from their usual subject matter").
+- **Also:** the render used the unlocked draft, so the user could not tell whether they were judging "the actual Style Card".
+- **Fix:** migration studio_20 — `create_style_test_card(p_client_id, p_subject, p_lines, p_style_card_id)`: an explicit SUBJECT (designer's, else the card's subjects[0]), editable text lines (1–3), and a brief that says the lettering must never change the subject; validation messages tested via REST. Frontend: step 4 becomes **Lock & test** — the draft is locked first, the render uses the locked card, the dialog asks for subject + text lines (workflow wf_81f6dc5d-07f).
+- **Retest (Lock & test, workflow wf_81f6dc5d-07f):** PASS — step 4 locks first ("Lock v4 & test render"), the dialog asks for the subject (prefilled from the card's subjects, chips for the others) and the text lines; QA locked v4 and rendered "a highland cow wearing sunglasses / QA LOCK TEST" (card a48971c1, QC pass, ~60 s); the render is labelled with the version it used; superseded versions get no render action.
+
+## E2E-019 · onboarding · major · Locking an older draft did not make it the contract
+- **Steps:** v4 locked; select draft v3 in step 3 → step 4 "Lock v3 & test render".
+- **Actual:** v3 got status locked, but `current_style_card()` picks the highest locked version, so v4 stayed current while the wizard said "every new brief uses v3".
+- **Fix:** migration studio_22 — `lock_style_card` re-issues an older draft as the next version (copy of its json, locked, note "locked from vN") when a newer version is already locked, so the newest locked version is always the chosen one.

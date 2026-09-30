@@ -26,8 +26,8 @@ import { formatDateTime } from '../components/style/format'
 
 /**
  * /clients/:id/onboard — the guided onboarding: drop the designs → written brief → analyse →
- * test & lock. Each step also works on its own later (re-analyse after adding images, test
- * another draft). URL state: ?step= and ?draft=<style_card_id>. Keyed on the client id.
+ * lock & test. Each step also works on its own later (re-analyse after adding images, lock and
+ * test another draft). URL state: ?step= and ?draft=<style_card_id>. Keyed on the client id.
  */
 export default function OnboardingPage() {
   const { id } = useParams<{ id: string }>()
@@ -309,12 +309,14 @@ function Onboarding({ clientId }: { clientId: string }) {
           settings={settings}
           draft={selectedVersion}
           currentLocked={panel.currentLocked}
+          versions={panel.versions}
           read={ordered.read}
           tests={tests}
           render={render}
           isLead={isLead}
           onBack={() => back && goToStep(back)}
           refreshVersions={panel.refresh}
+          onLocked={(v) => selectVersion(v.id)}
         />
       )}
 
