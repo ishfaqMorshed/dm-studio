@@ -320,3 +320,23 @@ export function qcVerdict(input: Json | null | undefined): QcVerdict | null {
   const r = parseQcReport(input)
   return r.empty ? null : r.overall
 }
+
+/** The text the judge read on the image (`text_found`, one string), or null when absent. */
+export function qcTextFound(input: Json | null | undefined): string | null {
+  const r = parseEmbeddedJson(input)
+  if (!isRecord(r) || typeof r.text_found !== 'string') return null
+  const t = r.text_found.trim()
+  return t || null
+}
+
+/** The judge's own text verdict (`text_ok`), or null when the report does not carry one. */
+export function qcTextOk(input: Json | null | undefined): boolean | null {
+  const r = parseEmbeddedJson(input)
+  return isRecord(r) && typeof r.text_ok === 'boolean' ? r.text_ok : null
+}
+
+/** The lines the judge was told to expect (`expected_text`, an array). */
+export function qcExpectedText(input: Json | null | undefined): string[] {
+  const r = parseEmbeddedJson(input)
+  return isRecord(r) ? stringList(r.expected_text) : []
+}

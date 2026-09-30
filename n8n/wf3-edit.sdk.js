@@ -1155,7 +1155,7 @@ const fitEdit = node({
   version: 1,
   config: {
     name: 'Fit Edit To Original',
-    parameters: { operation: 'resize', dataPropertyName: 'data', width: expr('{{ $('Original Size').first().json.size.width }}'), height: expr('{{ $('Original Size').first().json.size.height }}'), resizeOption: 'ignoreAspectRatio' },
+    parameters: { operation: 'resize', dataPropertyName: 'data', width: expr("{{ $('Original Size').first().json.size.width }}"), height: expr("{{ $('Original Size').first().json.size.height }}"), resizeOption: 'ignoreAspectRatio' },
     onError: 'continueErrorOutput',
     position: [4560, 592]
   },
@@ -1167,7 +1167,7 @@ const cropEdit = node({
   version: 1,
   config: {
     name: 'Crop Edit To Region',
-    parameters: { operation: 'crop', dataPropertyName: 'data', width: expr('{{ Math.max(1, Math.round($('Get Generation').first().json.mask_rect.w * $('Original Size').first().json.size.width / $('Get Generation').first().json.mask_rect.width)) }}'), height: expr('{{ Math.max(1, Math.round($('Get Generation').first().json.mask_rect.h * $('Original Size').first().json.size.height / $('Get Generation').first().json.mask_rect.height)) }}'), positionX: expr('{{ Math.round($('Get Generation').first().json.mask_rect.x * $('Original Size').first().json.size.width / $('Get Generation').first().json.mask_rect.width) }}'), positionY: expr('{{ Math.round($('Get Generation').first().json.mask_rect.y * $('Original Size').first().json.size.height / $('Get Generation').first().json.mask_rect.height) }}') },
+    parameters: { operation: 'crop', dataPropertyName: 'data', width: expr("{{ Math.max(1, Math.round($('Get Generation').first().json.mask_rect.w * $('Original Size').first().json.size.width / $('Get Generation').first().json.mask_rect.width)) }}"), height: expr("{{ Math.max(1, Math.round($('Get Generation').first().json.mask_rect.h * $('Original Size').first().json.size.height / $('Get Generation').first().json.mask_rect.height)) }}"), positionX: expr("{{ Math.round($('Get Generation').first().json.mask_rect.x * $('Original Size').first().json.size.width / $('Get Generation').first().json.mask_rect.width) }}"), positionY: expr("{{ Math.round($('Get Generation').first().json.mask_rect.y * $('Original Size').first().json.size.height / $('Get Generation').first().json.mask_rect.height) }}") },
     onError: 'continueErrorOutput',
     position: [4800, 592]
   },
@@ -1179,7 +1179,7 @@ const compositeRegion = node({
   version: 1,
   config: {
     name: 'Composite Region',
-    parameters: { operation: 'composite', dataPropertyName: 'original', dataPropertyNameComposite: 'data', operator: 'Over', positionX: expr('{{ Math.round($('Get Generation').first().json.mask_rect.x * $('Original Size').first().json.size.width / $('Get Generation').first().json.mask_rect.width) }}'), positionY: expr('{{ Math.round($('Get Generation').first().json.mask_rect.y * $('Original Size').first().json.size.height / $('Get Generation').first().json.mask_rect.height) }}') },
+    parameters: { operation: 'composite', dataPropertyName: 'original', dataPropertyNameComposite: 'data', operator: 'Over', positionX: expr("{{ Math.round($('Get Generation').first().json.mask_rect.x * $('Original Size').first().json.size.width / $('Get Generation').first().json.mask_rect.width) }}"), positionY: expr("{{ Math.round($('Get Generation').first().json.mask_rect.y * $('Original Size').first().json.size.height / $('Get Generation').first().json.mask_rect.height) }}") },
     onError: 'continueErrorOutput',
     position: [5040, 592]
   },

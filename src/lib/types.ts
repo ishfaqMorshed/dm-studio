@@ -169,6 +169,8 @@ export interface PrintTextLine {
   text: string
 }
 
+export const PRINT_TEXT_ROLE_LABEL: Record<PrintTextRole, string> = { headline: 'Headline', sub: 'Sub', tagline: 'Tagline' }
+
 /* ---------- JSON boundary helpers ---------- */
 
 export function isRecord(v: unknown): v is Record<string, Json | undefined> {

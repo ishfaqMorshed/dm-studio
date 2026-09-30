@@ -15,12 +15,21 @@ const ICON: Record<QcVerdict, React.ReactNode> = {
 }
 
 /** Pass/fail lines from `qc_report`, tolerant of whatever shape the judge wrote. */
-export function QcReportPanel({ generation }: { generation: Generation | null }) {
+export function QcReportPanel({
+  generation,
+  collapsible,
+  defaultOpen,
+}: {
+  generation: Generation | null
+  collapsible?: boolean
+  defaultOpen?: boolean
+}) {
   const report = useMemo(() => parseQcReport(generation?.qc_report), [generation?.qc_report])
+  const fold = { collapsible, defaultOpen }
 
   if (!generation) {
     return (
-      <Panel title="QC report">
+      <Panel title="QC report" {...fold}>
         <p className="text-sm text-neutral-500">The report appears here once an image has been judged.</p>
       </Panel>
     )
@@ -29,7 +38,7 @@ export function QcReportPanel({ generation }: { generation: Generation | null })
   if (report.empty) {
     const running = ACTIVE_JOB_STATUSES.includes(generation.status)
     return (
-      <Panel title="QC report">
+      <Panel title="QC report" {...fold}>
         <p className="text-sm text-neutral-500">
           {running
             ? 'QC runs right after the image is generated.'
@@ -60,10 +69,11 @@ export function QcReportPanel({ generation }: { generation: Generation | null })
       }
       subtitle={
         report.checks.length
-          ? `${passCount} passed · ${failCount} failed${report.checks.length - passCount - failCount ? ` · ${report.checks.length - passCount - failCount} other` : ''} — read this before the image`
+          ? `${passCount} passed · ${failCount} failed${report.checks.length - passCount - failCount ? ` · ${report.checks.length - passCount - failCount} other` : ''}`
           : undefined
       }
       tone={tone}
+      {...fold}
     >
       {report.summary && <p className="mb-3 text-sm">{report.summary}</p>}
 

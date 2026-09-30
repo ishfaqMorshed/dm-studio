@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Download, Eye, ImageOff, Repeat } from 'lucide-react'
+import { useEffect, useState, type ReactNode, type RefObject } from 'react'
+import { Download, Eye, ImageOff, Repeat, Type } from 'lucide-react'
 import { GENS_BUCKET } from '../../lib/supabase'
 import { useSignedUrl } from '../../lib/useSignedUrl'
 import { useToast } from '../../lib/useToast'
@@ -12,32 +12,74 @@ import {
   generationPlatformLabel,
   type Generation,
 } from '../../lib/types'
-import { agoLabel, formatDateTime, formatPct, shortId } from './format'
-import { STATUS_CLASS, STATUS_LABEL, btnSecondary, btnSmall, checkerboard } from './styles'
-import { Badge, Panel, Spinner } from './ui'
+import { formatDateTime, formatPct, shortId } from './format'
+import { VERDICT_LABEL, type QcVerdict } from './qc'
+import { STATUS_CLASS, STATUS_LABEL, VERDICT_CLASS, btnGhost, btnSmall, checkerboard, imageChip } from './styles'
+import { Badge, Spinner } from './ui'
 import { PlatformBadge } from './PlatformBadge'
 
 const BLINK_MS = 700
 const DRIFT_FLAG_PCT = 3
 
+export type EditPhase = 'off' | 'scanning' | 'on'
+
+/** The larger pill at the bottom of the frame ("Edit text", "Reading the text…"). */
+const pillCls = 'rounded-full bg-neutral-900/80 px-3 py-1 text-xs font-medium text-white'
+const frameButtonCls = 'group absolute inset-0 block h-full w-full cursor-pointer outline-none ring-inset ring-accent-500/30 focus-visible:ring-4 dark:ring-accent-400/40'
+
+/** Scan-line sweep while the page "reads" the text; the live region announces it, not this. */
+function ScanOverlay() {
+  return (
+    <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl bg-neutral-950/20">
+      <div className="absolute inset-x-0 top-0 h-1/5 bg-gradient-to-b from-transparent via-accent-300/50 to-transparent motion-safe:animate-scan motion-reduce:hidden">
+        <div className="absolute inset-x-0 top-1/2 h-px bg-accent-200 shadow-[0_0_12px_2px_theme(colors.accent.400)]" />
+      </div>
+      <span className={`absolute inset-x-0 bottom-3 mx-auto flex w-max items-center gap-1.5 ${pillCls}`}>
+        <Spinner className="h-3.5 w-3.5" />
+        Reading the text on the design…
+      </span>
+    </div>
+  )
+}
+
 /**
- * Large view of the selected generation with a previous/current blink toggle
- * (the parent generation, else the newest older image). Both images stay mounted
- * so the blink never flashes a blank frame.
+ * The stage canvas: the selected generation large, with a previous/current blink toggle
+ * (the parent generation, else the newest older image) and PNG download in a toolbar
+ * under it. Both images stay mounted so the blink never flashes a blank frame.
+ *
+ * When `editable`, the picture itself is the button that opens the text editor: the
+ * bottom pill says so at rest (touch has no hover), the frame lights up while editing.
  */
 export function Preview({
   viewed,
   previous,
   isCurrent,
   fileBase,
-  now,
+  editable,
+  editPhase,
+  onEdit,
+  pictureRef,
+  emptyAction,
+  qcVerdict = null,
+  runningGeneration = null,
 }: {
   viewed: Generation | null
   previous: Generation | null
   isCurrent: boolean
   /** Safe file-name prefix for downloads (client name). */
   fileBase: string
-  now: number
+  /** Clicking the picture may open the text editor (needs_review, current has an image, nothing busy). */
+  editable: boolean
+  editPhase: EditPhase
+  onEdit: () => void
+  /** The picture button, so the page can return focus to it when the editor closes. */
+  pictureRef: RefObject<HTMLButtonElement>
+  /** Fills the frame when there is no generation to show (stage placeholder). */
+  emptyAction?: ReactNode
+  /** QC verdict of the viewed generation, as a badge in the corner. */
+  qcVerdict?: QcVerdict | null
+  /** An edit child that is queued or running: dims the picture and says so in the chip. */
+  runningGeneration?: Generation | null
 }) {
   const toast = useToast()
   const [showPrevious, setShowPrevious] = useState(false)
@@ -64,6 +106,12 @@ export function Preview({
 
   const showingPrevious = showPrevious && canBlink
   const running = viewed ? ACTIVE_JOB_STATUSES.includes(viewed.status) : false
+  // Stays a button while the editor is open even once `editable` drops (Apply pressed),
+  // so the images never remount mid-edit and focus has somewhere to return to.
+  const asButton = editable || editPhase !== 'off'
+  const openEditor = () => {
+    if (editPhase === 'off' && editable) onEdit()
+  }
 
   async function download() {
     if (!viewed?.image_path || downloading) return
@@ -77,104 +125,153 @@ export function Preview({
     }
   }
 
-  const subtitle = viewed
-    ? `${GENERATION_KIND_LABEL[viewed.kind]} · ${agoLabel(viewed.created_at, now)}${isCurrent ? ' · current' : ' · not current — make it current to accept or edit it'}`
-    : 'No generation to show'
-
-  return (
-    <Panel
-      title="Preview"
-      subtitle={subtitle}
-      actions={
-        viewed?.image_path ? (
+  let content: ReactNode
+  if (viewed?.image_path && !current.broken) {
+    const picture = (
+      <>
+        {current.url ? (
+          <img
+            src={current.url}
+            alt={`${GENERATION_KIND_LABEL[viewed.kind]} generation`}
+            decoding="async"
+            className={`absolute inset-0 h-full w-full object-contain ${showingPrevious ? 'invisible' : ''}`}
+          />
+        ) : (
+          <div className="absolute inset-0 animate-pulse bg-neutral-200/60 dark:bg-neutral-800/60" />
+        )}
+        {canBlink && prev.url && (
+          <img
+            src={prev.url}
+            alt={previous ? `Previous ${GENERATION_KIND_LABEL[previous.kind]} generation` : 'Previous generation'}
+            decoding="async"
+            className={`absolute inset-0 h-full w-full object-contain ${showingPrevious ? '' : 'invisible'}`}
+          />
+        )}
+        {runningGeneration && <span aria-hidden="true" className="absolute inset-0 bg-neutral-950/30" />}
+        {runningGeneration ? (
+          <span className={`absolute left-2 top-2 inline-flex items-center gap-1 ${imageChip}`}>
+            <Spinner className="h-3 w-3" />
+            Editing · {GENERATION_KIND_LABEL[runningGeneration.kind]} {STATUS_LABEL[runningGeneration.status].toLowerCase()}
+          </span>
+        ) : (
+          <span className={`absolute left-2 top-2 ${imageChip}`}>
+            {showingPrevious && previous ? `Previous · ${GENERATION_KIND_LABEL[previous.kind]}` : isCurrent ? 'Current' : GENERATION_KIND_LABEL[viewed.kind]}
+          </span>
+        )}
+        {qcVerdict && <Badge className={`absolute right-2 top-2 ${VERDICT_CLASS[qcVerdict]}`}>QC {VERDICT_LABEL[qcVerdict]}</Badge>}
+        {asButton && editPhase !== 'scanning' && (
+          <span
+            className={`pointer-events-none absolute inset-x-0 bottom-3 mx-auto flex w-max items-center gap-1.5 ${pillCls} opacity-80 transition group-hover:opacity-100 group-focus-visible:opacity-100`}
+          >
+            <Type className="h-3.5 w-3.5" />
+            {editPhase === 'on' ? 'Editing text · Esc to cancel' : 'Edit text'}
+          </span>
+        )}
+      </>
+    )
+    content = asButton ? (
+      <button
+        type="button"
+        ref={pictureRef}
+        aria-label="Edit the text on this design"
+        aria-expanded={editPhase !== 'off'}
+        onClick={openEditor}
+        className={frameButtonCls}
+      >
+        {picture}
+      </button>
+    ) : (
+      <div className="absolute inset-0">{picture}</div>
+    )
+  } else if (emptyAction) {
+    content = emptyAction
+  } else if (viewed?.image_path && asButton) {
+    // The image failed to load but the text can still be edited: keep the way in.
+    content = (
+      <button
+        type="button"
+        ref={pictureRef}
+        aria-label="Edit the text on this design"
+        aria-expanded={editPhase !== 'off'}
+        onClick={openEditor}
+        className={`${frameButtonCls} flex flex-col items-center justify-center gap-2 px-6 text-center text-sm text-neutral-500`}
+      >
+        <ImageOff className="h-6 w-6" />
+        <span>Image not available · Edit text</span>
+      </button>
+    )
+  } else {
+    content = (
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center text-sm text-neutral-500">
+        {running ? (
           <>
-            {canBlink && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setShowPrevious((v) => !v)}
-                  aria-pressed={showingPrevious}
-                  title="Blink between the previous image and this one to spot what changed"
-                  className={`${btnSecondary} ${btnSmall}`}
-                >
-                  <Eye className="h-3.5 w-3.5" />
-                  {showingPrevious ? 'Showing previous' : 'Show previous'}
-                </button>
-                <label className="inline-flex cursor-pointer items-center gap-1 text-xs text-neutral-600 dark:text-neutral-400">
-                  <input
-                    type="checkbox"
-                    checked={auto}
-                    onChange={(e) => setAuto(e.target.checked)}
-                    className="h-3.5 w-3.5 accent-neutral-900 dark:accent-white"
-                  />
-                  <Repeat className="h-3.5 w-3.5" />
-                  Auto blink
-                </label>
-              </>
-            )}
-            <button type="button" onClick={() => void download()} disabled={downloading} className={`${btnSecondary} ${btnSmall}`}>
-              {downloading ? <Spinner className="h-3.5 w-3.5" /> : <Download className="h-3.5 w-3.5" />}
-              PNG
-            </button>
+            <Spinner className="h-6 w-6" />
+            <p>{STATUS_LABEL[viewed?.status ?? 'queued']} — the image appears here when the worker finishes.</p>
           </>
-        ) : undefined
-      }
-    >
-      <div className={`relative mx-auto aspect-square w-full max-w-[70vh] overflow-hidden rounded-xl ${checkerboard}`}>
-        {viewed?.image_path && !current.broken ? (
+        ) : viewed?.status === 'failed' ? (
           <>
-            {current.url ? (
-              <img
-                src={current.url}
-                alt={`${GENERATION_KIND_LABEL[viewed.kind]} generation`}
-                decoding="async"
-                className={`absolute inset-0 h-full w-full object-contain ${showingPrevious ? 'invisible' : ''}`}
-              />
-            ) : (
-              <div className="absolute inset-0 animate-pulse bg-neutral-200/60 dark:bg-neutral-800/60" />
-            )}
-            {canBlink && prev.url && (
-              <img
-                src={prev.url}
-                alt={previous ? `Previous ${GENERATION_KIND_LABEL[previous.kind]} generation` : 'Previous generation'}
-                decoding="async"
-                className={`absolute inset-0 h-full w-full object-contain ${showingPrevious ? '' : 'invisible'}`}
-              />
-            )}
-            <span className="absolute left-2 top-2 rounded-full bg-neutral-900/80 px-2 py-0.5 text-[11px] font-medium text-white">
-              {showingPrevious && previous ? `Previous · ${GENERATION_KIND_LABEL[previous.kind]}` : isCurrent ? 'Current' : GENERATION_KIND_LABEL[viewed.kind]}
-            </span>
+            <ImageOff className="h-6 w-6 text-red-400" />
+            <p className="text-red-700 dark:text-red-300">This generation failed{viewed.last_error ? `: ${viewed.last_error}` : '.'}</p>
           </>
         ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center text-sm text-neutral-500">
-            {running ? (
-              <>
-                <Spinner className="h-6 w-6" />
-                <p>
-                  {STATUS_LABEL[viewed?.status ?? 'queued']} — the image appears here when the worker finishes.
-                </p>
-              </>
-            ) : viewed?.status === 'failed' ? (
-              <>
-                <ImageOff className="h-6 w-6 text-red-400" />
-                <p className="text-red-700 dark:text-red-300">This generation failed{viewed.last_error ? `: ${viewed.last_error}` : '.'}</p>
-              </>
-            ) : (
-              <>
-                <ImageOff className="h-6 w-6" />
-                <p>{viewed ? 'No image stored for this generation.' : 'Approve the card to generate the first image.'}</p>
-              </>
-            )}
-          </div>
+          <>
+            <ImageOff className="h-6 w-6" />
+            <p>{viewed ? 'No image stored for this generation.' : 'Generate the design to see the first image.'}</p>
+          </>
         )}
       </div>
+    )
+  }
 
-      {viewed && <GenerationMeta generation={viewed} />}
-    </Panel>
+  return (
+    <>
+      <div
+        className={`relative mx-auto aspect-square w-full max-w-[min(100%,72vh)] overflow-hidden rounded-2xl ${checkerboard} ${
+          editPhase !== 'off' ? 'ring-2 ring-accent-500' : ''
+        }`}
+      >
+        {content}
+        {editPhase === 'scanning' && <ScanOverlay />}
+      </div>
+
+      {viewed?.image_path && (
+        <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
+          {canBlink && (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowPrevious((v) => !v)}
+                aria-pressed={showingPrevious}
+                title="Blink between the previous image and this one to spot what changed"
+                className={`${btnGhost} ${btnSmall}`}
+              >
+                <Eye className="h-3.5 w-3.5" />
+                {showingPrevious ? 'Showing previous' : 'Show previous'}
+              </button>
+              <label className="inline-flex cursor-pointer items-center gap-1 text-xs text-neutral-600 dark:text-neutral-400">
+                <input
+                  type="checkbox"
+                  checked={auto}
+                  onChange={(e) => setAuto(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-neutral-900 dark:accent-white"
+                />
+                <Repeat className="h-3.5 w-3.5" />
+                Auto blink
+              </label>
+            </>
+          )}
+          <button type="button" onClick={() => void download()} disabled={downloading} className={`${btnGhost} ${btnSmall}`}>
+            {downloading ? <Spinner className="h-3.5 w-3.5" /> : <Download className="h-3.5 w-3.5" />}
+            PNG
+          </button>
+        </div>
+      )}
+    </>
   )
 }
 
-function GenerationMeta({ generation: g }: { generation: Generation }) {
+/** Key/value facts about one generation (status, platform, model, edit, drift, dates). */
+export function GenerationMeta({ generation: g }: { generation: Generation }) {
   const drift = formatPct(g.drift_pct)
   const driftHigh = typeof g.drift_pct === 'number' && g.drift_pct > DRIFT_FLAG_PCT
   const rows: Array<[string, React.ReactNode]> = []
@@ -204,7 +301,7 @@ function GenerationMeta({ generation: g }: { generation: Generation }) {
   }
 
   return (
-    <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
+    <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
       {rows.map(([k, v]) => (
         <div key={k} className="contents">
           <dt className="text-neutral-500">{k}</dt>

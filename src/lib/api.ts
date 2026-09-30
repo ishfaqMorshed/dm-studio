@@ -53,6 +53,8 @@ export interface RequestEditPayload {
   new_text?: string | null
   /** gens bucket path of the mask: `<card_id>/<generation_id>-mask.png` */
   mask_path?: string | null
+  /** The same rectangle in pixels of the parent image (+ its width/height): the worker pastes the edit back inside it. */
+  mask_rect?: { x: number; y: number; w: number; h: number; width: number; height: number } | null
   magic_prompt_json?: Json | null
   rejection_reason?: RejectionReason | null
   rejection_note?: string | null

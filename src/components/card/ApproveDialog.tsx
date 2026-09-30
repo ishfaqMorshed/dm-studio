@@ -74,7 +74,7 @@ export function ApproveDialog({
   return (
     <Dialog
       open
-      title="Approve and generate"
+      title="Generate the design"
       description="The brief is snapshotted and one generation is queued. This is the step that spends money."
       onClose={onClose}
       footer={
@@ -84,7 +84,7 @@ export function ApproveDialog({
           </button>
           <button type="button" onClick={() => onConfirm(platform)} disabled={busy} className={btnPrimary} data-autofocus>
             {busy ? <Spinner /> : <Sparkles className="h-4 w-4" />}
-            Approve for {price ?? '—'}
+            Generate for {price ?? '—'}
           </button>
         </>
       }
@@ -127,7 +127,7 @@ export function ApproveDialog({
         className="mt-4"
       />
       <p className="mt-4 text-xs text-neutral-500">
-        Unsaved brief edits are not included — save them first. After approval, edits only reach the next regenerate.
+        Unsaved brief edits are not included — save them first. Once generated, brief edits only reach the next Try again.
       </p>
     </Dialog>
   )

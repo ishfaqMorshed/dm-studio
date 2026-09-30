@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, Copy, Loader2, X } from 'lucide-react'
+import { Check, ChevronDown, Copy, Loader2, X } from 'lucide-react'
 import { useToast } from '../../lib/useToast'
 import { btnGhost, panelCls } from './styles'
 
@@ -17,6 +17,12 @@ const TONE_CLASS: Record<Tone, string> = {
   warn: 'border-amber-300 dark:border-amber-800',
 }
 
+/**
+ * Titled card. `collapsible` turns it into a <details> whose summary is the header; the
+ * body (and `actions`) stay mounted but hidden while closed. `actions` never sit inside
+ * the summary: a click there would toggle the panel, and a react-router Link skips
+ * navigation once the event is defaultPrevented.
+ */
 export function Panel({
   title,
   subtitle,
@@ -25,6 +31,8 @@ export function Panel({
   className = '',
   bodyClassName = 'px-4 pb-4',
   tone = 'neutral',
+  collapsible = false,
+  defaultOpen,
 }: {
   title: ReactNode
   subtitle?: ReactNode
@@ -33,7 +41,44 @@ export function Panel({
   className?: string
   bodyClassName?: string
   tone?: Tone
+  collapsible?: boolean
+  /**
+   * Only with `collapsible`: the panel follows this until the designer toggles it (so a QC
+   * verdict that lands after the first render still opens the panel); after a toggle it is theirs.
+   */
+  defaultOpen?: boolean
 }) {
+  const wantOpen = Boolean(defaultOpen)
+  const [open, setOpen] = useState(wantOpen)
+  const [touched, setTouched] = useState(false)
+  if (!touched && open !== wantOpen) setOpen(wantOpen)
+  if (collapsible) {
+    return (
+      <details
+        className={`${panelCls} ${TONE_CLASS[tone]} ${className}`}
+        open={open}
+        onToggle={(e) => {
+          // The toggle event also fires for our own `open` changes; only a DOM state that differs from ours is the designer's.
+          if (e.currentTarget.open !== open) {
+            setTouched(true)
+            setOpen(e.currentTarget.open)
+          }
+        }}
+      >
+        <summary className="group flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 rounded-2xl px-4 py-3 outline-none ring-accent-500/30 focus-visible:ring-4 dark:ring-accent-400/40 [&::-webkit-details-marker]:hidden">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold">{title}</h2>
+            {subtitle && <p className="text-xs text-neutral-500">{subtitle}</p>}
+          </div>
+          <ChevronDown className="h-4 w-4 shrink-0 text-neutral-400 motion-safe:transition-transform group-open:rotate-180" aria-hidden="true" />
+        </summary>
+        <div className={bodyClassName}>
+          {actions && <div className="mb-2 flex flex-wrap items-center justify-end gap-2">{actions}</div>}
+          {children}
+        </div>
+      </details>
+    )
+  }
   return (
     <section className={`${panelCls} ${TONE_CLASS[tone]} ${className}`}>
       <header className="flex flex-wrap items-center justify-between gap-2 px-4 pb-2 pt-3">

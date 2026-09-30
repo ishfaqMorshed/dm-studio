@@ -72,11 +72,15 @@ function CopyTextButton({ text, label }: { text: string; label: string }) {
 export function RenderedPromptPanel({
   generation,
   viewingOther,
+  collapsible,
+  defaultOpen,
 }: {
   /** The card's current generation (the one Regenerate builds on), not the viewed one. */
   generation: Generation | null
   /** True when the designer is viewing a different generation in the strip. */
   viewingOther: boolean
+  collapsible?: boolean
+  defaultOpen?: boolean
 }) {
   const text = clean(generation?.rendered_prompt)
   const finalText = clean(generation?.final_prompt)
@@ -106,6 +110,8 @@ export function RenderedPromptPanel({
       }
       subtitle={subtitle}
       actions={text ? <CopyTextButton text={text} label="Copy rendered prompt" /> : undefined}
+      collapsible={collapsible}
+      defaultOpen={defaultOpen}
     >
       {text ? (
         <pre tabIndex={0} aria-label="Rendered prompt" className={preCls}>

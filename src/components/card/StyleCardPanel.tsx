@@ -111,23 +111,29 @@ export function StyleCardPanel({
   styleCard,
   loading,
   error,
+  collapsible,
+  defaultOpen,
 }: {
   card: CardRow
   styleCard: StyleCard | null
   loading: boolean
   error: string | null
+  collapsible?: boolean
+  defaultOpen?: boolean
 }) {
   const editorLink = `/clients/${card.client_id}/style`
+  // Stays in `actions`: a collapsible Panel renders those in the body, never in the summary.
   const openEditor = (
     <Link to={editorLink} className={`${btnSecondary} ${btnSmall}`}>
       <ExternalLink className="h-3.5 w-3.5" />
       Style Card editor
     </Link>
   )
+  const fold = { collapsible, defaultOpen }
 
   if (loading) {
     return (
-      <Panel title="Style Card" actions={openEditor}>
+      <Panel title="Style Card" actions={openEditor} {...fold}>
         <p className="flex items-center gap-2 text-sm text-neutral-500">
           <Spinner /> Checking for a locked version…
         </p>
@@ -137,7 +143,7 @@ export function StyleCardPanel({
 
   if (error) {
     return (
-      <Panel title="Style Card" tone="bad" actions={openEditor}>
+      <Panel title="Style Card" tone="bad" actions={openEditor} {...fold}>
         <p className="text-sm text-red-700 dark:text-red-300">Could not load the Style Card: {error}</p>
       </Panel>
     )
@@ -145,13 +151,13 @@ export function StyleCardPanel({
 
   if (!styleCard) {
     return (
-      <Panel title="Style Card" tone="bad" actions={openEditor}>
+      <Panel title="Style Card" tone="bad" actions={openEditor} {...fold}>
         <div className="flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800 dark:bg-red-950/40 dark:text-red-200">
           <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             <p className="font-medium">No locked Style Card</p>
             <p className="text-xs">
-              Approve stays disabled until a version is locked for {card.clients?.name ?? 'this client'}. Open the editor, review
+              Generate stays disabled until a version is locked for {card.clients?.name ?? 'this client'}. Open the editor, review
               the draft, then Lock.
             </p>
           </div>
@@ -176,6 +182,7 @@ export function StyleCardPanel({
       subtitle={`Locked ${formatDateTime(styleCard.locked_at)}${styleCard.note ? ` · ${styleCard.note}` : ''}`}
       tone="good"
       actions={openEditor}
+      {...fold}
     >
       {mismatch && (
         <p className="mb-2 rounded-lg bg-amber-50 px-3 py-1.5 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">

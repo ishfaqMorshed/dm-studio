@@ -96,7 +96,15 @@ function ReferenceSlot({ path, index, analysis }: { path: string; index: number;
   )
 }
 
-export function ReferencesPanel({ card }: { card: CardRow }) {
+export function ReferencesPanel({
+  card,
+  collapsible,
+  defaultOpen,
+}: {
+  card: CardRow
+  collapsible?: boolean
+  defaultOpen?: boolean
+}) {
   const paths = card.reference_paths ?? []
   const analysis = useMemo(() => splitAnalysis(card.reference_analysis, paths.length), [card.reference_analysis, paths.length])
   const hasPerRef = analysis.perRef.some((a) => a !== undefined && a !== null)
@@ -113,6 +121,8 @@ export function ReferencesPanel({ card }: { card: CardRow }) {
             ? 'No reference read stored for this card'
             : 'What the vision pass read from each image'
       }
+      collapsible={collapsible}
+      defaultOpen={defaultOpen}
     >
       {paths.length === 0 ? (
         <p className="text-sm text-neutral-500">No reference images on this card.</p>

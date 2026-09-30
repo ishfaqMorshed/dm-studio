@@ -79,7 +79,19 @@ interface EditorState {
  * the card (generating / editing / finishing). Server changes are adopted while the
  * form is untouched; unsaved edits are never overwritten.
  */
-export function BriefEditor({ card, locked, onSaved }: { card: CardRow; locked: boolean; onSaved: (card: Card) => void }) {
+export function BriefEditor({
+  card,
+  locked,
+  onSaved,
+  collapsible,
+  defaultOpen,
+}: {
+  card: CardRow
+  locked: boolean
+  onSaved: (card: Card) => void
+  collapsible?: boolean
+  defaultOpen?: boolean
+}) {
   const toast = useToast()
   const colourListId = useId()
   const base = useMemo(() => formFromCard(card), [card])
@@ -140,6 +152,8 @@ export function BriefEditor({ card, locked, onSaved }: { card: CardRow; locked: 
       title="Brief"
       subtitle={subtitle}
       actions={locked ? <Lock className="h-4 w-4 text-neutral-400" aria-label="Locked" /> : undefined}
+      collapsible={collapsible}
+      defaultOpen={defaultOpen}
     >
       <form onSubmit={onSubmit} className="space-y-4" aria-busy={saving}>
         <fieldset disabled={locked || saving} className="space-y-4">

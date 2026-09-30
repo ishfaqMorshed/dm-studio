@@ -19,6 +19,12 @@ export const btnGhost = `${btnBase} px-2 py-1 text-neutral-600 hover:bg-neutral-
 /** Append to any button class for the compact variant used inside panels. */
 export const btnSmall = '!px-2 !py-1 !text-xs'
 
+/** Append for the one big call to action of a stage (Generate / Accept). */
+export const btnLarge = '!px-5 !py-2.5 !text-base'
+
+/** Dark pill laid over the picture (current/previous chip, "Edit text" hint). */
+export const imageChip = 'rounded-full bg-neutral-900/80 px-2 py-0.5 text-[11px] font-medium text-white'
+
 export const inputCls =
   'w-full rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm outline-none ring-accent-500/25 focus:border-accent-400 focus:ring-4 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500 dark:border-neutral-700 dark:bg-neutral-950 dark:ring-accent-400/30 dark:focus:border-accent-500 dark:disabled:bg-neutral-900'
 

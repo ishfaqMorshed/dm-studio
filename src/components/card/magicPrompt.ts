@@ -7,7 +7,7 @@
  * The prompt-engine is not deployed yet, so section keys are not assumed: whatever
  * keys the JSON has become sections, in the engine's order.
  */
-import { isRecord, type Json } from '../../lib/types'
+import { isRecord, parsePrintText, type Json, type PrintTextLine } from '../../lib/types'
 import { humanizeKey, jsonToText, parseEmbeddedJson, recordEntries } from './json'
 
 export type SectionKind = 'text' | 'lines' | 'json' | 'number' | 'boolean' | 'null'
@@ -107,6 +107,17 @@ export function jsonFromSections(sections: PromptSection[], original: Json | nul
     }
   }
   return out
+}
+
+/**
+ * The text slot of a stored magic prompt (`text.lines`): the lines the engine actually
+ * printed, which is what an edit_text must name as `old_text`. Empty when the prompt has
+ * no text slot. Tolerates strings and partial objects; the engine's role 'text' becomes 'sub'.
+ */
+export function promptTextLines(input: Json | null | undefined): PrintTextLine[] {
+  const json = parseEmbeddedJson(input)
+  if (!isRecord(json) || !isRecord(json.text) || !Array.isArray(json.text.lines)) return []
+  return parsePrintText(json.text.lines)
 }
 
 /** Cheap identity for dirty checks. */

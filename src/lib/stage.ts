@@ -30,7 +30,7 @@ export const STAGE_LABEL: Record<CardStage, string> = {
 /** One-line meaning shown as tooltip on column headers and badges. */
 export const STAGE_HINT: Record<CardStage, string> = {
   intake: 'Form received, references being read',
-  review: 'Edit the brief, then Approve to generate',
+  review: 'Edit the brief, then Generate the design',
   approved: 'Queued for generation',
   generating: 'Image being generated, QC running',
   needs_review: 'Check the output and the QC report',

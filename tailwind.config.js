@@ -68,6 +68,17 @@ export default {
       boxShadow: {
         card: '0 1px 2px rgb(28 26 23 / 0.06), 0 1px 3px rgb(28 26 23 / 0.04)',
       },
+      // Only ever used as `motion-safe:animate-scan` / `motion-safe:animate-fade-up`.
+      // The scan bar is one fifth of the picture frame tall, so -100 % → 500 % of its own
+      // height carries it from just above the frame to just below it.
+      keyframes: {
+        scan: { from: { transform: 'translateY(-100%)' }, to: { transform: 'translateY(500%)' } },
+        'fade-up': { from: { opacity: '0', transform: 'translateY(6px)' }, to: { opacity: '1', transform: 'none' } },
+      },
+      animation: {
+        scan: 'scan 1s cubic-bezier(0.4,0,0.2,1) 1 both',
+        'fade-up': 'fade-up 200ms ease-out both',
+      },
     },
   },
   plugins: [],

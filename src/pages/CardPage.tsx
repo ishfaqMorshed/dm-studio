@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { AlertTriangle, PauseCircle, Play, RotateCcw } from 'lucide-react'
 import { GENS_BUCKET, supabase } from '../lib/supabase'
@@ -7,6 +7,7 @@ import { useProfile } from '../lib/useProfile'
 import { useSettings } from '../lib/useSettings'
 import { useSignedUrl } from '../lib/useSignedUrl'
 import { STAGE_LABEL, isStageLocked } from '../lib/stage'
+import { prefersReducedMotion } from '../lib/motion'
 import {
   acceptGeneration,
   approveCard,
@@ -32,28 +33,37 @@ import { safeFileName } from '../lib/download'
 import { useCardFinJobs, useCardGenerations, useCardRow, useStyleCard } from '../components/card/useCardData'
 import { useNow } from '../components/card/useNow'
 import { formatUsd, n8nExecutionUrl } from '../components/card/format'
-import { jsonFromSections, sectionSignature, sectionsFromJson, type PromptSection } from '../components/card/magicPrompt'
-import { buildMaskPng, uploadMask } from '../components/card/mask'
+import { jsonFromSections, promptTextLines, sectionSignature, sectionsFromJson, type PromptSection } from '../components/card/magicPrompt'
+import { qcTextFound, qcTextOk, qcVerdict } from '../components/card/qc'
+import { buildMaskPng, rectToPixels, uploadMask } from '../components/card/mask'
 import { btnPrimary, btnSecondary, panelCls } from '../components/card/styles'
-import { Panel, Spinner } from '../components/card/ui'
+import { Spinner } from '../components/card/ui'
 import { CardHeader, type ExecutionLink } from '../components/card/CardHeader'
-import { BriefEditor } from '../components/card/BriefEditor'
-import { ReferencesPanel } from '../components/card/ReferencesPanel'
-import { StyleCardPanel } from '../components/card/StyleCardPanel'
 import { GenerationStrip } from '../components/card/GenerationStrip'
-import { Preview } from '../components/card/Preview'
-import { QcReportPanel } from '../components/card/QcReportPanel'
-import { MagicPromptEditor } from '../components/card/MagicPromptEditor'
-import { RenderedPromptPanel } from '../components/card/RenderedPromptPanel'
-import { ActionBar } from '../components/card/ActionBar'
+import { Preview, type EditPhase } from '../components/card/Preview'
+import { StagePlaceholder } from '../components/card/StagePlaceholder'
+import { StageActions, StatusLine, type StageActionsProps } from '../components/card/StageActions'
+import { TextSlotsEditor } from '../components/card/TextSlotsEditor'
+import { CardDetails } from '../components/card/CardDetails'
 import { ApproveDialog } from '../components/card/ApproveDialog'
 import { AcceptDialog } from '../components/card/AcceptDialog'
-import { EditTextDialog, type EditTextSubmit, type TextChange } from '../components/card/EditTextDialog'
+import type { EditStatusTone, EditTextSubmit, TextChange } from '../components/card/EditTextForm'
 import { EditRegionDialog, type EditRegionSubmit } from '../components/card/EditRegionDialog'
 import { RegenerateDialog, type RegenerateSubmit } from '../components/card/RegenerateDialog'
 import { ParkDialog } from '../components/card/ParkDialog'
 
-type DialogKind = 'approve' | 'accept' | 'edit_text' | 'edit_region' | 'regenerate' | 'park'
+type DialogKind = 'approve' | 'accept' | 'edit_region' | 'regenerate' | 'park'
+
+/** Text editing is a mode of the page, not a dialog: the picture opens it, the rail hosts the slots. */
+interface TextEditState {
+  phase: EditPhase
+  /** Generation the slots were opened for; a different current generation closes the editor. */
+  genId: string | null
+}
+
+const TEXT_EDIT_OFF: TextEditState = { phase: 'off', genId: null }
+/** How long the scan-line runs before the slots appear. */
+const SCAN_MS = 1000
 
 interface PromptDraft {
   /** Generation the draft belongs to. */
@@ -61,6 +71,31 @@ interface PromptDraft {
   /** Signature of the stored prompt the draft started from. */
   baseSig: string
   sections: PromptSection[]
+}
+
+/** For matching a slot's old text against a brief line: whitespace runs and case do not count (as the engine matches). */
+const normText = (t: string) => t.trim().replace(/\s+/g, ' ').toLowerCase()
+
+/**
+ * The brief after a multi-line edit. Each change lands on the brief line with the same text;
+ * a change whose text is not in the brief falls back to the line at its slot index (the same
+ * rule as the single-line path). Every other brief line stays as it is — a line the designer
+ * added after this generation, or a role the engine renamed, must survive the edit. Only a
+ * brief without lines takes the slots as they are.
+ */
+function patchBriefLines(brief: PrintTextLine[], changes: TextChange[], slots: PrintTextLine[]): PrintTextLine[] {
+  if (!brief.length) return slots.map((l) => ({ role: l.role, text: l.text }))
+  const patched = new Map<number, string>()
+  const unmatched: TextChange[] = []
+  for (const c of changes) {
+    const idx = brief.findIndex((l, i) => !patched.has(i) && normText(l.text) === normText(c.oldText))
+    if (idx >= 0) patched.set(idx, c.newText)
+    else unmatched.push(c)
+  }
+  for (const c of unmatched) {
+    if (c.index < brief.length && !patched.has(c.index)) patched.set(c.index, c.newText)
+  }
+  return brief.map((l, i) => ({ role: l.role, text: patched.get(i) ?? l.text }))
 }
 
 /** The parent when it has an image, else the newest older generation with one (`all` is newest-first). */
@@ -95,6 +130,9 @@ function CardView({ cardId }: { cardId: string }) {
   const [viewedId, setViewedId] = useState<string | null>(null)
   const [dialog, setDialog] = useState<DialogKind | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  const [textEdit, setTextEdit] = useState<TextEditState>(TEXT_EDIT_OFF)
+  const [editStatus, setEditStatus] = useState<{ text: string; tone: EditStatusTone }>({ text: '', tone: 'neutral' })
+  const pictureRef = useRef<HTMLButtonElement>(null)
 
   const current = useMemo(
     () => generations.rows.find((g) => g.id === card?.current_generation_id) ?? null,
@@ -124,8 +162,35 @@ function CardView({ cardId }: { cardId: string }) {
   const setSections = (sections: PromptSection[]) => setDraft((d) => ({ ...d, sections }))
   const resetSections = () => setDraft({ key: currentKey, baseSig, sections: baseSections })
 
+  // Text edit mode: only on the current generation's image, in needs_review.
+  const viewedIsCurrent = viewed !== null && viewed.id === current?.id
+  const editContextValid = card?.stage === 'needs_review' && Boolean(current?.image_path) && viewedIsCurrent
+  // A paused pipeline does not hide the way in: the slots still open, only Apply is off (with the reason).
+  const canEnterEdit = editContextValid && busy === null
+  // Render-phase reset (same pattern as the prompt draft). Deliberately independent of
+  // `busy` and `paused`: pressing Apply must not close the editor under the designer.
+  if (textEdit.phase !== 'off' && (!editContextValid || textEdit.genId !== (current?.id ?? null))) {
+    setTextEdit(TEXT_EDIT_OFF)
+  }
+  useEffect(() => {
+    if (textEdit.phase !== 'scanning') return
+    const t = window.setTimeout(() => setTextEdit((s) => (s.phase === 'scanning' ? { ...s, phase: 'on' } : s)), SCAN_MS)
+    return () => window.clearTimeout(t)
+  }, [textEdit.phase])
+
+  function enterEdit() {
+    if (!canEnterEdit || !current) return
+    setTextEdit({ phase: prefersReducedMotion() ? 'on' : 'scanning', genId: current.id })
+  }
+  /** Cancel / Escape. Not while Apply is in flight: the drafts must survive a failed request. */
+  function exitEdit() {
+    if (busy !== null) return
+    setTextEdit(TEXT_EDIT_OFF)
+    pictureRef.current?.focus()
+  }
+
   const price = formatUsd(settings?.per_card_price_usd)
-  // Preselected on Approve / Edit text / Edit region / Regenerate; each dialog sends the pick with its action.
+  // Preselected on Generate / text slots / Fix an area / Try again; each sends the pick with its action.
   const defaultPlatform = defaultAiPlatform(settings)
   const openRouterModels = settings?.openrouter_models
   const openRouterImageModel =
@@ -160,7 +225,15 @@ function CardView({ cardId }: { cardId: string }) {
     }
   }
 
-  const closeDialog = () => setDialog(null)
+  // Every success path calls this, so a queued edit also leaves text edit mode. The slots unmount
+  // with it, so focus goes back to the picture (still a button at that moment) instead of <body>.
+  const closeDialog = () => {
+    setDialog(null)
+    if (textEdit.phase !== 'off') {
+      setTextEdit(TEXT_EDIT_OFF)
+      pictureRef.current?.focus()
+    }
+  }
 
   function onApprove(platform: AiPlatform) {
     if (!card) return
@@ -202,7 +275,9 @@ function CardView({ cardId }: { cardId: string }) {
       async () => {
         if (updateBrief) {
           const lines = parsePrintText(card.print_text)
-          const idx = lines.findIndex((l) => l.text.trim() === oldText)
+          // The slots come from the prompt's text slot; when the brief line drifted from it, fall back to the slot's index.
+          let idx = lines.findIndex((l) => l.text.trim() === oldText)
+          if (idx < 0 && args.lineIndex !== undefined && args.lineIndex < lines.length) idx = args.lineIndex
           if (idx >= 0) {
             const next = lines.map((l, i) => ({ role: l.role, text: i === idx ? newText : l.text }))
             // Keep the brief snapshot in step too, as the multi-line path does: later regenerates and QC read it.
@@ -230,9 +305,12 @@ function CardView({ cardId }: { cardId: string }) {
   }
 
   /**
-   * Several lines changed at once: write the new print text into the card (and its
-   * brief snapshot, which the engine and QC read), rewrite the text slot of the magic
-   * prompt, then queue ONE regenerate so every new line lands in the same generation.
+   * Several lines changed at once: patch the changed lines in the card's print text (and
+   * its brief snapshot — request_edit copies it onto the child, and QC falls back to it),
+   * rewrite the text slot of the magic prompt with the slots, then queue ONE in-place text
+   * edit on the previous image so every new line lands in the same generation and nothing
+   * else about the picture changes. (A regenerate would redraw the whole design from the
+   * references.) The engine reads the empty old/new text as "the text slot is the truth".
    */
   function onEditTextMulti(lines: PrintTextLine[], changes: TextChange[], instruction: string, platform: AiPlatform) {
     if (!card || !current) return
@@ -245,25 +323,40 @@ function CardView({ cardId }: { cardId: string }) {
         return
       }
     }
-    const printText = lines.map((l) => ({ role: l.role, text: l.text }))
-    // The engine builds regenerates from the parent's prompt, so the text slot must carry the new lines too.
+    // The slots (`lines`) are the prompt's text slot with the drafts applied: that is what the engine prints.
+    const slotText = lines.map((l) => ({ role: l.role, text: l.text }))
     const prompt: Json | null =
-      isRecord(basePrompt) && isRecord(basePrompt.text) ? { ...basePrompt, text: { ...basePrompt.text, lines: printText } } : basePrompt
-    const summary = changes.map((c) => `“${c.oldText}” → “${c.newText}”`).join('; ')
-    const note = `Text edit (${changes.length} lines): ${summary}${instruction ? ` — ${instruction}` : ''}`.slice(0, 500)
+      isRecord(basePrompt) && isRecord(basePrompt.text) ? { ...basePrompt, text: { ...basePrompt.text, lines: slotText } } : basePrompt
+    // The brief is patched line by line, never replaced by the slots.
+    const briefBefore = parsePrintText(card.print_text)
+    // Plain objects (not PrintTextLine, which has no index signature) so the array is a Json value.
+    const printText = patchBriefLines(briefBefore, changes, lines).map((l) => ({ role: l.role, text: l.text }))
+    const briefChanged = JSON.stringify(printText) !== JSON.stringify(briefBefore.map((l) => ({ role: l.role, text: l.text })))
+    // prompt-engine renders this as the TARGETED EDIT instruction; the new lines themselves come from the text slot.
+    const editInstruction = [
+      ...changes.map((c) => `Change the text “${c.oldText}” to exactly “${c.newText}”, keeping the same lettering style, size and placement.`),
+      instruction.trim(),
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .slice(0, 1000)
 
     void run(
       'edit_text',
       async () => {
-        const patch: { print_text: Json; brief_snapshot?: Json } = { print_text: printText }
-        if (isRecord(card.brief_snapshot)) patch.brief_snapshot = { ...card.brief_snapshot, print_text: printText }
-        const { data, error: err } = await supabase.from('cards').update(patch).eq('id', card.id).select('*').single()
-        if (err) throw new Error(`The brief was not updated (${err.message}), so nothing was queued.`)
-        upsertCard(data)
-        return requestEdit(current.id, 'regenerate', {
-          rejection_reason: 'text_wrong',
-          rejection_note: note,
-          instruction: instruction || null,
+        // Before request_edit on purpose: the RPC snapshots the card's brief onto the child generation.
+        if (briefChanged) {
+          const patch: { print_text: Json; brief_snapshot?: Json } = { print_text: printText }
+          if (isRecord(card.brief_snapshot)) patch.brief_snapshot = { ...card.brief_snapshot, print_text: printText }
+          const { data, error: err } = await supabase.from('cards').update(patch).eq('id', card.id).select('*').single()
+          if (err) throw new Error(`The brief was not updated (${err.message}), so nothing was queued.`)
+          upsertCard(data)
+        }
+        // Empty old/new text + a prompt whose text slot already holds the new lines = multi-line edit for the engine.
+        return requestEdit(current.id, 'edit_text', {
+          old_text: null,
+          new_text: null,
+          instruction: editInstruction,
           magic_prompt_json: prompt,
           platform,
         })
@@ -272,7 +365,7 @@ function CardView({ cardId }: { cardId: string }) {
         generations.upsertLocal(child)
         void refreshCard()
         closeDialog()
-        toast.success(`Brief updated — regenerating with ${changes.length} new text lines`)
+        toast.success(`Text edit queued — ${changes.length} lines change, the rest of the picture stays`)
       },
     )
   }
@@ -284,7 +377,10 @@ function CardView({ cardId }: { cardId: string }) {
       async () => {
         const blob = await buildMaskPng(natural.w, natural.h, rect)
         const maskPath = await uploadMask(card.id, current.id, blob)
-        return requestEdit(current.id, 'edit_region', { mask_path: maskPath, instruction, platform })
+        // The worker pastes the edited rectangle back onto the untouched image, so it needs the rectangle in pixels too.
+        const px = rectToPixels(rect, natural.w, natural.h)
+        const mask_rect = { x: px.x, y: px.y, w: px.w, h: px.h, width: natural.w, height: natural.h }
+        return requestEdit(current.id, 'edit_region', { mask_path: maskPath, mask_rect, instruction, platform })
       },
       (child) => {
         generations.upsertLocal(child)
@@ -423,6 +519,39 @@ function CardView({ cardId }: { cardId: string }) {
       ? (card.last_error ?? current?.last_error ?? latestFinJob?.last_error ?? 'No error message was recorded.')
       : null
 
+  // The slots are the lines the engine printed (prompt text slot); the brief is the fallback.
+  const slotLinesFromPrompt = promptTextLines(current?.magic_prompt_json)
+  const briefLines = parsePrintText(card.print_text)
+  const slotSource = slotLinesFromPrompt.length ? 'prompt' : 'brief'
+  const slotLines = slotLinesFromPrompt.length ? slotLinesFromPrompt : briefLines
+  const qcFound = qcTextFound(current?.qc_report)
+  const qcOk = qcTextOk(current?.qc_report)
+
+  // The one paid step in Review: the rail's primary and the picture tile both open the Generate dialog.
+  const canGenerate = card.stage === 'review' && !paused && !styleCardState.loading && Boolean(styleCardState.styleCard)
+
+  const stageActionsProps: StageActionsProps = {
+    card,
+    current,
+    viewed,
+    runningGeneration,
+    generationsLoading: generations.loading,
+    latestFinJob,
+    hasStyleCard: Boolean(styleCardState.styleCard),
+    styleCardLoading: styleCardState.loading,
+    paused,
+    price,
+    busy,
+    now,
+    canMakeCurrent: !locked,
+    onApprove: () => setDialog('approve'),
+    onAccept: () => setDialog('accept'),
+    onEditRegion: () => setDialog('edit_region'),
+    onRegenerate: () => setDialog('regenerate'),
+    onPark: () => setDialog('park'),
+    onMakeCurrent,
+  }
+
   return (
     <div className="space-y-4">
       <CardHeader card={card} now={now} executionLinks={executionLinks} onDuplicate={onDuplicate} busy={busy} />
@@ -464,82 +593,108 @@ function CardView({ cardId }: { cardId: string }) {
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-        <div className="min-w-0 space-y-4">
-          <BriefEditor card={card} locked={locked} onSaved={upsertCard} />
-          <ReferencesPanel card={card} />
-          <StyleCardPanel
-            card={card}
-            styleCard={styleCardState.styleCard}
-            loading={styleCardState.loading}
-            error={styleCardState.error}
+      <section
+        className={`${panelCls} grid gap-4 p-3 sm:p-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:grid-rows-[auto_auto] lg:items-start`}
+        onKeyDown={(e) => {
+          // Not while Apply is in flight: Cancel is disabled then for the same reason (the drafts must survive a failure).
+          if (e.key === 'Escape' && dialog === null && textEdit.phase !== 'off' && busy === null) {
+            e.preventDefault()
+            exitEdit()
+          }
+        }}
+      >
+        <div className="min-w-0 lg:col-start-1 lg:row-start-1">
+          <Preview
+            viewed={viewed}
+            previous={previous}
+            isCurrent={viewedIsCurrent}
+            fileBase={fileBase}
+            editable={canEnterEdit}
+            editPhase={textEdit.phase}
+            onEdit={enterEdit}
+            pictureRef={pictureRef}
+            qcVerdict={qcVerdict(viewed?.qc_report)}
+            runningGeneration={card.stage === 'editing' ? runningGeneration : null}
+            emptyAction={
+              !viewed ? (
+                <StagePlaceholder
+                  card={card}
+                  price={price}
+                  styleCard={styleCardState.styleCard}
+                  loading={generations.loading}
+                  onGenerate={canGenerate ? () => setDialog('approve') : undefined}
+                />
+              ) : undefined
+            }
           />
         </div>
 
-        <div className="min-w-0 space-y-4">
-          <ActionBar
-            card={card}
-            current={current}
-            runningGeneration={runningGeneration}
-            latestFinJob={latestFinJob}
-            hasStyleCard={Boolean(styleCardState.styleCard)}
-            styleCardLoading={styleCardState.loading}
-            paused={paused}
-            price={price}
-            busy={busy}
-            now={now}
-            onApprove={() => setDialog('approve')}
-            onAccept={() => setDialog('accept')}
-            onEditText={() => setDialog('edit_text')}
-            onEditRegion={() => setDialog('edit_region')}
-            onRegenerate={() => setDialog('regenerate')}
-            onPark={() => setDialog('park')}
-            onResume={onResume}
-            onRetry={onRetry}
-          />
-          <GenerationStrip
-            generations={generations.rows}
-            currentId={card.current_generation_id}
-            viewedId={viewed?.id ?? null}
-            canMakeCurrent={!locked}
-            busy={busy !== null}
-            now={now}
-            onView={setViewedId}
-            onMakeCurrent={onMakeCurrent}
-          />
-          {generations.error && (
-            <p className="text-xs text-red-600 dark:text-red-400">Generations could not be refreshed: {generations.error}</p>
+        <div className="min-w-0 space-y-3 lg:col-start-2 lg:row-start-1 lg:row-span-2">
+          <p
+            role="status"
+            aria-live="polite"
+            className={`text-xs ${editStatus.tone === 'warn' && textEdit.phase === 'on' ? 'text-amber-700 dark:text-amber-300' : 'text-neutral-500'}`}
+          >
+            {textEdit.phase === 'scanning' ? (
+              'Reading the text on the design…'
+            ) : textEdit.phase === 'on' ? (
+              editStatus.text
+            ) : (
+              <StatusLine {...stageActionsProps} viewedIsCurrent={viewedIsCurrent} />
+            )}
+          </p>
+          {textEdit.phase === 'on' && current ? (
+            <TextSlotsEditor
+              lines={slotLines}
+              source={slotSource}
+              briefLines={briefLines}
+              qcFound={qcFound}
+              qcTextOk={qcOk}
+              promptDirty={promptDirty}
+              defaultPlatform={defaultPlatform}
+              paused={paused}
+              busy={busy === 'edit_text'}
+              onSubmit={onEditText}
+              onCancel={exitEdit}
+              onStatus={(text, tone) => setEditStatus((s) => (s.text === text && s.tone === tone ? s : { text, tone }))}
+            />
+          ) : (
+            <StageActions {...stageActionsProps} />
           )}
-          <Preview viewed={viewed} previous={previous} isCurrent={viewed !== null && viewed.id === current?.id} fileBase={fileBase} now={now} />
-          <QcReportPanel generation={viewed} />
-          <div className="grid gap-4 2xl:grid-cols-2 2xl:items-start">
-            <Panel
-              title="Magic prompt"
-              subtitle={
-                current
-                  ? viewed && viewed.id !== current.id
-                    ? 'Prompt of the current generation — Regenerate builds on it, not on the one you are viewing'
-                    : 'Edit any section before Regenerate; the engine re-renders the paragraph'
-                  : 'Appears once the first generation is queued'
-              }
-            >
-              <MagicPromptEditor
-                sections={draft.sections}
-                onChange={setSections}
-                onReset={resetSections}
-                dirty={promptDirty}
-                disabled={busy !== null}
-                emptyText={
-                  current
-                    ? 'No prompt stored on the current generation yet — the engine writes it when the job starts.'
-                    : 'Approve the card to build the first prompt.'
-                }
-              />
-            </Panel>
-            <RenderedPromptPanel generation={current} viewingOther={viewed !== null && current !== null && viewed.id !== current.id} />
-          </div>
         </div>
-      </div>
+
+        {generations.rows.length >= 2 && (
+          <div className="min-w-0 lg:col-start-1 lg:row-start-2">
+            <GenerationStrip
+              generations={generations.rows}
+              currentId={card.current_generation_id}
+              viewedId={viewed?.id ?? null}
+              canMakeCurrent={!locked}
+              busy={busy !== null}
+              now={now}
+              onView={setViewedId}
+              onMakeCurrent={onMakeCurrent}
+            />
+          </div>
+        )}
+      </section>
+      {generations.error && (
+        <p className="text-xs text-red-600 dark:text-red-400">Generations could not be refreshed: {generations.error}</p>
+      )}
+
+      <CardDetails
+        card={card}
+        locked={locked}
+        upsertCard={upsertCard}
+        styleCardState={styleCardState}
+        viewed={viewed}
+        current={current}
+        sections={draft.sections}
+        setSections={setSections}
+        resetSections={resetSections}
+        promptDirty={promptDirty}
+        busy={busy}
+      />
 
       {dialog === 'approve' && (
         <ApproveDialog
@@ -557,15 +712,6 @@ function CardView({ cardId }: { cardId: string }) {
       )}
       {dialog === 'accept' && current && (
         <AcceptDialog generation={current} busy={busy === 'accept'} onClose={closeDialog} onConfirm={onAccept} />
-      )}
-      {dialog === 'edit_text' && current && (
-        <EditTextDialog
-          lines={parsePrintText(card.print_text)}
-          defaultPlatform={defaultPlatform}
-          busy={busy === 'edit_text'}
-          onClose={closeDialog}
-          onSubmit={onEditText}
-        />
       )}
       {dialog === 'edit_region' && current && (
         <EditRegionDialog

@@ -38,7 +38,7 @@ export function AcceptDialog({
         source. When the finisher is done the final PNG appears in Completed, usually within 2–4 minutes.
       </p>
       <p className="mt-2 text-xs text-neutral-500">
-        Not happy with the text or a detail? Cancel and use Edit text, Edit region or Regenerate instead.
+        Not happy with the text or a detail? Cancel, then click the picture to change its text, or use Fix an area / Try again.
       </p>
     </Dialog>
   )
