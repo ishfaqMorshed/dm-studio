@@ -1,0 +1,228 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * DM Studio visual system — proposed src/index.css (designer A).
+ * Semantic colour triplets (R G B, no commas) so Tailwind can add alpha:
+ * bg-surface-1, text-fg-2, border-line/10, ring-ring, bg-brand …
+ */
+@layer base {
+  :root {
+    color-scheme: light dark;
+
+    /* ---- Light: warm paper --------------------------------------------------------- */
+    --canvas: 248 247 244; /* #f8f7f4 page */
+    --surface-1: 255 255 255; /* #ffffff panels, tiles, inputs */
+    --surface-2: 241 239 234; /* #f1efea wells, hover, chips */
+    --surface-3: 233 230 223; /* #e9e6df pressed / selected */
+    --surface-inverse: 28 26 23; /* tooltips, image chips */
+    --line: 28 26 23; /* hairline = /10, strong = /[.16] */
+    --fg-1: 28 26 23; /* #1c1a17 */
+    --fg-2: 92 87 78; /* #5c574e  7.2:1 on white */
+    --fg-3: 113 108 97; /* #716c61  5.2:1 on white, 4.55:1 on surface-2 */
+    --fg-placeholder: 148 143 131; /* #948f83 */
+    --fg-inverse: 241 239 234;
+    --brand: 107 37 230; /* #6b25e6 accent-600 fill */
+    --brand-hover: 90 27 194; /* #5a1bc2 accent-700 */
+    --brand-text: 90 27 194; /* accent-700 as text (never the fill colour as text) */
+    --brand-soft: 244 240 255; /* #f4f0ff selected rows / accent chips */
+    --ring: 125 60 248; /* #7d3cf8 focus */
+    --checker-a: 233 230 223; /* #e9e6df */
+    --checker-b: 248 247 244; /* #f8f7f4 */
+    --scrim: 28 26 23; /* dialog backdrop at /40 */
+    --ok-text: 47 122 61; /* #2f7a3d 5.3:1 */
+    --warn-text: 154 93 12; /* #9a5d0c 5.3:1 */
+    --bad-text: 180 42 49; /* #b42a31 6.3:1 */
+    --info-text: 47 95 196; /* #2f5fc4 */
+  }
+
+  /* ---- Dark: warm ink (system preference unless data-theme says otherwise) ---------- */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+      --canvas: 18 17 16; /* #121110 */
+      --surface-1: 28 26 23; /* #1c1a17 */
+      --surface-2: 36 34 32; /* #242220 */
+      --surface-3: 44 41 37; /* #2c2925 */
+      --surface-inverse: 241 239 234;
+      --line: 255 255 255; /* hairline = /[.08], strong = /[.14] */
+      --fg-1: 241 239 234; /* #f1efea (never #fff) */
+      --fg-2: 163 158 146; /* #a39e92  6.5:1 on panel */
+      --fg-3: 143 138 126; /* #8f8a7e  5.1:1 on panel, 4.6:1 on surface-2 */
+      --fg-placeholder: 111 106 96; /* #6f6a60 */
+      --fg-inverse: 28 26 23;
+      --brand: 125 60 248; /* #7d3cf8 accent-500 fill, white 5.4:1 */
+      --brand-hover: 134 70 249; /* #8646f9 white 4.9:1 */
+      --brand-text: 183 153 255; /* #b799ff accent-300 */
+      --brand-soft: 44 31 59; /* #2c1f3b */
+      --ring: 152 101 255; /* #9865ff accent-400 */
+      --checker-a: 35 33 31; /* #232120 */
+      --checker-b: 26 25 23; /* #1a1917 */
+      --scrim: 0 0 0; /* at /60 */
+      --ok-text: 159 214 170; /* #9fd6aa */
+      --warn-text: 242 197 124; /* #f2c57c */
+      --bad-text: 240 153 157; /* #f0999d */
+      --info-text: 169 191 245; /* #a9bff5 */
+    }
+  }
+  :root[data-theme='dark'] {
+    --canvas: 18 17 16;
+    --surface-1: 28 26 23;
+    --surface-2: 36 34 32;
+    --surface-3: 44 41 37;
+    --surface-inverse: 241 239 234;
+    --line: 255 255 255;
+    --fg-1: 241 239 234;
+    --fg-2: 163 158 146;
+    --fg-3: 143 138 126;
+    --fg-placeholder: 111 106 96;
+    --fg-inverse: 28 26 23;
+    --brand: 125 60 248;
+    --brand-hover: 134 70 249;
+    --brand-text: 183 153 255;
+    --brand-soft: 44 31 59;
+    --ring: 152 101 255;
+    --checker-a: 35 33 31;
+    --checker-b: 26 25 23;
+    --scrim: 0 0 0;
+    --ok-text: 159 214 170;
+    --warn-text: 242 197 124;
+    --bad-text: 240 153 157;
+    --info-text: 169 191 245;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    @apply bg-canvas font-sans text-base text-fg-1;
+    font-feature-settings: 'kern', 'liga', 'calt';
+    font-optical-sizing: auto;
+  }
+  /* Display face only from 18px up; everything ≤ 16px stays Instrument Sans. */
+  h1,
+  h2 {
+    @apply font-display font-semibold;
+  }
+  h3,
+  h4 {
+    @apply font-sans font-semibold;
+  }
+  ::selection {
+    @apply bg-accent-200 text-accent-950;
+  }
+  :root[data-theme='dark'] ::selection,
+  :root:not([data-theme='light']) ::selection {
+    @media (prefers-color-scheme: dark) {
+      @apply bg-accent-800 text-accent-50;
+    }
+  }
+  ::placeholder {
+    @apply text-fg-placeholder;
+  }
+  /* One stroke weight for every lucide icon. lucide-react 1.43 does NOT add a class by
+     itself: wrap the app once in
+       <LucideProvider strokeWidth={1.75} absoluteStrokeWidth className="lucide">
+     (src/main.tsx). That sets the weight globally and adds the `lucide` class the
+     `[&>.lucide]` size selectors in ui.classes rely on. Icons ≥ 24px pass strokeWidth={1.5}. */
+  .lucide.icon-lg {
+    stroke-width: 1.5;
+  }
+  /* Native checkbox / radio pick up the brand colour without custom drawings. */
+  input[type='checkbox'],
+  input[type='radio'] {
+    accent-color: rgb(var(--brand));
+  }
+  /* Public brief form on phones: 16px inputs stop iOS Safari from zooming. */
+  @media (max-width: 640px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px;
+    }
+  }
+  /* Tabular numerals wherever a number can tick (ages, counts, prices). */
+  .tabular-nums,
+  time,
+  [data-num] {
+    font-variant-numeric: tabular-nums;
+  }
+  /* Reduced motion: keep opacity/colour, drop movement, sweeps and wipes. */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-scan,
+    .animate-sweep,
+    .animate-travel,
+    .animate-shimmer,
+    .animate-pulse-dot,
+    .animate-ring-pulse,
+    .animate-draw {
+      animation: none !important;
+    }
+    .animate-fade-up,
+    .animate-scale-in,
+    .animate-sheet-up,
+    .animate-settle {
+      animation-name: fade-only !important;
+      animation-duration: 200ms !important;
+    }
+  }
+  @keyframes fade-only {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
+
+@layer components {
+  /* Warm checkerboard behind artwork: one class, both themes. 16px default, 12px for thumbs. */
+  .checker {
+    background-color: rgb(var(--checker-b));
+    background-image: conic-gradient(rgb(var(--checker-a)) 25%, transparent 0 50%, rgb(var(--checker-a)) 0 75%, transparent 0);
+    background-size: 16px 16px;
+  }
+  .checker-sm {
+    background-size: 12px 12px;
+  }
+  /* Panel: level-0 in light, hairline in dark. */
+  .panel {
+    @apply rounded-2xl border border-line/10 bg-surface-1 shadow-card dark:border-line/[.08] dark:shadow-none;
+  }
+  /* Recessed well inside a panel (progress boxes, evidence strips, code). */
+  .well {
+    @apply rounded-xl bg-surface-2;
+  }
+  /* Skeleton: sized to final content, shimmer in motion-safe only. */
+  .skeleton {
+    @apply rounded-lg bg-surface-2 motion-safe:animate-shimmer;
+    background-image: linear-gradient(90deg, transparent 0%, rgb(var(--surface-3)) 50%, transparent 100%);
+    background-size: 200% 100%;
+  }
+  /* Keyboard focus: 2px brand ring with a 2px gap; buttons, links, tiles, chips. */
+  .focus-ring {
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+  }
+  /* Status dot: 6px, colour by stage/feedback; add .dot-live while a job runs. */
+  .dot {
+    @apply inline-block h-1.5 w-1.5 shrink-0 rounded-full;
+  }
+  .dot-live {
+    @apply motion-safe:animate-pulse-dot;
+  }
+  /* Keycap for shortcuts in tooltips and the rail. */
+  .kbd {
+    @apply inline-flex h-5 min-w-5 items-center justify-center rounded border border-line/[.12] bg-surface-2 px-1.5 font-mono text-2xs text-fg-2;
+  }
+  /* Native <select> without OS chrome: same box as an input plus a chevron. */
+  .select-native {
+    appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238f8a7e' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 32px;
+  }
+}

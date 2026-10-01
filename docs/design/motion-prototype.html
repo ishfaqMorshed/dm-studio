@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DM Studio motion prototype</title>
+<meta name="description" content="Time-compressed demo of the five core keyframes: develop (generating), inspect (QC), finish rail, settle + ring-pulse, enter/leave. Copy the CSS verbatim.">
+<style>
+/* ---------- tokens (mirror tailwind.config.js) ---------- */
+:root{
+  --n50:#f8f7f4;--n100:#f1efea;--n200:#e4e1d9;--n300:#cfcbc0;--n400:#a39e92;--n500:#7a756a;--n700:#47433c;--n800:#2c2925;--n900:#1c1a17;--n950:#121110;
+  --a200:#d5c4ff;--a300:#b799ff;--a500:#7d3cf8;--a600:#6b25e6;
+  --gen:#1f8fa8;--edit:#2a9d8f;--fin:#5b5bd6;--ok:#3d9a4f;--warn:#d98a1f;--bad:#d4383f;
+  --bg:var(--n50);--panel:#fff;--fg:var(--n900);--mute:var(--n500);--line:var(--n200);
+  --checker:#e5e5e5;
+  /* motion tokens */
+  --ease-out-strong:cubic-bezier(.23,1,.32,1);
+  --ease-move:cubic-bezier(.77,0,.175,1);
+  --ease-sweep:cubic-bezier(.45,0,.55,1);
+  --d-hover:20ms;--d-press:120ms;--d-fast:150ms;--d-base:200ms;--d-slow:300ms;--d-settle:400ms;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:var(--n950);--panel:var(--n900);--fg:var(--n100);--mute:var(--n400);--line:var(--n800);--checker:#2c2925}}
+:root[data-theme=dark]{--bg:var(--n950);--panel:var(--n900);--fg:var(--n100);--mute:var(--n400);--line:var(--n800);--checker:#2c2925}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 "Instrument Sans",system-ui,sans-serif;padding:24px 16px}
+h1{font-size:20px;margin:0 0 4px}
+p.lead{color:var(--mute);margin:0 0 16px;font-size:13px}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));max-width:1200px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px}
+.card h2{font-size:13px;font-weight:600;margin:0 0 10px;display:flex;justify-content:space-between;align-items:center}
+.card h2 code{font:11px ui-monospace,Menlo,monospace;color:var(--mute);font-weight:400}
+.frame{position:relative;aspect-ratio:1;width:100%;border-radius:16px;overflow:hidden;container-type:size;
+  background:conic-gradient(var(--checker) 25%,transparent 0 50%,var(--checker) 0 75%,transparent 0) 0 0/16px 16px}
+.frame img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.chip{position:absolute;left:8px;top:8px;display:inline-flex;gap:6px;align-items:center;border-radius:999px;background:rgba(28,26,23,.8);color:#fff;font-size:11px;font-weight:500;padding:2px 8px;line-height:16px}
+.counter{position:absolute;left:8px;bottom:8px;border-radius:999px;background:rgba(28,26,23,.8);color:#fff;font:11px/16px ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;padding:2px 8px}
+.counter.late{color:#f2c57c}
+.row{display:flex;gap:8px;align-items:center;margin-top:10px;font-size:12px;color:var(--mute)}
+button{font:inherit;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--fg);padding:6px 10px;cursor:default;transition:background-color var(--d-hover) ease-in,transform var(--d-press) ease-out}
+button:hover{background:var(--n100)}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]) button:hover{background:var(--n800)}}
+:root[data-theme=dark] button:hover{background:var(--n800)}
+button:active{transform:scale(.98)}
+button.primary{background:var(--a600);border-color:var(--a600);color:#fff}
+.mono{font:11px ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;color:var(--mute)}
+
+/* ---------- 0. StatusDot ---------- */
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--gen)}
+@keyframes breathe{0%,100%{opacity:1}50%{opacity:.35}}
+.dot.live{animation:breathe 1600ms ease-in-out infinite}
+
+/* ---------- 1. DEVELOP (generating / editing) ----------
+   --p is set by JS once per second from elapsed/expected: p = .92*(1-exp(-3t/T)).
+   The wash is clipped to p, the boundary line sits at p*100cqh (composite-only transform).
+   The only continuous animation is the glow breathing on the line. */
+.develop{position:absolute;inset:0;--p:0;pointer-events:none}
+.develop .wash{position:absolute;inset:0;background:linear-gradient(to bottom,color-mix(in srgb,var(--gen) 14%,transparent),color-mix(in srgb,var(--gen) 8%,transparent));
+  clip-path:inset(0 0 calc((1 - var(--p)) * 100%) 0);transition:clip-path 1000ms linear}
+.develop .underlay{position:absolute;inset:0;object-fit:contain;filter:blur(18px) saturate(.6);transform:scale(1.06);opacity:.55;
+  clip-path:inset(0 0 calc((1 - var(--p)) * 100%) 0);transition:clip-path 1000ms linear}
+.develop .line{position:absolute;left:0;right:0;top:0;height:20%;transform:translateY(calc(var(--p) * 100cqh - 100%));transition:transform 1000ms linear;
+  background:linear-gradient(to bottom,transparent,color-mix(in srgb,var(--gen) 35%,transparent))}
+.develop .line::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:color-mix(in srgb,var(--gen) 80%,#fff);
+  box-shadow:0 0 12px 2px color-mix(in srgb,var(--gen) 70%,transparent);animation:glow 1600ms ease-in-out infinite}
+@keyframes glow{0%,100%{opacity:1}50%{opacity:.55}}
+.develop.slow .line::after{animation-duration:3200ms}         /* overdue: slower breathing, amber counter */
+.develop.paused .line::after{animation-play-state:paused}     /* failed: freeze, desaturate */
+.develop.paused .wash{background:linear-gradient(to bottom,rgba(122,117,106,.14),rgba(122,117,106,.08))}
+
+/* ---------- 2. INSPECT (QC judging) ----------
+   A colourless "inspection light" travelling up and down; static viewfinder corners. */
+.inspect{position:absolute;inset:0;pointer-events:none}
+.inspect .band{position:absolute;left:0;right:0;top:0;height:25%;
+  background:linear-gradient(to bottom,transparent,rgba(255,255,255,.18),transparent);
+  animation:inspect 1800ms var(--ease-sweep) infinite alternate}
+.inspect .band::after{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:rgba(255,255,255,.7);box-shadow:0 0 10px 1px rgba(255,255,255,.35)}
+@keyframes inspect{from{transform:translateY(-100%)}to{transform:translateY(400%)}}
+.inspect .corner{position:absolute;width:14px;height:14px;border:1.5px solid rgba(255,255,255,.75);opacity:.9}
+.inspect .tl{left:10px;top:10px;border-right:0;border-bottom:0}.inspect .tr{right:10px;top:10px;border-left:0;border-bottom:0}
+.inspect .bl{left:10px;bottom:10px;border-right:0;border-top:0}.inspect .br{right:10px;bottom:10px;border-left:0;border-top:0}
+[data-theme=light] .inspect .band{background:linear-gradient(to bottom,transparent,rgba(28,26,23,.10),transparent)}
+[data-theme=light] .inspect .band::after{background:rgba(28,26,23,.55);box-shadow:0 0 10px 1px rgba(28,26,23,.2)}
+[data-theme=light] .inspect .corner{border-color:rgba(28,26,23,.6)}
+
+/* QC checklist rows: skeleton ring -> resolved glyph with a 50 ms stagger */
+.checks{list-style:none;margin:10px 0 0;padding:0;font-size:12px}
+.checks li{display:flex;gap:8px;align-items:center;padding:4px 0;border-top:1px solid var(--line)}
+.checks li:first-child{border-top:0}
+.ring{width:14px;height:14px;border-radius:999px;border:1.5px solid var(--n300);flex:none}
+.ring.active{border-color:var(--mute);animation:breathe 1600ms ease-in-out infinite}
+.glyph{width:14px;height:14px;border-radius:999px;flex:none;display:grid;place-items:center;color:#fff;font-size:9px;line-height:1}
+.glyph.ok{background:var(--ok)}.glyph.bad{background:var(--bad)}
+.checks.resolving li{animation:resolve-row 220ms var(--ease-out-strong) both;animation-delay:calc(var(--i) * 50ms)}
+.checks.resolving .glyph{animation:pop-in 200ms var(--ease-out-strong) both;animation-delay:calc(var(--i) * 50ms)}
+@keyframes resolve-row{from{opacity:.35;transform:translateY(4px)}to{opacity:1;transform:none}}
+@keyframes pop-in{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:none}}
+.skel{height:10px;border-radius:4px;background:var(--n200);flex:1;animation:breathe 1400ms ease-in-out infinite;animation-delay:calc(var(--i) * 60ms)}
+[data-theme=dark] .skel{background:var(--n800)}
+
+/* ---------- 3. FINISH RAIL (three named steps, time gauge) ---------- */
+.rail{position:absolute;left:8px;right:8px;bottom:8px;display:grid;grid-template-columns:55fr 40fr 25fr;gap:4px}
+.seg{height:3px;border-radius:999px;background:rgba(28,26,23,.35);overflow:hidden;position:relative}
+.seg>i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--fin);border-radius:inherit;transition:width 1000ms linear}
+.seg.done>i{width:100%}
+.steps{display:flex;gap:10px;font-size:11px;color:var(--mute);margin-top:8px}
+.steps span{display:inline-flex;gap:5px;align-items:center}
+.steps .dot{background:var(--fin)}
+.steps .done{color:var(--fg)}
+
+/* ---------- 4. SETTLE + RING-PULSE (a result lands) ---------- */
+@keyframes settle{from{opacity:0;filter:blur(12px);transform:scale(1.02)}60%{filter:blur(0)}to{opacity:1;filter:none;transform:none}}
+.landed{animation:settle 400ms var(--ease-out-strong) both}
+@keyframes ring-pulse{from{box-shadow:0 0 0 0 rgba(125,60,248,.55)}to{box-shadow:0 0 0 10px rgba(125,60,248,0)}}
+.frame.pulse{animation:ring-pulse 600ms ease-out 1}
+@keyframes fade-out{to{opacity:0}}
+.leaving{animation:fade-out 300ms ease-out both}
+.verdict{position:absolute;right:8px;top:8px;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:500;line-height:16px;background:#e1f3e4;color:#1f5a2b;animation:pop-in 240ms var(--ease-out-strong) both}
+
+/* ---------- 5. ENTER / LEAVE (dialogs, toasts, tiles) ---------- */
+@keyframes enter{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes enter-dialog{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+@keyframes leave{to{opacity:0;transform:scale(.98)}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.toast{display:flex;gap:8px;align-items:center;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:8px 10px;font-size:13px;margin-top:8px;box-shadow:0 6px 16px rgba(28,26,23,.12)}
+.toast.in{animation:enter 200ms var(--ease-out-strong) both}
+.toast.out{animation:leave 150ms ease-out both}
+.tile{border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--panel);font-size:12px;margin-top:8px;display:flex;gap:8px;align-items:center}
+.tile.in{animation:enter 200ms var(--ease-out-strong) both}
+.dialog-demo{position:relative;height:150px;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:var(--bg)}
+.scrim{position:absolute;inset:0;background:rgba(18,17,16,.5);animation:fade 200ms ease-out both}
+.dlg{position:absolute;left:50%;top:50%;width:70%;transform:translate(-50%,-50%);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;font-size:12px;box-shadow:0 6px 16px rgba(28,26,23,.2)}
+.dlg.in{animation:enter-dialog 200ms var(--ease-out-strong) both;transform-origin:center}
+.dlg.in{transform:translate(-50%,-50%)}
+@keyframes enter-dialog-centered{from{opacity:0;transform:translate(-50%,-50%) scale(.96)}to{opacity:1;transform:translate(-50%,-50%)}}
+.dlg.in{animation-name:enter-dialog-centered}
+.dlg.out{animation:leave-centered 150ms ease-out both}
+@keyframes leave-centered{to{opacity:0;transform:translate(-50%,-50%) scale(.98)}}
+
+/* ---------- reduced motion: keep fades, drop movement ---------- */
+@media (prefers-reduced-motion:reduce){
+  .dot.live,.ring.active,.skel,.develop .line::after,.inspect .band{animation:none}
+  .inspect .band{display:none}
+  .develop .wash,.develop .underlay,.develop .line,.seg>i{transition:none}
+  .landed{animation:fade 200ms ease-out both}
+  .frame.pulse{animation:none}
+  .checks.resolving li,.checks.resolving .glyph,.toast.in,.tile.in,.dlg.in,.verdict{animation:fade 150ms ease-out both;animation-delay:0ms}
+  .toast.out,.dlg.out,.leaving{animation:fade-out 150ms ease-out both}
+}
+:root[data-motion=reduce] .dot.live,:root[data-motion=reduce] .ring.active,:root[data-motion=reduce] .skel,:root[data-motion=reduce] .develop .line::after{animation:none}
+:root[data-motion=reduce] .inspect .band{display:none}
+:root[data-motion=reduce] .develop .wash,:root[data-motion=reduce] .develop .underlay,:root[data-motion=reduce] .develop .line,:root[data-motion=reduce] .seg>i{transition:none}
+:root[data-motion=reduce] .landed,:root[data-motion=reduce] .checks.resolving li,:root[data-motion=reduce] .checks.resolving .glyph,:root[data-motion=reduce] .toast.in,:root[data-motion=reduce] .tile.in,:root[data-motion=reduce] .dlg.in,:root[data-motion=reduce] .verdict{animation:fade 150ms ease-out both;animation-delay:0ms}
+:root[data-motion=reduce] .frame.pulse{animation:none}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+</style>
+</head>
+<body>
+<h1>DM Studio · motion prototype</h1>
+<p class="lead">Time is compressed ×5 (a 40 s generate plays in 8 s). Every animation here is CSS; JS only sets <code>--p</code> once per second and swaps classes on state changes. Nothing outside the frame moves while the pipeline works.</p>
+<div class="toolbar">
+  <button onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark'">Toggle light / dark</button>
+  <button onclick="document.documentElement.dataset.motion=document.documentElement.dataset.motion==='reduce'?'':'reduce'">Toggle reduced motion</button>
+  <button class="primary" onclick="runAll()">Replay everything</button>
+</div>
+<div class="grid">
+
+  <section class="card">
+    <h2>1 · Generating <code>develop · --p from elapsed/T</code></h2>
+    <div class="frame" id="f1">
+      <div class="develop" id="dev1">
+        <div class="wash"></div>
+        <div class="line"></div>
+      </div>
+      <span class="chip"><i class="dot live"></i>Drawing the design</span>
+      <span class="counter" id="c1">0:00 · ~0:40</span>
+    </div>
+    <div class="row"><span>Stage colour = <code>stage.generating</code>. p(t)=.92·(1−e<sup>−3t/T</sup>), never reaches 100 %.</span></div>
+    <div class="row"><button onclick="gen(1)">Play generate (~8 s)</button><button onclick="gen(1,true)">Play as overdue</button><button onclick="fail(1)">Fail mid-way</button></div>
+  </section>
+
+  <section class="card">
+    <h2>2 · QC judging <code>inspect · 1800 ms alternate</code></h2>
+    <div class="frame" id="f2">
+      <img id="img2" alt="" src="" style="display:none">
+      <div class="inspect" id="ins2"><div class="band"></div><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></div>
+      <span class="chip"><i class="dot live" style="background:#fff"></i>Judging · 11 checks</span>
+    </div>
+    <ul class="checks" id="checks2"></ul>
+    <div class="row"><button onclick="qc()">Play QC (sweep 4 s → checklist resolves)</button></div>
+  </section>
+
+  <section class="card">
+    <h2>3 · Finishing <code>3 named steps · time gauge</code></h2>
+    <div class="frame" id="f3" style="background:#2c2925">
+      <div class="rail" id="rail3"><div class="seg"><i></i></div><div class="seg"><i></i></div><div class="seg"><i></i></div></div>
+      <span class="chip" id="chip3"><i class="dot live" style="background:#5b5bd6"></i>Finishing · Upscale ×4 · 1 / 3</span>
+      <span class="counter" id="c3">0:00 · ~2:00</span>
+    </div>
+    <div class="steps" id="steps3"><span><i class="dot live"></i>Upscale ×4</span><span><i class="dot" style="opacity:.3"></i>Remove background</span><span><i class="dot" style="opacity:.3"></i>300 DPI</span></div>
+    <div class="row"><button onclick="fin()">Play finishing (~9 s)</button></div>
+  </section>
+
+  <section class="card">
+    <h2>4 · Result lands <code>settle 400 ms + ring-pulse 600 ms</code></h2>
+    <div class="frame" id="f4">
+      <div class="develop" id="dev4" style="--p:.9"><div class="wash"></div><div class="line"></div></div>
+      <span class="chip" id="chip4"><i class="dot live"></i>Drawing the design</span>
+    </div>
+    <div class="row"><button onclick="land()">Land the image</button></div>
+  </section>
+
+  <section class="card">
+    <h2>5 · Enter / leave <code>200 ms out-strong · 150 ms leave</code></h2>
+    <div class="dialog-demo" id="dd"></div>
+    <div id="toasts"></div>
+    <div id="tiles"></div>
+    <div class="row"><button onclick="dialog()">Open dialog</button><button onclick="toast()">Toast</button><button onclick="tile()">Tile arrives on board</button></div>
+  </section>
+
+  <section class="card">
+    <h2>0 · Small parts <code>breathe 1600 ms · slide 1400 ms</code></h2>
+    <div class="row"><span class="dot live"></span> Generate · 2 running <span class="mono">(StatusDot, pulses only while a job runs)</span></div>
+    <div class="row"><span class="dot" style="background:var(--warn)"></span> Generate · 3/3 running <span class="mono">(at cap: static amber)</span></div>
+    <div class="row" style="display:block">
+      <div style="height:3px;border-radius:999px;background:var(--n200);overflow:hidden;position:relative"><i style="position:absolute;top:0;bottom:0;width:33%;background:var(--a500);border-radius:inherit;animation:slide 1400ms cubic-bezier(.45,0,.55,1) infinite"></i></div>
+      <span class="mono">indeterminate bar (queued / dispatched; the analyser before it starts)</span>
+    </div>
+    <style>@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(300%)}}</style>
+    <div class="row"><button style="min-width:170px;display:inline-flex;gap:6px;align-items:center;justify-content:center"><span class="dot live" style="background:var(--mute)"></span>Uploading 2 of 3</button><span class="mono">button keeps width, label carries units</span></div>
+  </section>
+</div>
+
+<script>
+const SPEED=5;                 // time compression
+const T={gen:40,qc:10,fin:120};
+const fmt=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+const p=(t,T)=>.92*(1-Math.exp(-3*t/T));
+const timers={};
+function clear(k){(timers[k]||[]).forEach(t=>{clearInterval(t);clearTimeout(t)});timers[k]=[]}
+function keep(k,t){(timers[k]=timers[k]||[]).push(t)}
+
+/* 1 · generating: --p once per second, counter text, overdue and failed variants */
+function gen(n,overdue){
+  clear('gen'+n);
+  const dev=document.getElementById('dev'+n),c=document.getElementById('c'+n);
+  dev.className='develop';dev.style.setProperty('--p',0);
+  let t=0;
+  const id=setInterval(()=>{t+=1;dev.style.setProperty('--p',p(t,T.gen));
+    if(overdue&&t>T.gen){c.textContent=`${fmt(t)} · longer than usual`;c.classList.add('late');dev.classList.add('slow')}
+    else c.textContent=`${fmt(t)} · ~${fmt(T.gen)}`;
+    if(t>(overdue?T.gen+20:T.gen)) clearInterval(id);
+  },1000/SPEED);
+  keep('gen'+n,id);
+}
+function fail(n){clear('gen'+n);const dev=document.getElementById('dev'+n);dev.classList.add('paused');document.getElementById('c'+n).textContent='Failed · Retry re-queues this step'}
+
+/* 2 · QC: sweep for a few seconds, then the report "lands": rows resolve with 50 ms stagger */
+const LABELS=['Text matches brief','Text legible at print size','Style Card palette','Linework weight','Composition inside safe area','Background transparent','No extra text','Subject matches brief','Typography case','Signature move present','Never-do rules'];
+function qc(){
+  clear('qc');
+  const ul=document.getElementById('checks2');ul.className='checks';
+  ul.innerHTML=LABELS.map((l,i)=>`<li style="--i:${i}"><span class="ring ${i===0?'active':''}"></span><span class="skel" style="--i:${i};max-width:${120+((i*37)%110)}px"></span></li>`).join('');
+  document.getElementById('ins2').style.display='';
+  keep('qc',setTimeout(()=>{
+    document.getElementById('ins2').style.display='none';
+    ul.className='checks resolving';
+    ul.innerHTML=LABELS.map((l,i)=>`<li style="--i:${i}"><span class="glyph ${i===1||i===8?'bad':'ok'}">${i===1||i===8?'✕':'✓'}</span><span>${l}</span></li>`).join('');
+    const f=document.getElementById('f2');f.classList.remove('pulse');void f.offsetWidth;f.classList.add('pulse');
+    const v=document.createElement('span');v.className='verdict';v.style.background='#fbe1e2';v.style.color='#7f1c20';v.textContent='QC Fail · 9 / 11';f.appendChild(v);keep('qc',setTimeout(()=>v.remove(),4000));
+  },4000));
+}
+
+/* 3 · finishing: segments 55 / 40 / 25 s of a ~120 s expectation; the active segment eases toward 92 % */
+function fin(){
+  clear('fin');
+  const segs=[...document.querySelectorAll('#rail3 .seg')],names=['Upscale ×4','Remove background','300 DPI'],dur=[55,40,25];
+  const chip=document.getElementById('chip3'),c=document.getElementById('c3'),steps=[...document.querySelectorAll('#steps3 span')];
+  segs.forEach(s=>{s.classList.remove('done');s.querySelector('i').style.width='0'});
+  let t=0,i=0;
+  const id=setInterval(()=>{t+=1;
+    const start=dur.slice(0,i).reduce((a,b)=>a+b,0);
+    const local=t-start;
+    if(local>dur[i]&&i<2){segs[i].classList.add('done');i++;}
+    segs[i].querySelector('i').style.width=(p(Math.max(0,t-dur.slice(0,i).reduce((a,b)=>a+b,0)),dur[i])*100)+'%';
+    chip.innerHTML=`<i class="dot live" style="background:#5b5bd6"></i>Finishing · ${names[i]} · ${i+1} / 3`;
+    c.textContent=`${fmt(t)} · ~${fmt(T.fin)}`;
+    steps.forEach((s,k)=>{s.className=k<i?'done':'';s.querySelector('.dot').className='dot'+(k===i?' live':'');s.querySelector('.dot').style.opacity=k<=i?'1':'.3'});
+    if(t>=T.fin){segs[2].classList.add('done');chip.innerHTML='Delivered';c.textContent='Print-ready · 4500 × 5400 px · 300 DPI';clearInterval(id)}
+  },1000/SPEED);
+  keep('fin',id);
+}
+
+/* 4 · land: the develop overlay fades out (300 ms) while the image settles in (400 ms) and the frame pulses once */
+function land(){
+  const f=document.getElementById('f4'),dev=document.getElementById('dev4'),chip=document.getElementById('chip4');
+  f.querySelectorAll('img,.verdict').forEach(e=>e.remove());
+  dev.style.display='';dev.classList.remove('leaving');dev.style.setProperty('--p',.9);
+  const img=document.createElement('img');img.className='landed';img.alt='';
+  img.src=sampleSvg();f.insertBefore(img,dev);
+  dev.classList.add('leaving');setTimeout(()=>{dev.style.display='none'},300);
+  f.classList.remove('pulse');void f.offsetWidth;f.classList.add('pulse');
+  chip.textContent='Current';
+  const v=document.createElement('span');v.className='verdict';v.textContent='QC Pass';f.appendChild(v);
+}
+function sampleSvg(){
+  const s=`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><circle cx='100' cy='100' r='84' fill='#f1efea' stroke='#1c1a17' stroke-width='6'/><circle cx='100' cy='92' r='40' fill='#c8553d'/><path d='M40 140 L80 90 L110 125 L130 105 L160 140 Z' fill='#1c1a17'/><text x='100' y='170' font-family='sans-serif' font-size='16' font-weight='700' text-anchor='middle' fill='#1c1a17'>MOUNTAIN</text></svg>`;
+  return 'data:image/svg+xml;utf8,'+encodeURIComponent(s);
+}
+document.getElementById('img2').src=sampleSvg();document.getElementById('img2').style.display='';
+
+/* 5 · enter / leave */
+function dialog(){
+  const dd=document.getElementById('dd');dd.innerHTML=`<div class="scrim"></div><div class="dlg in"><b>Generate the design</b><br><span style="color:var(--mute)">Client · Cost $0.60 · Style Card v1</span><div style="margin-top:8px;display:flex;gap:6px;justify-content:flex-end"><button onclick="closeDlg()">Cancel</button><button class="primary" onclick="closeDlg()">Generate for $0.60</button></div></div>`;
+}
+function closeDlg(){const d=document.querySelector('#dd .dlg'),s=document.querySelector('#dd .scrim');if(!d)return;d.className='dlg out';s.style.animation='fade-out 150ms ease-out both';setTimeout(()=>{document.getElementById('dd').innerHTML=''},150)}
+function toast(){const t=document.createElement('div');t.className='toast in';t.innerHTML='<span class="glyph ok">✓</span> Approved — queued for generation at $0.60';document.getElementById('toasts').appendChild(t);setTimeout(()=>{t.className='toast out';setTimeout(()=>t.remove(),150)},2500)}
+function tile(){const t=document.createElement('div');t.className='tile in';t.innerHTML='<span style="width:40px;height:40px;border-radius:8px;background:var(--n200);flex:none"></span><div><b>E2E Test Client</b><br><span style="color:var(--mute)">WILD &amp; FREE</span></div><span class="dot live" style="margin-left:auto"></span>';document.getElementById('tiles').prepend(t);setTimeout(()=>{t.classList.add('leaving');setTimeout(()=>t.remove(),300)},3500)}
+function runAll(){gen(1);qc();fin();setTimeout(land,3000);dialog();toast();tile()}
+</script>
+</body>
+</html>

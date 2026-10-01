@@ -1,0 +1,1140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DM Studio Design</title>
+<meta name="description" content="Standalone preview of the DM Studio front-end design system: tokens, type, controls, board, card-page motion, wizard progress, dialogs. Presentation only; no app file is touched.">
+<script>(function(){try{var q=new URLSearchParams(location.search),t=q.get('theme')||localStorage.getItem('dm-theme'),h=document.documentElement;if(t==='light'||t==='dark')h.dataset.theme=t;if(q.get('embed'))h.dataset.embed=q.get('embed')}catch(e){}})()</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..700&family=Instrument+Sans:ital,wght@0,400..600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ================= 1 · TOKENS — R G B triplets (Tailwind: rgb(var(--x) / <alpha-value>)) ================= */
+:root{
+  color-scheme:light dark;
+  --canvas:248 247 244;--surface-1:255 255 255;--surface-2:241 239 234;--surface-3:233 230 223;--surface-inverse:28 26 23;
+  --line:28 26 23;--hair:.10;--strong:.16;
+  --fg-1:28 26 23;--fg-2:92 87 78;--fg-3:113 108 97;--fg-placeholder:148 143 131;--fg-inverse:241 239 234;
+  --brand:107 37 230;--brand-hover:90 27 194;--brand-text:90 27 194;--brand-soft:244 240 255;--ring:125 60 248;
+  --checker-a:233 230 223;--checker-b:248 247 244;--scrim:28 26 23;--scrim-a:.40;
+  --ok-text:47 122 61;--warn-text:154 93 12;--bad-text:180 42 49;--info-text:47 95 196;
+  --shadow-card:0 0 0 1px rgb(28 26 23/.06),0 1px 2px rgb(28 26 23/.05);
+  --shadow-pop:0 0 0 1px rgb(28 26 23/.08),0 4px 12px -2px rgb(28 26 23/.10);
+  --shadow-modal:0 0 0 1px rgb(28 26 23/.08),0 16px 40px -12px rgb(28 26 23/.22);
+  --shadow-key:inset 0 1px 0 rgb(255 255 255/.18),0 1px 2px rgb(28 26 23/.20);
+  --btn2-bg:var(--surface-1);--btn2-hover:var(--surface-2);--btn2-border:.16;
+  --chip-bg:var(--surface-1);--chip-hover:var(--surface-2);--input-bg:var(--surface-1);--seg-on:var(--surface-1);--seg-shadow:var(--shadow-card);
+  --ins:28 26 23;--ins-band:.10;--ins-line:.55;--ins-corner:.6;
+  --old-checker-a:#e5e5e5;--old-checker-b:#ffffff;
+  --st-intake:#8a8479;--st-intake-bg:#ece9e2;--st-intake-fg:#4a463f;
+  --st-review:#7d3cf8;--st-review-bg:#ece3ff;--st-review-fg:#4b1a9e;
+  --st-approved:#3b6fe0;--st-approved-bg:#e3ebfd;--st-approved-fg:#233f8f;
+  --st-generating:#1f8fa8;--st-generating-bg:#dcf1f6;--st-generating-fg:#125868;
+  --st-needs_review:#d98a1f;--st-needs_review-bg:#fbeed7;--st-needs_review-fg:#7a4a08;
+  --st-editing:#2a9d8f;--st-editing-bg:#dcf3ef;--st-editing-fg:#175e55;
+  --st-finishing:#5b5bd6;--st-finishing-bg:#e6e6fb;--st-finishing-fg:#33338c;
+  --st-delivered:#3d9a4f;--st-delivered-bg:#e1f3e4;--st-delivered-fg:#1f5a2b;
+  --st-waiting:#e0662b;--st-waiting-bg:#fce7dc;--st-waiting-fg:#7f3410;
+  --st-failed:#d4383f;--st-failed-bg:#fbe1e2;--st-failed-fg:#7f1c20;
+  --tick:1000ms;
+  --ease-out-strong:cubic-bezier(.23,1,.32,1);--ease-move:cubic-bezier(.77,0,.175,1);--ease-sweep:cubic-bezier(.45,0,.55,1);--ease-sheet:cubic-bezier(.32,.72,0,1);--ease-standard:cubic-bezier(.2,0,0,1);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --canvas:18 17 16;--surface-1:28 26 23;--surface-2:36 34 32;--surface-3:44 41 37;--surface-inverse:241 239 234;
+    --line:255 255 255;--hair:.08;--strong:.14;
+    --fg-1:241 239 234;--fg-2:163 158 146;--fg-3:143 138 126;--fg-placeholder:111 106 96;--fg-inverse:28 26 23;
+    --brand:125 60 248;--brand-hover:134 70 249;--brand-text:183 153 255;--brand-soft:44 31 59;--ring:152 101 255;
+    --checker-a:35 33 31;--checker-b:26 25 23;--scrim:0 0 0;--scrim-a:.60;
+    --ok-text:159 214 170;--warn-text:242 197 124;--bad-text:240 153 157;--info-text:169 191 245;
+    --shadow-card:none;--shadow-pop:0 0 0 1px rgb(255 255 255/.10),0 8px 24px -8px rgb(0 0 0/.60);--shadow-modal:0 0 0 1px rgb(255 255 255/.10),0 24px 56px -16px rgb(0 0 0/.70);
+    --btn2-bg:var(--surface-2);--btn2-hover:var(--surface-3);--btn2-border:.10;
+    --chip-bg:var(--surface-2);--chip-hover:var(--surface-3);--input-bg:var(--canvas);--seg-on:var(--surface-3);--seg-shadow:none;
+    --ins:255 255 255;--ins-band:.18;--ins-line:.7;--ins-corner:.75;
+    --old-checker-a:#404040;--old-checker-b:#262626;
+    --st-intake-bg:#2e2b27;--st-intake-fg:#cfcac0;--st-review-bg:#2c1f3b;--st-review-fg:#c9b1ff;--st-approved-bg:#212837;--st-approved-fg:#a9bff5;
+    --st-generating-bg:#1c2d2e;--st-generating-fg:#93d3e0;--st-needs_review-bg:#3a2c18;--st-needs_review-fg:#f2c57c;--st-editing-bg:#1e2f2a;--st-editing-fg:#94d6cc;
+    --st-finishing-bg:#262436;--st-finishing-fg:#b3b3f0;--st-delivered-bg:#212e20;--st-delivered-fg:#9fd6aa;--st-waiting-bg:#3b261a;--st-waiting-fg:#f3ae8c;--st-failed-bg:#391f1d;--st-failed-fg:#f0999d;
+  }
+}
+:root[data-theme="dark"]{
+  --canvas:18 17 16;--surface-1:28 26 23;--surface-2:36 34 32;--surface-3:44 41 37;--surface-inverse:241 239 234;
+  --line:255 255 255;--hair:.08;--strong:.14;
+  --fg-1:241 239 234;--fg-2:163 158 146;--fg-3:143 138 126;--fg-placeholder:111 106 96;--fg-inverse:28 26 23;
+  --brand:125 60 248;--brand-hover:134 70 249;--brand-text:183 153 255;--brand-soft:44 31 59;--ring:152 101 255;
+  --checker-a:35 33 31;--checker-b:26 25 23;--scrim:0 0 0;--scrim-a:.60;
+  --ok-text:159 214 170;--warn-text:242 197 124;--bad-text:240 153 157;--info-text:169 191 245;
+  --shadow-card:none;--shadow-pop:0 0 0 1px rgb(255 255 255/.10),0 8px 24px -8px rgb(0 0 0/.60);--shadow-modal:0 0 0 1px rgb(255 255 255/.10),0 24px 56px -16px rgb(0 0 0/.70);
+  --btn2-bg:var(--surface-2);--btn2-hover:var(--surface-3);--btn2-border:.10;
+  --chip-bg:var(--surface-2);--chip-hover:var(--surface-3);--input-bg:var(--canvas);--seg-on:var(--surface-3);--seg-shadow:none;
+  --ins:255 255 255;--ins-band:.18;--ins-line:.7;--ins-corner:.75;
+  --old-checker-a:#404040;--old-checker-b:#262626;
+  --st-intake-bg:#2e2b27;--st-intake-fg:#cfcac0;--st-review-bg:#2c1f3b;--st-review-fg:#c9b1ff;--st-approved-bg:#212837;--st-approved-fg:#a9bff5;
+  --st-generating-bg:#1c2d2e;--st-generating-fg:#93d3e0;--st-needs_review-bg:#3a2c18;--st-needs_review-fg:#f2c57c;--st-editing-bg:#1e2f2a;--st-editing-fg:#94d6cc;
+  --st-finishing-bg:#262436;--st-finishing-fg:#b3b3f0;--st-delivered-bg:#212e20;--st-delivered-fg:#9fd6aa;--st-waiting-bg:#3b261a;--st-waiting-fg:#f3ae8c;--st-failed-bg:#391f1d;--st-failed-fg:#f0999d;
+}
+:root[data-theme="dark"]{color-scheme:dark}
+:root[data-theme="light"]{color-scheme:light}
+
+/* ================= base ================= */
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}
+body{margin:0;background:rgb(var(--canvas));color:rgb(var(--fg-1));font:400 14px/20px "Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-feature-settings:"kern","liga","calt";font-optical-sizing:auto;overflow-x:hidden}
+h1,h2,h3,h4,p,ul,ol,dl,dd,figure,fieldset{margin:0}ul,ol{padding:0;list-style:none}fieldset{border:0;padding:0}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:default}
+input,select,textarea{font:inherit;color:inherit}a{color:inherit;text-decoration:none}
+::selection{background:#d5c4ff;color:#240a52}::placeholder{color:rgb(var(--fg-placeholder))}
+input[type=checkbox],input[type=radio]{accent-color:rgb(var(--brand));width:16px;height:16px;margin:0}
+[hidden]{display:none!important}
+h1{font-family:"Bricolage Grotesque","Instrument Sans",sans-serif;font-size:24px;line-height:28px;letter-spacing:-.015em;font-weight:600;font-optical-sizing:auto}
+h2{font-family:"Bricolage Grotesque","Instrument Sans",sans-serif;font-size:18px;line-height:24px;letter-spacing:-.01em;font-weight:600;font-optical-sizing:auto}
+h3,h4{font-size:13px;line-height:18px;font-weight:600}
+.display{font-family:"Bricolage Grotesque","Instrument Sans",sans-serif;font-weight:600;font-optical-sizing:auto}
+.t-3xl{font-size:32px;line-height:36px;letter-spacing:-.02em}.t-2xl{font-size:24px;line-height:28px;letter-spacing:-.015em}.t-xl{font-size:18px;line-height:24px;letter-spacing:-.01em}
+.t-lg{font-size:16px;line-height:22px;font-weight:600}.t-base{font-size:14px;line-height:20px;font-weight:400}.t-sm{font-size:13px;line-height:18px;font-weight:500}.t-xs{font-size:12px;line-height:16px}.t-2xs{font-size:11px;line-height:16px;font-weight:500}
+.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+.tnum{font-variant-numeric:tabular-nums}.fg2{color:rgb(var(--fg-2))}.fg3{color:rgb(var(--fg-3))}.w5{font-weight:500}.w6{font-weight:600}
+.cap{display:block;margin-top:6px;font:500 11px/16px "IBM Plex Mono",ui-monospace,monospace;color:rgb(var(--fg-3));font-variant-numeric:tabular-nums;letter-spacing:0}
+.eyebrow{display:block;font-size:11px;line-height:16px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:rgb(var(--fg-3))}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.col{display:flex;flex-direction:column;gap:8px}.gap16{gap:16px}.gap24{gap:24px}.mt8{margin-top:8px}.mt16{margin-top:16px}.mt24{margin-top:24px}.mb8{margin-bottom:8px}.mb16{margin-bottom:16px}
+.grid{display:grid;gap:16px}.g-auto{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}.g-auto-sm{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+.hairline{border-top:1px solid rgb(var(--line)/var(--hair))}
+.ic{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.ic-sm{width:14px;height:14px}.ic-lg{width:20px;height:20px}.ic-hero{width:24px;height:24px;stroke-width:1.5}
+.spin{animation:spin 800ms linear infinite}
+
+/* ================= surfaces ================= */
+.panel{border-radius:16px;border:1px solid rgb(var(--line)/var(--hair));background:rgb(var(--surface-1));box-shadow:var(--shadow-card)}
+.panel-h{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px 20px 8px}
+.panel-t{font-size:13px;line-height:18px;font-weight:600}.panel-s{margin-top:2px;font-size:12px;line-height:16px;color:rgb(var(--fg-3))}
+.panel-b{padding:0 20px 20px}
+.well{border-radius:12px;background:rgb(var(--surface-2));padding:12px}
+details.panel>summary{list-style:none;display:flex;align-items:center;gap:8px;min-height:44px;padding:0 20px;font-size:13px;font-weight:600;cursor:default}
+details.panel>summary::-webkit-details-marker{display:none}
+details.panel>summary .chev{margin-left:auto;color:rgb(var(--fg-3));transition:transform 150ms var(--ease-standard)}
+details.panel[open]>summary .chev{transform:rotate(180deg)}
+details.panel[open]>.panel-b{animation:fade 120ms ease-out both}
+.checker{background-color:rgb(var(--checker-b));background-image:conic-gradient(rgb(var(--checker-a)) 25%,transparent 0 50%,rgb(var(--checker-a)) 0 75%,transparent 0);background-size:16px 16px}
+.checker-sm{background-size:12px 12px}
+.checker-old{background-color:var(--old-checker-b);background-image:conic-gradient(var(--old-checker-a) 25%,transparent 0 50%,var(--old-checker-a) 0 75%,transparent 0);background-size:16px 16px}
+.focus-ring:focus-visible,.btn:focus-visible,.chip:focus-visible,.seg-item:focus-visible,.tile:focus-visible,.strip-tile:focus-visible,.nav a:focus-visible,.icon-btn:focus-visible{outline:none;box-shadow:0 0 0 2px rgb(var(--surface-1)),0 0 0 4px rgb(var(--ring))}
+
+/* ================= buttons ================= */
+.btn{display:inline-flex;flex-shrink:0;user-select:none;align-items:center;justify-content:center;gap:6px;white-space:nowrap;border-radius:8px;font-weight:500;border:1px solid transparent;outline:none;transition:background-color 20ms,color 20ms,border-color 20ms,transform 100ms var(--ease-standard)}
+.btn:active{transform:scale(.98)}
+.btn[disabled],.btn[aria-disabled=true]{opacity:.5;pointer-events:none}
+.btn-sm{height:28px;padding:0 10px;font-size:12px;line-height:16px}.btn-sm .ic{width:14px;height:14px}
+.btn-md{height:32px;padding:0 12px;font-size:13px;line-height:18px}
+.btn-lg{height:40px;padding:0 16px;font-size:14px;line-height:20px;font-weight:600}
+.btn-primary{background:rgb(var(--brand));color:#fff;box-shadow:var(--shadow-key)}.btn-primary:hover{background:rgb(var(--brand-hover))}
+.btn-secondary{background:rgb(var(--btn2-bg));border-color:rgb(var(--line)/var(--btn2-border));color:rgb(var(--fg-1))}.btn-secondary:hover{background:rgb(var(--btn2-hover))}
+.btn-ghost{color:rgb(var(--fg-2))}.btn-ghost:hover{background:rgb(var(--surface-2));color:rgb(var(--fg-1))}
+.btn-danger{border-color:rgb(212 56 63/.4);color:rgb(var(--bad-text))}.btn-danger:hover{background:var(--st-failed-bg)}
+.btn-danger-solid{background:#d4383f;color:#fff;box-shadow:var(--shadow-key)}
+.btn-link{height:auto;padding:0;color:rgb(var(--fg-2));text-decoration:underline;text-decoration-color:rgb(var(--line)/.3);text-underline-offset:4px}.btn-link:hover{color:rgb(var(--fg-1));text-decoration-color:rgb(var(--line)/.6)}
+.icon-btn{width:32px;padding:0}.btn-sm.icon-btn{width:28px}
+.slot{display:inline-grid;place-items:center;width:16px;height:16px;flex:none}.btn-sm .slot{width:14px;height:14px}
+.price{margin-left:4px;border-radius:9999px;background:rgb(255 255 255/.2);padding:0 6px;font-size:11px;line-height:16px;font-weight:500;font-variant-numeric:tabular-nums}
+.btn[aria-busy=true]{pointer-events:none}
+
+/* ================= badges · tags · chips · dots ================= */
+.badge{display:inline-flex;height:20px;align-items:center;gap:4px;white-space:nowrap;border-radius:9999px;padding:0 8px;font-size:11px;line-height:16px;font-weight:500;background:rgb(var(--surface-2));color:rgb(var(--fg-2))}
+.badge[data-tone=intake]{background:var(--st-intake-bg);color:var(--st-intake-fg)}.badge[data-tone=review]{background:var(--st-review-bg);color:var(--st-review-fg)}
+.badge[data-tone=approved],.badge[data-tone=info]{background:var(--st-approved-bg);color:var(--st-approved-fg)}.badge[data-tone=generating]{background:var(--st-generating-bg);color:var(--st-generating-fg)}
+.badge[data-tone=needs_review],.badge[data-tone=warn]{background:var(--st-needs_review-bg);color:var(--st-needs_review-fg)}.badge[data-tone=editing]{background:var(--st-editing-bg);color:var(--st-editing-fg)}
+.badge[data-tone=finishing]{background:var(--st-finishing-bg);color:var(--st-finishing-fg)}.badge[data-tone=delivered],.badge[data-tone=ok]{background:var(--st-delivered-bg);color:var(--st-delivered-fg)}
+.badge[data-tone=waiting]{background:var(--st-waiting-bg);color:var(--st-waiting-fg)}.badge[data-tone=failed],.badge[data-tone=bad]{background:var(--st-failed-bg);color:var(--st-failed-fg)}
+.badge .dot{background:currentColor}
+.tag{display:inline-flex;height:20px;align-items:center;gap:4px;white-space:nowrap;border-radius:6px;background:rgb(var(--surface-2));padding:0 6px;font-size:11px;line-height:16px;font-weight:500;color:rgb(var(--fg-2))}
+.chip{display:inline-flex;height:28px;align-items:center;gap:6px;white-space:nowrap;border-radius:9999px;border:1px solid rgb(var(--line)/var(--hair));background:rgb(var(--chip-bg));padding:0 10px;font-size:12px;line-height:16px;font-weight:500;color:rgb(var(--fg-2));transition:background-color 150ms,color 150ms}
+.chip:hover{background:rgb(var(--chip-hover));color:rgb(var(--fg-1))}
+.chip[aria-pressed=true]{border-color:rgb(var(--line)/var(--strong));background:rgb(var(--surface-3));color:rgb(var(--fg-1))}
+.chip .mono{color:rgb(var(--fg-3));font-size:11px}.chip[aria-pressed=true] .mono{color:rgb(var(--fg-2))}
+.image-chip{display:inline-flex;height:24px;align-items:center;gap:4px;border-radius:9999px;background:rgb(18 17 16/.7);padding:0 8px;font-size:11px;line-height:16px;font-weight:500;color:#fff;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);white-space:nowrap}
+.image-chip .ic{width:12px;height:12px}
+.image-chip[data-tone=warn]{color:#f2c57c}.image-chip[data-tone=bad]{color:#f0999d}
+.dot{display:inline-block;width:6px;height:6px;border-radius:9999px;flex:none;background:rgb(var(--fg-3))}
+.dot.hollow{background:transparent;border:1px solid rgb(var(--fg-3))}
+.dot[data-tone=intake]{background:var(--st-intake)}.dot[data-tone=review]{background:var(--st-review)}.dot[data-tone=approved],.dot[data-tone=info]{background:var(--st-approved)}.dot[data-tone=generating]{background:var(--st-generating)}
+.dot[data-tone=needs_review],.dot[data-tone=warn]{background:var(--st-needs_review)}.dot[data-tone=editing]{background:var(--st-editing)}.dot[data-tone=finishing]{background:var(--st-finishing)}
+.dot[data-tone=delivered],.dot[data-tone=ok]{background:var(--st-delivered)}.dot[data-tone=waiting]{background:var(--st-waiting)}.dot[data-tone=failed],.dot[data-tone=bad]{background:var(--st-failed)}.dot[data-tone=white]{background:#fff}
+.dot-live{animation:breathe 1600ms ease-in-out infinite}
+.kbd{display:inline-flex;height:20px;min-width:20px;align-items:center;justify-content:center;border-radius:6px;border:1px solid rgb(var(--line)/.12);background:rgb(var(--surface-2));padding:0 6px;font:500 11px/16px "IBM Plex Mono",ui-monospace,monospace;color:rgb(var(--fg-2))}
+
+/* ================= inputs · segment · switch ================= */
+.input{display:block;height:32px;width:100%;border-radius:8px;border:1px solid rgb(var(--line)/var(--strong));background:rgb(var(--input-bg));padding:0 10px;font-size:13px;line-height:18px;color:rgb(var(--fg-1));outline:none;transition:border-color 150ms,box-shadow 150ms}
+.input:focus,.input.is-focus{border-color:rgb(var(--ring));box-shadow:0 0 0 3px rgb(125 60 248/.25)}
+.input[aria-invalid=true]{border-color:#d4383f}.input[aria-invalid=true]:focus,.input[aria-invalid=true].is-focus{box-shadow:0 0 0 3px rgb(212 56 63/.2)}
+.input:disabled{background:rgb(var(--surface-2));color:rgb(var(--fg-3))}
+.input.lg{height:40px;font-size:14px;padding:0 12px}
+textarea.input{height:auto;min-height:80px;padding:8px 10px;resize:vertical;line-height:1.5}
+.select-native{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238f8a7e' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");background-repeat:no-repeat;background-position:right 8px center;padding-right:32px}
+@media (max-width:640px){.input{font-size:16px}}
+.label{display:block;margin-bottom:4px;font-size:12px;line-height:16px;font-weight:500;color:rgb(var(--fg-2))}
+.hint{margin-top:4px;font-size:12px;line-height:16px;color:rgb(var(--fg-3))}.err{margin-top:4px;font-size:12px;line-height:16px;color:rgb(var(--bad-text))}
+.segment{display:flex;height:32px;border-radius:8px;background:rgb(var(--surface-2));padding:2px}
+.seg-item{flex:1;min-width:0;border-radius:6px;padding:0 12px;font-size:12px;line-height:16px;font-weight:500;color:rgb(var(--fg-2));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color 150ms}
+.seg-item:hover{color:rgb(var(--fg-1))}.seg-item[aria-checked=true]{background:rgb(var(--seg-on));color:rgb(var(--fg-1));box-shadow:var(--seg-shadow)}
+.segment.fit{display:inline-flex;width:auto}.segment.fit .seg-item{flex:none}
+.switch{position:relative;width:36px;height:20px;border-radius:9999px;background:rgb(var(--surface-3));transition:background-color 160ms;flex:none}
+.switch[aria-checked=true]{background:rgb(var(--brand))}.switch.pipeline[aria-checked=false]{background:#d98a1f}
+.switch i{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:9999px;background:#fff;display:grid;place-items:center;color:rgb(var(--brand));transition:transform 160ms var(--ease-out-strong)}
+.switch[aria-checked=true] i{transform:translateX(16px)}.switch .ic{width:12px;height:12px;stroke-width:2}
+
+/* ================= misc components ================= */
+.empty{margin:0 auto;display:flex;max-width:384px;flex-direction:column;align-items:center;gap:8px;padding:64px 16px;text-align:center}
+.empty .ico{margin-bottom:4px;display:grid;place-items:center;width:40px;height:40px;border-radius:9999px;background:rgb(var(--surface-2));color:rgb(var(--fg-3))}
+.drop{border-radius:16px;border:2px dashed rgb(var(--line)/var(--strong));background:rgb(var(--surface-2)/.6);padding:24px;text-align:center;transition:border-color 150ms,background-color 150ms;display:flex;flex-direction:column;align-items:center;gap:6px}
+.drop[data-dragging=true]{border-color:rgb(var(--ring));background:rgb(var(--brand-soft))}
+.skeleton{border-radius:8px;background-color:rgb(var(--surface-2));background-image:linear-gradient(90deg,transparent 0%,rgb(var(--surface-3)) 50%,transparent 100%);background-size:200% 100%;animation:shimmer 1600ms linear infinite;animation-delay:calc(var(--i,0) * 60ms)}
+.toasts{position:fixed;right:16px;bottom:16px;z-index:60;display:flex;flex-direction:column;gap:8px;max-width:calc(100vw - 32px)}
+.toast{display:flex;align-items:flex-start;gap:12px;max-width:384px;border-radius:12px;background:rgb(var(--surface-1));padding:12px 16px;font-size:13px;line-height:18px;color:rgb(var(--fg-1));box-shadow:var(--shadow-modal);animation:fade-up 200ms var(--ease-out-strong) both}
+.toast .dot{margin-top:6px}.toast.out{animation:fade-out 150ms ease-out both}
+.bar{position:relative;height:3px;border-radius:9999px;background:rgb(var(--surface-3));overflow:hidden}
+.bar>i{position:absolute;top:0;bottom:0;left:0;border-radius:inherit;background:rgb(var(--brand))}
+.bar[data-mode=indeterminate]>i{width:33%;animation:slide 1400ms var(--ease-sweep) infinite}
+.bar[data-mode=gauge]>i{width:calc(var(--p,0) * 100%);transition:width var(--tick) linear}
+.bar[data-mode=determinate]>i{width:calc(var(--p,0) * 100%);transition:width 400ms var(--ease-out-strong)}
+.bar[data-mode=done]>i{width:100%;transition:width 300ms var(--ease-out-strong)}
+.bar[data-mode=failed]>i{background:var(--st-failed)}
+.counter{display:inline-flex;height:20px;align-items:center;border-radius:9999px;background:rgb(var(--surface-2));padding:0 8px;font:500 11px/16px "IBM Plex Mono",ui-monospace,monospace;color:rgb(var(--fg-2));font-variant-numeric:tabular-nums;white-space:nowrap}
+.counter[data-tone=warn]{color:rgb(var(--warn-text))}.counter[data-tone=bad]{color:rgb(var(--bad-text))}
+.art{display:block;width:100%;height:100%}
+.thumb{position:relative;overflow:hidden;border-radius:8px;flex:none}
+.img-in{opacity:0;filter:blur(8px);transform:scale(1.02);transition:opacity 400ms var(--ease-out-strong),filter 400ms var(--ease-out-strong),transform 400ms var(--ease-out-strong)}
+.img-in[data-loaded=true]{opacity:1;filter:none;transform:none}
+
+/* ================= app chrome: header · board ================= */
+.appbar{display:flex;align-items:center;gap:16px;height:56px;padding:0 16px;border-bottom:1px solid rgb(var(--line)/var(--hair));background:rgb(var(--canvas)/.85);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:16px 16px 0 0;overflow-x:auto}
+.mark{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:6px;background:rgb(var(--brand));color:#fff;font:700 13px/1 "Bricolage Grotesque",sans-serif;position:relative;flex:none}
+.mark i{position:absolute;right:3px;bottom:3px;width:4px;height:4px;border-radius:9999px;background:#f2c57c}
+.mark.lg{width:40px;height:40px;border-radius:8px;font-size:22px;background:linear-gradient(135deg,#7d3cf8,#5a1bc2)}.mark.lg i{width:6px;height:6px;right:5px;bottom:5px}
+.wordmark{font:600 15px/20px "Bricolage Grotesque",sans-serif;letter-spacing:-.01em;margin-left:-8px;white-space:nowrap}
+.client-pill{display:inline-flex;height:28px;align-items:center;gap:6px;border-radius:9999px;border:1px solid rgb(var(--line)/var(--hair));background:rgb(var(--chip-bg));padding:0 6px 0 10px;font-size:12px;font-weight:500;white-space:nowrap}
+.client-pill .ic{width:14px;height:14px;color:rgb(var(--fg-3))}
+.nav{display:flex;align-self:stretch;gap:4px;margin-left:8px}
+.nav a{position:relative;display:inline-flex;align-items:center;padding:0 10px;font-size:13px;font-weight:500;color:rgb(var(--fg-2));transition:color 150ms;white-space:nowrap}
+.nav a:hover{color:rgb(var(--fg-1))}.nav a[aria-current=page]{color:rgb(var(--fg-1))}
+.nav a[aria-current=page]::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;background:rgb(var(--brand))}
+.queue{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:500;color:rgb(var(--fg-2));white-space:nowrap}
+.avatar{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:9999px;background:rgb(var(--surface-3));font-size:11px;font-weight:600;color:rgb(var(--fg-1));flex:none}
+.paused-strip{display:flex;align-items:center;gap:8px;height:32px;padding:0 16px;background:var(--st-needs_review-bg);color:var(--st-needs_review-fg);font-size:12px;font-weight:500;animation:fade-up 200ms var(--ease-out-strong) both}
+.lanes{display:flex;gap:16px;overflow-x:auto;padding:4px 0 12px}
+.lane{display:flex;width:288px;flex:none;flex-direction:column;gap:8px}.lane-empty{width:176px}
+.lane-h{display:flex;height:32px;align-items:center;gap:8px;padding:0 4px;font-size:13px;font-weight:600}
+.lane-h .count{margin-left:auto;font-size:11px;color:rgb(var(--fg-3))}
+.tile{display:flex;gap:12px;border-radius:12px;border:1px solid rgb(var(--line)/var(--hair));background:rgb(var(--surface-1));padding:12px;transition:border-color 20ms;animation:fade-up 200ms var(--ease-out-strong) both}
+.tile:hover{border-color:rgb(var(--line)/var(--strong))}
+.tile .thumb{width:56px;height:56px}
+.tile-body{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px}
+.tile-body .t-sm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile-meta{display:flex;align-items:center;gap:6px;margin-top:4px;font-size:11px;color:rgb(var(--fg-3))}
+.tile-sk{display:flex;gap:12px;border-radius:12px;border:1px solid rgb(var(--line)/var(--hair));background:rgb(var(--surface-1));padding:12px}
+
+/* ================= card page hero ================= */
+.hero-grid{display:grid;gap:24px;padding:20px}
+@media (min-width:960px){.hero-grid{grid-template-columns:minmax(0,1fr) 352px}}
+.frame{position:relative;overflow:hidden;border-radius:16px;aspect-ratio:1;width:min(100%,72vh);margin:0 auto;transition:opacity 200ms}
+.frame>.frame-layer{position:absolute;inset:0;pointer-events:none}
+.frame.waiting{opacity:.7}.frame.editing-ring{box-shadow:0 0 0 2px rgb(var(--ring))}
+.frame .art{position:absolute;inset:0}
+.pos-tl{position:absolute;left:8px;top:8px;z-index:3}.pos-tr{position:absolute;right:8px;top:8px;z-index:3}.pos-bl{position:absolute;left:8px;bottom:8px;z-index:3}.pos-bc{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);z-index:3}
+.frame[data-kind=finish] .pos-bl{bottom:20px}
+.refs{display:flex;align-items:center;justify-content:center;gap:12px}
+.ref{width:64px;height:64px;border-radius:8px;overflow:hidden;opacity:.4;transition:opacity 300ms,box-shadow 300ms;background:rgb(var(--surface-1));display:grid;place-items:center;color:rgb(var(--fg-2))}
+.ref[data-on=true]{opacity:1;box-shadow:0 0 0 2px var(--st-intake)}
+.ref svg{width:100%;height:100%}
+.rail{display:flex;flex-direction:column;gap:12px;min-width:0}
+.status{font-size:14px;line-height:20px;color:rgb(var(--fg-2))}
+.rail-actions{display:flex;flex-direction:column;gap:8px;transition:opacity 150ms}.rail-actions.fading{opacity:0}
+.rail-actions .row{gap:8px}
+.steplog{display:flex;flex-direction:column;gap:2px;font-size:12px;line-height:16px;color:rgb(var(--fg-3))}
+.steplog li{display:flex;align-items:center;gap:8px;min-height:24px}
+.steplog li[data-state=active]{color:rgb(var(--fg-1));font-weight:500}.steplog li[data-state=done]{color:rgb(var(--fg-2))}
+.steplog .mono{margin-left:auto;font-size:11px}
+.steplog .glyph{display:inline-grid;place-items:center;width:12px;height:12px;border-radius:9999px;background:var(--st-delivered);color:#fff;flex:none}.steplog .glyph .ic{width:8px;height:8px;stroke-width:3}
+.facts{font:400 11px/16px "IBM Plex Mono",ui-monospace,monospace;color:rgb(var(--fg-3));font-variant-numeric:tabular-nums}
+.banner{animation:fade-up 200ms var(--ease-out-strong) both}
+.banner .mono{font-size:12px;line-height:16px;word-break:break-all}
+.strip{display:flex;gap:12px;overflow-x:auto;padding:4px 2px 2px}
+.strip-tile{position:relative;width:96px;height:96px;flex:none;overflow:hidden;border-radius:12px;opacity:.7;transition:opacity 150ms}
+.strip-tile:hover,.strip-tile:focus-within,.strip-tile[data-current=true]{opacity:1}
+.strip-tile[data-current=true]{box-shadow:0 0 0 2px rgb(var(--surface-1)),0 0 0 4px rgb(var(--ring))}
+.strip-line{position:absolute;left:0;right:0;top:0;height:20%;pointer-events:none;animation:scan 2400ms linear infinite}
+.strip-line::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:#4ca5b9;box-shadow:0 0 8px 1px rgb(31 143 168/.6)}
+.strip-cap{margin-top:4px;font:500 11px/16px "IBM Plex Mono",ui-monospace,monospace;color:rgb(var(--fg-3));font-variant-numeric:tabular-nums;white-space:nowrap}
+.qc-rows{display:flex;flex-direction:column}
+.qc-row{display:flex;align-items:center;gap:10px;min-height:32px;font-size:13px;border-top:1px solid rgb(var(--line)/var(--hair))}.qc-row:first-child{border-top:0}
+.qc-row .note{margin-left:auto;font-size:11px;color:rgb(var(--fg-3))}
+.qc-glyph{display:inline-grid;place-items:center;width:14px;height:14px;border-radius:9999px;color:#fff;flex:none}.qc-glyph .ic{width:9px;height:9px;stroke-width:3}
+.qc-glyph.ok{background:var(--st-delivered)}.qc-glyph.bad{background:var(--st-failed)}.qc-glyph.warn{background:var(--st-needs_review)}
+.qc-rows[data-dim=true] .qc-row{opacity:.6}
+.sk-line{height:10px;border-radius:4px;flex:1;max-width:220px}
+.wiz{display:flex;gap:4px;border-radius:8px;background:rgb(var(--surface-2));padding:4px;overflow-x:auto}
+.wiz-step{display:flex;align-items:center;gap:8px;height:40px;flex:1;min-width:160px;border-radius:6px;padding:0 10px;transition:background-color 150ms}
+.wiz-step[data-state=active]{background:rgb(var(--seg-on));box-shadow:var(--seg-shadow)}
+.wiz-mark{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:9999px;font:500 11px/1 "IBM Plex Mono",monospace;flex:none;background:rgb(var(--surface-3));color:rgb(var(--fg-2))}
+.wiz-step[data-state=done] .wiz-mark{background:var(--st-delivered-bg);color:var(--st-delivered-fg)}
+.wiz-step[data-state=active] .wiz-mark{background:rgb(var(--brand));color:#fff}
+.wiz-step[data-state=attention] .wiz-mark{background:var(--st-needs_review-bg);color:var(--st-needs_review-fg)}
+.wiz-step .t-sm{white-space:nowrap}.wiz-step .t-xs{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.evidence{display:flex;gap:8px;flex-wrap:wrap}
+.evidence .ev{width:80px;height:80px;border-radius:12px;overflow:hidden;position:relative;transition:box-shadow 300ms}
+.evidence .ev[data-on=true]{box-shadow:0 0 0 2px rgb(var(--ring))}
+.xfade{position:relative;display:inline-grid}.xfade>*{grid-area:1/1;transition:opacity 200ms}.xfade>[data-off=true]{opacity:0}
+.pulse-once{animation:ring-pulse 600ms ease-out 1}
+.checkmark{display:inline-grid;place-items:center;width:40px;height:40px;border-radius:9999px;background:var(--st-delivered-bg);color:var(--st-delivered-fg)}
+.draw path{stroke-dasharray:48;stroke-dashoffset:48}.draw.go path{animation:draw 400ms var(--ease-out-strong) both}
+.rail-lg{position:relative;height:6px;display:grid;grid-template-columns:55fr 40fr 25fr;gap:6px}
+.rail-lg .finish-seg{height:6px;background:rgb(var(--surface-3))}
+.rail-lg .lbl{position:absolute;top:12px;font:500 11px/16px "IBM Plex Mono",monospace;color:rgb(var(--fg-3))}
+
+/* ================= dialog ================= */
+.scrim{position:fixed;inset:0;background:rgb(var(--scrim)/var(--scrim-a));backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);animation:fade 200ms ease-out both}
+.scrim.out{animation:fade-out 150ms ease-out both}
+.dlg-wrap{position:fixed;inset:0;z-index:50;display:flex;align-items:flex-end;justify-content:center}
+@media (min-width:640px){.dlg-wrap{align-items:center;padding:16px}}
+.dialog{position:relative;display:flex;max-height:95vh;width:100%;max-width:480px;flex-direction:column;border-radius:16px 16px 0 0;background:rgb(var(--surface-1));box-shadow:var(--shadow-modal);outline:none;animation:enter-sheet 240ms var(--ease-sheet) both}
+@media (min-width:640px){.dialog{border-radius:16px;animation:enter-dialog 200ms var(--ease-out-strong) both}}
+.dialog.out{animation:leave 150ms ease-out both}
+.dlg-h{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:20px 24px 0}
+.dlg-h h3{font-size:16px;line-height:22px;font-weight:600}.dlg-h p{margin-top:2px;font-size:14px;line-height:20px;color:rgb(var(--fg-2))}
+.dlg-b{min-height:0;flex:1;overflow-y:auto;padding:16px 24px;font-size:14px;line-height:20px;color:rgb(var(--fg-2))}
+.dlg-f{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px;border-top:1px solid rgb(var(--line)/var(--hair));padding:16px 24px}
+.facts-dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13px;line-height:18px}
+.facts-dl dt{color:rgb(var(--fg-3));font-size:12px}.facts-dl dd{color:rgb(var(--fg-1))}
+.phone{width:390px;max-width:100%;height:560px;border:1px solid rgb(var(--line)/var(--strong));border-radius:16px;overflow:hidden;background:rgb(var(--canvas))}
+.phone iframe{width:100%;height:100%;border:0;display:block}
+html[data-embed=sheet] body>*:not(#dlg-root):not(#sheet-stage):not(#icons){display:none}
+#sheet-stage{display:none}html[data-embed=sheet] #sheet-stage{display:block;padding:16px}
+
+/* ================= page layout ================= */
+.toolbar{position:sticky;top:0;z-index:40;display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-height:48px;padding:6px 16px;border-bottom:1px solid rgb(var(--line)/var(--hair));background:rgb(var(--canvas)/.85);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+.toolbar .title{display:inline-flex;align-items:center;gap:8px;margin-right:8px;font:600 13px/18px "Instrument Sans",sans-serif;white-space:nowrap}
+.toolbar .sp{flex:1}
+html[data-embed] .toolbar{display:none}
+#split{position:fixed;inset:48px 0 0;z-index:30;display:grid;grid-template-columns:1fr 1fr;background:rgb(var(--canvas))}
+#split iframe{width:100%;height:100%;border:0;border-right:1px solid rgb(var(--line)/var(--hair))}
+.sec{max-width:1200px;margin:0 auto;padding:40px 16px}@media (min-width:640px){.sec{padding:48px 24px}}
+.sec>header{margin-bottom:20px;max-width:720px}.sec>header p{margin-top:6px;font-size:13px;line-height:18px;color:rgb(var(--fg-3))}
+.sec+.sec{border-top:1px solid rgb(var(--line)/var(--hair))}
+.spec{display:flex;flex-direction:column;gap:4px;padding:16px;border-radius:12px;border:1px solid rgb(var(--line)/var(--hair));background:rgb(var(--surface-1))}
+.sw{border-radius:12px;padding:12px;min-height:96px;display:flex;flex-direction:column;gap:2px;font-size:13px;border:1px solid rgb(var(--line)/var(--hair))}
+.sw .r{display:flex;justify-content:space-between;gap:8px;align-items:baseline}.sw .r .mono{font-size:11px;opacity:.85}
+.sw .no{text-decoration:line-through;opacity:.7}
+.demo-btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.radii{display:flex;align-items:center;justify-content:center;padding:16px;border-radius:16px;background:rgb(var(--surface-1));border:1px solid rgb(var(--line)/var(--hair))}
+.radii .b{display:grid;place-items:center;border:1px solid rgb(var(--line)/var(--strong));font:500 11px "IBM Plex Mono",monospace;color:rgb(var(--fg-2));padding:14px}
+.principles{counter-reset:p}.principles li{display:grid;grid-template-columns:28px 1fr;gap:12px;padding:12px 0;border-top:1px solid rgb(var(--line)/var(--hair));font-size:13px;line-height:18px;color:rgb(var(--fg-2))}
+.principles li:first-child{border-top:0}.principles li::before{counter-increment:p;content:counter(p,decimal-leading-zero);font:500 11px/18px "IBM Plex Mono",monospace;color:rgb(var(--fg-3))}
+.principles b{display:block;color:rgb(var(--fg-1));font-weight:600}
+.two{display:grid;gap:16px}@media (min-width:768px){.two{grid-template-columns:1fr 1fr}}
+.clock{font-variant-numeric:tabular-nums}
+table.tbl{width:100%;border-collapse:collapse;font-size:13px}.tbl th{text-align:left;font-size:12px;font-weight:500;color:rgb(var(--fg-3));height:36px;border-bottom:1px solid rgb(var(--line)/var(--hair))}.tbl td{height:44px;border-bottom:1px solid rgb(var(--line)/var(--hair))}.tbl tr:hover td{background:rgb(var(--surface-2))}
+
+/* ================= keyframes (18, final names — hand-copied from merged/tailwind.config.merged.js) ================= */
+@keyframes breathe{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes glow{0%,100%{opacity:1}50%{opacity:.55}}
+@keyframes inspect{from{transform:translateY(-100%)}to{transform:translateY(400%)}}
+@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(300%)}}
+@keyframes shimmer{from{background-position:-200% 0}to{background-position:200% 0}}
+@keyframes scan{from{transform:translateY(-100%)}to{transform:translateY(500%)}}
+@keyframes fade-up{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes enter-dialog{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+@keyframes enter-sheet{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+@keyframes leave{to{opacity:0;transform:scale(.98)}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes fade-out{to{opacity:0}}
+@keyframes settle{from{opacity:0;filter:blur(12px);transform:scale(1.02)}60%{filter:blur(0)}to{opacity:1;filter:none;transform:none}}
+@keyframes ring-pulse{from{box-shadow:0 0 0 0 rgb(125 60 248/.55)}to{box-shadow:0 0 0 10px rgb(125 60 248/0)}}
+@keyframes resolve-row{from{opacity:.35;transform:translateY(4px)}to{opacity:1;transform:none}}
+@keyframes pop-in{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:none}}
+@keyframes draw{from{stroke-dashoffset:48}to{stroke-dashoffset:0}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.animate-fade-up{animation:fade-up 200ms var(--ease-out-strong) both}
+.animate-pop-in{animation:pop-in 200ms var(--ease-out-strong) both}
+.animate-pop-in-slow{animation:pop-in 240ms var(--ease-out-strong) both}
+.animate-fade{animation:fade 150ms ease-out both}
+.animate-scan{animation:scan 1s var(--ease-sweep) 1 both}
+
+/* ================= merged/animations.css (copied; two edits for the preview: `--line` inside .develop renamed
+   `--dev-line` so it cannot shadow the hairline token, and the inspect colours read theme tokens instead of
+   being written twice) ================= */
+.frame>.frame-layer{position:absolute;inset:0;pointer-events:none}
+.develop{--p:0;--tone:31 143 168;--dev-line:#4ca5b9}
+.develop[data-tone=editing]{--tone:42 157 143;--dev-line:#55b1a5}
+.develop[data-tone=frozen]{--tone:122 117 106;--dev-line:#cfcbc0}
+.develop-wash{position:absolute;inset:0;background:linear-gradient(to bottom,rgb(var(--tone)/.14),rgb(var(--tone)/.08));clip-path:inset(0 0 calc((1 - var(--p)) * 100%) 0);transition:clip-path var(--tick) linear,background 300ms}
+.develop-underlay{position:absolute;inset:0;width:100%;height:100%;filter:blur(18px) saturate(.6);transform:scale(1.06);opacity:.55;clip-path:inset(0 0 calc((1 - var(--p)) * 100%) 0);transition:clip-path var(--tick) linear}
+.develop-line{position:absolute;left:0;right:0;top:0;height:20%;background:linear-gradient(to bottom,transparent,rgb(var(--tone)/.35));transform:translateY(calc(var(--p) * 500% - 100%));transition:transform var(--tick) linear}
+.develop-line::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:var(--dev-line);box-shadow:0 0 12px 2px rgb(var(--tone)/.7);animation:glow 1600ms ease-in-out infinite}
+.develop[data-overdue=true] .develop-line::after{animation-duration:3200ms}
+.develop[data-tone=frozen] .develop-line::after{animation-play-state:paused;box-shadow:none}
+.develop[data-half=true] .develop-wash{background:linear-gradient(to bottom,rgb(var(--tone)/.07),rgb(var(--tone)/.04))}
+.develop-rect{position:absolute;overflow:hidden;outline:1px dashed rgb(183 153 255/.9);border-radius:6px}
+.develop-rect .develop-underlay{transform:none;object-fit:none}
+.inspect-band{position:absolute;left:0;right:0;top:0;height:25%;background:linear-gradient(to bottom,transparent,rgb(var(--ins)/var(--ins-band)),transparent);animation:inspect 1800ms var(--ease-sweep) infinite alternate}
+.inspect-band::after{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:rgb(var(--ins)/var(--ins-line));box-shadow:0 0 10px 1px rgb(var(--ins)/.2)}
+.inspect-corner{position:absolute;width:14px;height:14px;border:1.5px solid rgb(var(--ins)/var(--ins-corner))}
+.inspect-corner.tl{left:10px;top:10px;border-right:0;border-bottom:0}.inspect-corner.tr{right:10px;top:10px;border-left:0;border-bottom:0}
+.inspect-corner.bl{left:10px;bottom:10px;border-right:0;border-top:0}.inspect-corner.br{right:10px;bottom:10px;border-left:0;border-top:0}
+.qc-ring{width:14px;height:14px;border-radius:9999px;border:1.5px solid rgb(163 158 146/.6);flex:none}
+.qc-ring.active{animation:breathe 1600ms ease-in-out infinite}
+.qc-rows[data-resolving=true] .qc-row{animation:resolve-row 220ms var(--ease-out-strong) both;animation-delay:calc(var(--i) * 50ms)}
+.qc-rows[data-resolving=true] .qc-glyph{animation:pop-in 200ms var(--ease-out-strong) both;animation-delay:calc(var(--i) * 50ms)}
+.finish-rail{position:absolute;left:8px;right:8px;bottom:8px;display:grid;grid-template-columns:55fr 40fr 25fr;gap:4px;z-index:2}
+.finish-seg{position:relative;height:3px;border-radius:9999px;background:rgb(28 26 23/.35);overflow:hidden}
+.finish-seg>i{position:absolute;left:0;top:0;bottom:0;width:calc(var(--p,0) * 100%);background:#5b5bd6;border-radius:inherit;transition:width var(--tick) linear}
+.finish-seg[data-done=true]>i{width:100%}
+.landed{animation:settle 400ms var(--ease-out-strong) both}
+.frame-pulse{animation:ring-pulse 600ms ease-out 1}
+.leaving{animation:fade-out 300ms ease-out both}
+
+/* ================= reduced motion — same rules under the OS query and under the preview's data-motion toggle ================= */
+@media (prefers-reduced-motion: reduce){
+  .dot-live,.qc-ring.active,.develop-line::after,.skeleton,.bar[data-mode=indeterminate]>i,.strip-line,.frame-pulse,.pulse-once,.draw.go path,.animate-scan,.evidence .ev,.spin{animation:none!important}
+  .inspect-band,.develop-line{display:none}
+  .develop-wash,.develop-underlay,.finish-seg>i,.bar>i,.ref,.evidence .ev,.switch i{transition:none!important}
+  .bar[data-mode=indeterminate]>i{width:33%}
+  .landed,.qc-rows[data-resolving=true] .qc-row,.qc-rows[data-resolving=true] .qc-glyph,.animate-fade-up,.animate-pop-in,.animate-pop-in-slow,.tile,.toast,.banner,.paused-strip,.dialog,.scrim{animation:fade 150ms ease-out both!important;animation-delay:0ms!important}
+  .img-in{transition:opacity 200ms ease-out!important;filter:none;transform:none}
+  .leaving,.toast.out,.dialog.out,.scrim.out{animation:fade-out 150ms ease-out both!important}
+  .draw path{stroke-dashoffset:0}
+}
+:root[data-motion=reduce] .dot-live,:root[data-motion=reduce] .qc-ring.active,:root[data-motion=reduce] .develop-line::after,:root[data-motion=reduce] .skeleton,:root[data-motion=reduce] .bar[data-mode=indeterminate]>i,:root[data-motion=reduce] .strip-line,:root[data-motion=reduce] .frame-pulse,:root[data-motion=reduce] .pulse-once,:root[data-motion=reduce] .draw.go path,:root[data-motion=reduce] .animate-scan,:root[data-motion=reduce] .evidence .ev,:root[data-motion=reduce] .spin{animation:none!important}
+:root[data-motion=reduce] .inspect-band,:root[data-motion=reduce] .develop-line{display:none}
+:root[data-motion=reduce] .develop-wash,:root[data-motion=reduce] .develop-underlay,:root[data-motion=reduce] .finish-seg>i,:root[data-motion=reduce] .bar>i,:root[data-motion=reduce] .ref,:root[data-motion=reduce] .evidence .ev,:root[data-motion=reduce] .switch i{transition:none!important}
+:root[data-motion=reduce] .bar[data-mode=indeterminate]>i{width:33%}
+:root[data-motion=reduce] .landed,:root[data-motion=reduce] .qc-rows[data-resolving=true] .qc-row,:root[data-motion=reduce] .qc-rows[data-resolving=true] .qc-glyph,:root[data-motion=reduce] .animate-fade-up,:root[data-motion=reduce] .animate-pop-in,:root[data-motion=reduce] .animate-pop-in-slow,:root[data-motion=reduce] .tile,:root[data-motion=reduce] .toast,:root[data-motion=reduce] .banner,:root[data-motion=reduce] .paused-strip,:root[data-motion=reduce] .dialog,:root[data-motion=reduce] .scrim{animation:fade 150ms ease-out both!important;animation-delay:0ms!important}
+:root[data-motion=reduce] .img-in{transition:opacity 200ms ease-out!important;filter:none;transform:none}
+:root[data-motion=reduce] .leaving,:root[data-motion=reduce] .toast.out,:root[data-motion=reduce] .dialog.out,:root[data-motion=reduce] .scrim.out{animation:fade-out 150ms ease-out both!important}
+:root[data-motion=reduce] .draw path{stroke-dashoffset:0}
+</style>
+</head>
+<body>
+<svg id="icons" width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+  <symbol id="i-image-plus" viewBox="0 0 24 24"><path d="M16 5h6"/><path d="M19 2v6"/><path d="M21 11.5V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7.5"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/><circle cx="9" cy="9" r="2"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></symbol>
+  <symbol id="i-crop" viewBox="0 0 24 24"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+  <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+  <symbol id="i-loader" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-scan" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/><path d="m16 16-1.9-1.9"/></symbol>
+  <symbol id="i-flask" viewBox="0 0 24 24"><path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2"/><path d="M6.453 15h11.094"/><path d="M8.5 2h7"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+  <symbol id="i-pen" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/></symbol>
+  <symbol id="i-type" viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+  <symbol id="i-columns" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/></symbol>
+  <symbol id="i-shirt" viewBox="0 0 100 100"><path d="M20 24 34 12l8 6q8 6 16 0l8-6 14 12-8 12-8-4v56H36V34l-8 4z"/></symbol>
+  <!-- sample artwork: drawn in SVG so the preview loads no image files -->
+  <symbol id="art" viewBox="0 0 400 400">
+    <clipPath id="art-clip"><circle cx="200" cy="200" r="138"/></clipPath>
+    <circle cx="200" cy="200" r="186" fill="#f3ecd9"/>
+    <circle cx="200" cy="200" r="186" fill="none" stroke="#1c1a17" stroke-width="10"/>
+    <circle cx="200" cy="200" r="140" fill="none" stroke="#1c1a17" stroke-width="4"/>
+    <g clip-path="url(#art-clip)">
+      <rect x="60" y="60" width="280" height="280" fill="#e9dcc0"/>
+      <circle cx="200" cy="190" r="72" fill="#d4553a"/>
+      <polygon points="62,300 150,150 200,240 240,175 338,300" fill="#2c2925"/>
+      <polygon points="150,150 134,178 166,178" fill="#f8f7f4"/><polygon points="240,175 226,199 254,199" fill="#f8f7f4"/>
+      <polygon points="92,300 108,246 124,300" fill="#2f5a3e"/><polygon points="112,300 130,236 148,300" fill="#3b6b4a"/><polygon points="134,300 150,252 166,300" fill="#2f5a3e"/>
+      <ellipse cx="262" cy="278" rx="36" ry="16" fill="#1c1a17"/><circle cx="294" cy="266" r="11" fill="#1c1a17"/><rect x="236" y="284" width="8" height="16" fill="#1c1a17"/><rect x="278" y="284" width="8" height="16" fill="#1c1a17"/>
+      <rect x="60" y="300" width="280" height="40" fill="#1c1a17"/>
+    </g>
+    <path id="art-arc" d="M42 200A158 158 0 0 1 358 200" fill="none"/>
+    <text font-family="Bricolage Grotesque, Instrument Sans, sans-serif" font-weight="700" font-size="40" letter-spacing="7" fill="#1c1a17"><textPath href="#art-arc" startOffset="50%" text-anchor="middle">WILD &amp; FREE</textPath></text>
+    <rect x="50" y="296" width="300" height="52" rx="6" fill="#f8f7f4" stroke="#1c1a17" stroke-width="4"/>
+    <text x="200" y="333" text-anchor="middle" font-family="Bricolage Grotesque, Instrument Sans, sans-serif" font-weight="700" font-size="32" letter-spacing="2" fill="#1c1a17">MOUNTAIN BEARS</text>
+  </symbol>
+</svg>
+
+<div class="toolbar" role="toolbar" aria-label="Preview controls">
+  <span class="title"><span class="mark" aria-hidden="true">M<i></i></span>DM Studio · design preview</span>
+  <div class="segment fit" role="radiogroup" aria-label="Theme" id="theme-seg">
+    <button class="seg-item" role="radio" aria-checked="true" data-theme="">System</button>
+    <button class="seg-item" role="radio" aria-checked="false" data-theme="light">Light</button>
+    <button class="seg-item" role="radio" aria-checked="false" data-theme="dark">Dark</button>
+  </div>
+  <button class="chip" id="motion-toggle" aria-pressed="false" title="Maps to the same rules as prefers-reduced-motion"><i class="dot"></i>Reduced motion</button>
+  <div class="segment fit" role="radiogroup" aria-label="Time compression" id="speed-seg">
+    <button class="seg-item mono" role="radio" aria-checked="false" data-speed="1">×1</button>
+    <button class="seg-item mono" role="radio" aria-checked="true" data-speed="5">×5</button>
+  </div>
+  <span class="sp"></span>
+  <button class="btn btn-sm btn-secondary" id="replay-all"><svg class="ic"><use href="#i-rotate"/></svg>Replay all</button>
+  <button class="btn btn-sm btn-secondary" id="split-btn"><svg class="ic"><use href="#i-columns"/></svg>Split light | dark</button>
+</div>
+<div id="split" hidden></div>
+
+<!-- ================= 1 · PRINCIPLES + TOKENS ================= -->
+<section class="sec" id="s1">
+  <header><span class="eyebrow">01 · Principles and tokens</span><h1>Calm chrome, the artwork brings the colour</h1><p>Every swatch below is read live from the CSS variables, so the contrast ratios follow the theme you pick in the toolbar. Captions are token name · light / dark value.</p></header>
+  <div class="two">
+    <ol class="principles panel" style="padding:8px 20px">
+      <li><div><b>Chrome is achromatic; artwork supplies colour</b>Violet only on the stage's one primary, the focus ring, the brand mark and selected states. Stage colour lives in 6 px dots and low-saturation badge pairs, never in column backgrounds or panel borders.</div></li>
+      <li><div><b>Three tiers of surface and text, one token set</b>canvas / surface-1 / 2 / 3 and fg-1 / 2 / 3 as variables for both themes. Hover is one ladder step; depth is a hairline in dark and a level-0 shadow in light.</div></li>
+      <li><div><b>Type is tiered, not big</b>13 px/500 chrome, 14 px body, 11–12 px meta in tabular figures. Bricolage Grotesque only at 18 px and above; weights capped at 600; sentence case everywhere.</div></li>
+      <li><div><b>Motion means work is happening, inside the thing being worked on</b>One signature per long wait (DEVELOP / INSPECT / FINISH), one landing gesture (SETTLE + one ring pulse), 200 ms entrances, 150 ms exits. Reduced motion keeps fades and drops loops.</div></li>
+      <li><div><b>Facts before prose, one obvious next step</b>Price and time on the control before the click, a mono spec row on results, one primary per screen, empty states that are the call to action.</div></li>
+    </ol>
+    <div class="col">
+      <h2>Surface ladder</h2>
+      <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))" id="surfaces"></div>
+      <h2 class="mt16">Brand</h2>
+      <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(120px,1fr))" id="brand-sw"></div>
+    </div>
+  </div>
+
+  <div class="grid g-auto mt24">
+    <div>
+      <h2>Lines</h2>
+      <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:8px">
+        <div style="background:#fff;border-radius:12px;padding:16px;border:1px solid #ededec">
+          <div style="border-top:1px solid rgb(28 26 23/.10)"></div><span class="cap" style="color:#716c61">hairline line/10 → #ededec</span>
+          <div style="border-top:1px solid rgb(28 26 23/.16);margin-top:12px"></div><span class="cap" style="color:#716c61">strong line/[.16] → #dfdfdf</span>
+        </div>
+        <div style="background:#1c1a17;border-radius:12px;padding:16px">
+          <div style="border-top:1px solid rgb(255 255 255/.08)"></div><span class="cap" style="color:#8f8a7e">hairline line/[.08] → #2e2c2a</span>
+          <div style="border-top:1px solid rgb(255 255 255/.14);margin-top:12px"></div><span class="cap" style="color:#8f8a7e">strong line/[.14] → #3c3a37</span>
+        </div>
+      </div>
+      <span class="cap">always 1 px · tone is never a border colour</span>
+    </div>
+    <div>
+      <h2>Elevation</h2>
+      <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:8px">
+        <div style="background:rgb(var(--surface-1));border-radius:12px;padding:12px;box-shadow:var(--shadow-card);border:1px solid rgb(var(--line)/var(--hair))"><span class="t-sm">shadow-card</span><span class="cap">resting panels · dark: hairline only</span></div>
+        <div style="background:rgb(var(--surface-1));border-radius:12px;padding:12px;box-shadow:var(--shadow-pop)"><span class="t-sm">shadow-pop</span><span class="cap">menus · tooltips · hovered gallery tiles</span></div>
+        <div style="background:rgb(var(--surface-1));border-radius:12px;padding:12px;box-shadow:var(--shadow-modal)"><span class="t-sm">shadow-modal</span><span class="cap">dialogs · toasts · floating bar</span></div>
+        <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start"><button class="btn btn-md btn-primary">shadow-key</button><span class="cap">inset highlight on the single primary</span></div>
+      </div>
+      <span class="cap">hover never lifts</span>
+    </div>
+    <div>
+      <h2>Radius</h2>
+      <div class="radii mt8">
+        <div class="b" style="border-radius:16px">16 panel · dialog · frame
+          <div class="b" style="border-radius:12px;margin-top:8px">12 tile · well · toast
+            <div class="b" style="border-radius:8px;margin-top:8px">8 button · input · thumb
+              <div class="b" style="border-radius:6px;margin-top:8px">6 tag · kbd · segment
+                <div class="b" style="border-radius:9999px;margin-top:8px;padding:4px 10px">pill badge · chip · dot</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <span class="cap">nothing inside is rounder than its parent · rounded-3xl banned</span>
+    </div>
+    <div>
+      <h2>Checkerboard</h2>
+      <div class="grid" style="grid-template-columns:1fr 1fr 1fr;margin-top:8px">
+        <div><div class="checker" style="height:80px;border-radius:12px"></div><span class="cap">.checker 16 px<br>#e9e6df/#f8f7f4 → #232120/#1a1917</span></div>
+        <div><div class="checker checker-sm" style="height:80px;border-radius:12px"></div><span class="cap">.checker-sm 12 px<br>thumbs · strip tiles</span></div>
+        <div><div class="checker-old" style="height:80px;border-radius:12px"></div><span class="cap">old cool #e5e5e5 / #404040<br>card/styles.ts:42 · retired</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="mt24">Stage badge pairs</h2>
+  <p class="t-xs fg3 mb8">DEFAULT dot · light soft/ink · dark dim/light (dim = DEFAULT mixed 16 % over #1c1a17). Each pair is forced so both themes show at once; ratio printed is ink-on-soft.</p>
+  <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr))" id="stage-grid"></div>
+  <h2 class="mt24">Feedback aliases</h2>
+  <div class="row mt8" id="feedback-row"></div>
+</section>
+
+<!-- ================= 2 · TYPE ================= -->
+<section class="sec" id="s2">
+  <header><span class="eyebrow">02 · Type</span><h1>Three faces, eight sizes, weights capped at 600</h1><p>Bricolage Grotesque (opsz, wght) for h1/h2/wordmark only · Instrument Sans for everything at 16 px and below · IBM Plex Mono for ids, hex, px/DPI facts, elapsed counters and kbd.</p></header>
+  <div class="two">
+    <div class="spec">
+      <span class="display t-3xl">Onboard E2E Test Client</span><span class="cap">3xl 32/36 · 600 · −0.02em · display · Login and brief-form hero only</span>
+      <span class="display t-2xl mt8">Board</span><span class="cap">2xl 24/28 · 600 · −0.015em · display · every page h1</span>
+      <span class="display t-xl mt8">Analyse</span><span class="cap">xl 18/24 · 600 · −0.01em · display · section h2, wizard step titles</span>
+      <span class="t-lg mt8">Generate the design</span><span class="cap">lg 16/22 · 600 · sans · dialog titles (400 for public brief body)</span>
+      <p class="t-base mt8">Check the picture. Accept it, or click the picture to change its text.</p><span class="cap">base 14/20 · 400 · body, dialog copy, inputs, rail status</span>
+      <div class="row mt8" style="gap:12px"><span class="t-sm">Accept · finish</span><span class="t-sm">Fix an area</span><span class="t-sm">Try again</span><span class="t-sm fg2">Park</span></div><span class="cap">sm 13/18 · 500 · labels, buttons, chips, tile titles, table cells (panel titles 600)</span>
+      <span class="t-xs fg3 mt8">Draw a rectangle and describe what changes inside it.</span><span class="cap">xs 12/16 · 400 · meta, hints, subtitles</span>
+      <div class="row mt8"><span class="badge" data-tone="needs_review"><i class="dot"></i>Needs review</span><span class="tag">form</span><span class="kbd">A</span></div><span class="cap">2xs 11/16 · 500 · badges, tags, kbd, mono facts</span>
+      <span class="mono t-2xs fg3 mt8" style="font-weight:400">1bed5147 · form · received 29 Sep · 3072 × 3072 px · 300 DPI</span><span class="cap">IBM Plex Mono 400 · tabular-nums</span>
+    </div>
+    <div class="spec">
+      <p class="t-base"><span class="w5">Weight 500</span> sits beside <span class="w6">weight 600</span> and 400 body without any 700. Instrument Sans keeps its x-height so 13 px chrome stays readable at 500. <em>Italic 400</em> is available for quoted brief text only.</p>
+      <span class="cap">Instrument Sans 400 · 500 · 600 · 400i</span>
+      <div class="mt16">
+        <span class="label">Live clock, tabular numerals (jitter check)</span>
+        <div class="row" style="gap:16px">
+          <span class="mono t-2xl clock" id="clock-mono" style="font-weight:500">00:00:00</span>
+          <span class="t-2xl clock" id="clock-sans" style="font-weight:500;font-variant-numeric:tabular-nums">00:00:00</span>
+          <span class="t-2xl" id="clock-prop" style="font-weight:500;font-variant-numeric:proportional-nums;color:rgb(var(--fg-3))">00:00:00</span>
+        </div>
+        <span class="cap">mono · sans tabular-nums · sans proportional (what not to do for anything that ticks)</span>
+      </div>
+      <div class="mt16">
+        <span class="label">Counters and facts at 11 px</span>
+        <div class="row"><span class="counter">0:12 · ~0:40</span><span class="counter">0:52 · usually ~0:40</span><span class="counter" data-tone="warn">4:10 · longer than usual</span><span class="counter" data-tone="bad">Stopped · Retry re-queues this step</span></div>
+        <span class="cap">TimeCounter · mono 11/16 500 · aria-hidden · uses useElapsed only while a job runs</span>
+      </div>
+      <div class="mt16">
+        <span class="eyebrow">Design Musketeer</span>
+        <span class="cap">the only tracked uppercase: 11/500 · .12em · fg-3 · public screens</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 3 · CONTROLS ================= -->
+<section class="sec" id="s3">
+  <header><span class="eyebrow">03 · Controls</span><h1>One button system, one input system</h1><p>Heights 28 / 32 / 40, radius 8, variants primary · secondary · ghost · danger · link. Use the split view in the toolbar to see light and dark side by side.</p></header>
+  <div class="grid g-auto">
+    <div class="panel" style="padding:20px">
+      <h3>Buttons</h3>
+      <div class="row mt8"><button class="btn btn-lg btn-primary"><svg class="ic"><use href="#i-image-plus"/></svg>Generate the design<span class="price">$0.60</span></button></div>
+      <span class="cap">btn lg 40px · primary · price pill bg-white/20 · only the stage CTA</span>
+      <div class="row mt16"><button class="btn btn-md btn-primary"><svg class="ic"><use href="#i-check"/></svg>Accept · finish</button><button class="btn btn-sm btn-primary">New card</button><button class="btn btn-md btn-secondary"><svg class="ic"><use href="#i-crop"/></svg>Fix an area</button><button class="btn btn-sm btn-secondary">Copy link</button></div>
+      <span class="cap">md 32px · sm 28px · secondary: surface-1 + strong border (light) / surface-2 + hairline (dark)</span>
+      <div class="row mt16"><button class="btn btn-md btn-ghost"><svg class="ic"><use href="#i-pause"/></svg>Park</button><button class="btn btn-md btn-danger"><svg class="ic"><use href="#i-trash"/></svg>Delete</button><button class="btn btn-md btn-danger-solid">Delete 3 cards</button><button class="btn btn-link">Use default</button></div>
+      <span class="cap">ghost · danger outline · danger confirm #d4383f (the only other filled colour) · link</span>
+      <div class="row mt16"><button class="btn btn-md btn-primary" id="loading-btn" style="min-width:150px"><span class="slot"><svg class="ic"><use href="#i-image-plus"/></svg></span><span>Upload 3 files</span></button><button class="btn btn-md btn-secondary" disabled>Disabled</button><button class="btn btn-md btn-ghost icon-btn" title="Duplicate card" aria-label="Duplicate card"><svg class="ic"><use href="#i-copy"/></svg></button></div>
+      <span class="cap">click the first: spinner takes the icon slot, width kept, 'Uploading 2 of 3' · disabled opacity .5 · icon button 32×32, title === aria-label</span>
+      <div class="row mt16" style="gap:6px"><span class="kbd">A</span><span class="kbd">F</span><span class="kbd">R</span><span class="kbd">Esc</span><span class="kbd">⌘</span><span class="t-xs fg3">kbd 20px mono 11 fg-2</span></div>
+    </div>
+
+    <div class="panel" style="padding:20px">
+      <h3>Inputs</h3>
+      <div class="grid mt8" style="grid-template-columns:1fr 1fr;gap:12px">
+        <div><span class="label">Client name</span><input class="input" placeholder="E2E Test Client"><span class="hint">Default · placeholder fg-placeholder</span></div>
+        <div><span class="label">Focused</span><input class="input is-focus" value="Wild &amp; free"><span class="hint">border ring + 3 px tint</span></div>
+        <div><span class="label">Invalid</span><input class="input" aria-invalid="true" value="ab"><span class="err">Needs at least 3 characters</span></div>
+        <div><span class="label">Disabled</span><input class="input" disabled value="Locked by the worker"><span class="hint">surface-2 / fg-3</span></div>
+        <div style="grid-column:1/-1"><span class="label">Brief</span><textarea class="input" placeholder="What should the design say and feel like?"></textarea></div>
+        <div><span class="label">Garment</span><select class="input select-native"><option>T-shirt</option><option>Hoodie</option><option>Tote</option></select><span class="hint">.select-native · inline chevron · no OS chrome</span></div>
+        <div><span class="label">Resolution</span><select class="input select-native"><option>2K · 2048 px</option><option>4K · 4096 px</option></select></div>
+      </div>
+      <div class="row mt16" style="gap:16px">
+        <label class="row" style="gap:6px;font-size:13px"><input type="checkbox" checked>Select all</label>
+        <label class="row" style="gap:6px;font-size:13px"><input type="radio" name="r" checked>Front</label>
+        <label class="row" style="gap:6px;font-size:13px"><input type="radio" name="r">Back</label>
+      </div>
+      <span class="cap">native 16 px · accent-color: brand</span>
+      <div class="row mt16" style="gap:20px">
+        <span class="row" style="gap:8px"><button class="switch pipeline" role="switch" aria-checked="true" title="Pipeline running"><i></i></button><span class="t-sm">Running</span></span>
+        <span class="row" style="gap:8px"><button class="switch pipeline" role="switch" aria-checked="false" title="Pipeline paused"><i></i></button><span class="t-sm">Paused</span></span>
+        <span class="row" style="gap:8px"><button class="switch pipeline" role="switch" aria-checked="true" data-saving="1"><i><svg class="ic spin"><use href="#i-loader"/></svg></i></button><span class="t-sm">Saving</span></span>
+      </div>
+      <span class="cap">pipeline switch 20×36 · on = brand · paused = warn DEFAULT · knob 160 ms out-strong · click to toggle (1.5 s saving)</span>
+    </div>
+
+    <div class="panel" style="padding:20px">
+      <h3>Segments, badges, tags, chips</h3>
+      <div class="grid mt8" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+        <div class="segment" role="radiogroup" aria-label="AI platform"><button class="seg-item" role="radio" aria-checked="true">Kie</button><button class="seg-item" role="radio" aria-checked="false">OpenRouter</button><button class="seg-item" role="radio" aria-checked="false">Auto</button></div>
+        <div class="segment" role="radiogroup" aria-label="View"><button class="seg-item" role="radio" aria-checked="true">Current</button><button class="seg-item" role="radio" aria-checked="false">Previous</button><button class="seg-item" role="radio" aria-checked="false">Blink</button></div>
+      </div>
+      <span class="cap">segment 32px surface-2 p-0.5 · item 12/500 · checked = surface-1 (surface-3 dark) + shadow-card</span>
+      <div class="row mt16"><span class="badge" data-tone="generating"><i class="dot dot-live"></i>Generating</span><span class="badge" data-tone="info"><i class="dot dot-live"></i>Working</span><span class="badge" data-tone="ok">Done</span><span class="badge" data-tone="bad">Failed</span><span class="badge" data-tone="warn">Warn</span><span class="badge">Queued</span></div>
+      <span class="cap">badge 20px · 11/500 · sentence case · .dot-live only while a job runs</span>
+      <div class="row mt16"><span class="tag">generate</span><span class="tag">regenerate</span><span class="tag">ref</span><span class="tag">Kie</span><span class="tag">Final</span><span class="tag">Art style</span></div>
+      <span class="cap">tag 20px rounded-md surface-2/fg-2 · neutral only</span>
+      <div class="row mt16" id="chip-demo"><button class="chip" aria-pressed="true"><i class="dot" data-tone="needs_review"></i>Needs review<span class="mono">2</span></button><button class="chip" aria-pressed="false"><i class="dot" data-tone="generating"></i>Generating<span class="mono">1</span></button><button class="chip" aria-pressed="false"><i class="dot" data-tone="failed"></i>Failed<span class="mono">1</span></button><button class="chip" aria-pressed="false"><svg class="ic ic-sm"><use href="#i-user"/></svg>Mine</button></div>
+      <span class="cap">chip 28px · hairline · aria-pressed = surface-3 + strong border + fg-1 · no black inversion</span>
+      <div class="mt16 checker" style="position:relative;height:72px;border-radius:12px;overflow:hidden">
+        <svg class="art" style="position:absolute;inset:0;opacity:.9"><use href="#art"/></svg>
+        <span class="image-chip pos-tl">Current</span><span class="image-chip pos-tr"><i class="dot dot-live" data-tone="generating"></i>Drawing the design</span><span class="image-chip pos-bl mono">0:12 · ~0:40</span><span class="image-chip pos-bc"><svg class="ic"><use href="#i-pen"/></svg>Edit text</span>
+      </div>
+      <span class="cap">image-chip 24px · neutral-950/70 + blur · the only white-on-dark chrome in light mode</span>
+    </div>
+
+    <div class="panel" style="padding:20px">
+      <h3>Panel, well, toast, empty state</h3>
+      <details class="panel mt8"><summary>Brief <span class="badge">Locked</span><svg class="ic chev"><use href="#i-chev"/></svg></summary><div class="panel-b t-base fg2">Vintage badge, cream and rust, one signature move: the bear silhouette on the ridge. Text: “Wild &amp; free” arc, “Mountain Bears” banner.</div></details>
+      <details class="panel mt8" open><summary>QC report <span class="badge" data-tone="warn">1 warning</span><svg class="ic chev"><use href="#i-chev"/></svg></summary><div class="panel-b"><div class="well mono t-2xs fg3" style="font-weight:400">score 84 · passed 10/11 · gpt-4.1-vision</div></div></details>
+      <span class="cap">panel: surface-1 + hairline + shadow-card · summary 44px · tone via a header badge, never the border · body fades 120 ms</span>
+      <div class="row mt16"><button class="btn btn-md btn-secondary" id="toast-btn">Show toast</button><button class="btn btn-md btn-secondary" id="toast-bad-btn">Error toast</button></div>
+      <span class="cap">toast: surface-1 shadow-modal · fade-up 200 ms in · 150 ms out · max 3 · '{Noun} {past participle}'</span>
+      <div class="empty mt8" style="padding:32px 16px"><div class="ico"><svg class="ic ic-lg"><use href="#i-inbox"/></svg></div><h3>No cards yet</h3><p class="t-sm fg3" style="font-weight:400">Create the first card or share the brief form with the client.</p><div class="row" style="justify-content:center"><button class="btn btn-md btn-primary"><svg class="ic"><use href="#i-plus"/></svg>Create card</button><button class="btn btn-md btn-secondary">Copy form link</button></div></div>
+      <span class="cap">empty: 40px surface-2 circle · 20px fg-3 verb icon · title 13/600 · one sentence · one primary</span>
+    </div>
+
+    <div class="panel" style="padding:20px">
+      <h3>Drop zone and skeleton</h3>
+      <div class="grid mt8" style="grid-template-columns:1fr 1fr;gap:12px">
+        <div class="drop"><svg class="ic ic-lg fg3"><use href="#i-image-plus"/></svg><span class="t-sm">Drop 5–16 designs</span><span class="t-xs fg3">PNG or JPG · up to 20 MB each</span></div>
+        <div class="drop" data-dragging="true"><svg class="ic ic-lg" style="color:rgb(var(--brand-text))"><use href="#i-image-plus"/></svg><span class="t-sm">Release to upload</span><span class="t-xs fg3">drag state</span></div>
+      </div>
+      <span class="cap">dropZone: 2px dashed strong · drag = ring border + brand-soft · only on real drop targets</span>
+      <div class="col mt16" id="skeleton-demo" style="gap:8px"></div>
+      <div class="row mt8"><button class="btn btn-sm btn-secondary" id="skeleton-btn">Show skeleton (4 s)</button></div>
+      <span class="cap">skeleton: surface-2 with surface-3 shimmer 1600 ms · sized to the tile · --i stagger 60 ms · first paint only</span>
+    </div>
+
+    <div class="panel" style="padding:20px">
+      <h3>Table (Clients)</h3>
+      <table class="tbl mt8"><thead><tr><th>Client</th><th>Style Card</th><th style="text-align:right">Cards</th><th></th></tr></thead><tbody>
+        <tr><td class="t-sm">E2E Test Client</td><td><span class="badge" data-tone="ok">v4 locked</span></td><td class="mono t-2xs" style="text-align:right;font-weight:400">12</td><td style="text-align:right"><button class="btn btn-sm btn-secondary">Copy link</button></td></tr>
+        <tr><td class="t-sm">Ridge &amp; Pine</td><td><span class="badge" data-tone="warn">Draft v2</span></td><td class="mono t-2xs" style="text-align:right;font-weight:400">3</td><td style="text-align:right"><button class="btn btn-sm btn-secondary">Copy link</button></td></tr>
+        <tr><td class="t-sm">Northwind Tees</td><td><span class="badge">None</span></td><td class="mono t-2xs" style="text-align:right;font-weight:400">0</td><td style="text-align:right"><button class="btn btn-sm btn-primary">Start onboarding</button></td></tr>
+      </tbody></table>
+      <span class="cap">rows 44px · hairline dividers · 12/500 fg-3 header · hover surface-2 · no cursor:pointer</span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 4 · BOARD ================= -->
+<section class="sec" id="s4">
+  <header><span class="eyebrow">04 · Board and header</span><h1>Transparent lanes, tiles that only change their border</h1><p>56 px header on bg-canvas/85 + blur, 24 px flat mark, nav with a 2 px brand bar, one StatusDot for the queue. Lanes are 288 px, empty lanes 176 px header-only. Hover a tile: border only, arrow cursor, no lift.</p></header>
+  <div class="panel" style="overflow:hidden">
+    <div class="appbar">
+      <span class="mark" aria-hidden="true">M<i></i></span><span class="wordmark">DM Studio</span>
+      <span class="client-pill">E2E Test Client<svg class="ic"><use href="#i-chev"/></svg></span>
+      <nav class="nav" aria-label="Main"><a href="#s4" aria-current="page">Board</a><a href="#s4">Completed</a><a href="#s4">Clients</a><a href="#s4">Settings</a></nav>
+      <span class="queue" title="Generate 1 waiting · 2/3 running · Finish 0 waiting · 0/2 running"><i class="dot dot-live" data-tone="generating"></i><span class="mono">2 running</span></span>
+      <span class="avatar" title="Studio Test Lead">S</span>
+    </div>
+    <div class="paused-strip" id="paused-strip" hidden><svg class="ic ic-sm"><use href="#i-pause"/></svg>Pipeline paused by the lead · queued cards wait</div>
+    <div style="padding:20px">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <div><h1>Board</h1><p class="t-xs fg3" style="margin-top:2px">Only this client's cards. Choose “All clients” in the header to see the whole board.</p></div>
+        <div class="row"><button class="btn btn-md btn-secondary"><svg class="ic"><use href="#i-image"/></svg>New cards from images</button><button class="btn btn-md btn-primary"><svg class="ic"><use href="#i-plus"/></svg>New card</button></div>
+      </div>
+      <div class="row mt16" id="board-chips"></div>
+      <div class="lanes mt16">
+        <div class="lane"><div class="lane-h"><i class="dot" data-tone="needs_review"></i>Needs review<span class="mono count" id="lane-count">3</span></div><div class="col" id="lane-tiles" style="gap:8px"></div></div>
+        <div class="lane lane-empty"><div class="lane-h"><i class="dot" data-tone="approved"></i>Approved<span class="mono count">0</span></div><p class="t-xs fg3" style="padding:0 4px">Nothing queued</p></div>
+        <div class="lane lane-empty"><div class="lane-h"><i class="dot" data-tone="generating"></i>Generating<span class="mono count">0</span></div><p class="t-xs fg3" style="padding:0 4px">Nothing running</p></div>
+      </div>
+      <div class="demo-btns"><button class="btn btn-sm btn-secondary" id="tile-arrive"><svg class="ic"><use href="#i-plus"/></svg>Tile arrives</button><button class="btn btn-sm btn-secondary" id="paused-toggle">Toggle paused strip</button><button class="btn btn-sm btn-secondary" id="board-skeleton">First paint (skeleton)</button></div>
+      <span class="cap">tile: rounded-xl surface-1 hairline p-3 · 56px checker-sm thumb via Img · 13/500 client · 12 fg-2 print line · 20px badge + StatusDot + mono age · fade-up 200 ms on arrival</span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 5 · CARD PAGE HERO ================= -->
+<section class="sec" id="s5">
+  <header><span class="eyebrow">05 · Card page</span><h1>The frame does the talking</h1><p>Auto-plays on load at ×5 and can be replayed. Each state below is a pure function of props the card page already has (stage, generations.status / image_path / qc_report, fin_jobs.status / started_at). The frame never remounts; the rail cross-fades.</p></header>
+  <div class="row mb16" style="justify-content:space-between">
+    <div class="row"><button class="btn btn-sm btn-ghost"><svg class="ic"><use href="#i-left"/></svg>Board</button></div>
+    <div class="row"><button class="btn btn-sm btn-secondary"><svg class="ic"><use href="#i-ext"/></svg>n8n · generation</button><button class="btn btn-sm btn-secondary"><svg class="ic"><use href="#i-copy"/></svg>Duplicate</button></div>
+  </div>
+  <div class="row mb8" style="gap:10px"><h1>E2E Test Client</h1><span class="badge" id="h-stage" data-tone="intake"><i class="dot"></i><span>Intake</span></span><span class="tag">Form</span><span class="mono t-2xs fg3" id="h-age" style="font-weight:400">in intake for 4 s</span></div>
+  <div class="row mb16 mono t-2xs fg3" style="font-weight:400;gap:6px"><span>1bed5147</span><button class="btn btn-sm btn-ghost icon-btn" title="Copy id" aria-label="Copy id"><svg class="ic ic-sm"><use href="#i-copy"/></svg></button><span>·</span><span>/brief/0487810bfa668fcc… </span><button class="btn btn-sm btn-ghost icon-btn" title="Copy form link" aria-label="Copy form link"><svg class="ic ic-sm"><use href="#i-copy"/></svg></button><span>·</span><span>received 29 Sep 2026</span></div>
+
+  <div class="panel hero-grid">
+    <div class="col" style="gap:12px;min-width:0">
+      <div class="frame checker" id="hf" data-kind="">
+        <svg class="art img-in" id="h-art" data-loaded="false" hidden><use href="#art"/></svg>
+        <div class="frame-layer refs" id="hl-refs" hidden>
+          <div class="ref" data-on="true"><svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"><use href="#i-shirt"/></svg></div>
+          <div class="ref"><svg viewBox="0 0 100 100"><rect x="10" y="14" width="80" height="18" rx="3" fill="#f3ecd9"/><rect x="10" y="40" width="80" height="18" rx="3" fill="#d4553a"/><rect x="10" y="66" width="80" height="18" rx="3" fill="#2f5a3e"/></svg></div>
+          <div class="ref"><svg viewBox="0 0 100 100"><text x="50" y="66" text-anchor="middle" font-family="Bricolage Grotesque, sans-serif" font-weight="700" font-size="52" fill="currentColor">Aa</text></svg></div>
+        </div>
+        <div class="frame-layer develop" id="hl-dev" hidden><svg class="develop-underlay" id="hl-underlay" hidden><use href="#art"/></svg><div class="develop-wash"></div><div class="develop-line"></div></div>
+        <div class="frame-layer" id="hl-rect" hidden><div class="develop develop-rect" id="hl-rect-in" style="left:14%;top:70%;width:72%;height:16%"><div class="develop-wash"></div><div class="develop-line"></div></div></div>
+        <div class="frame-layer" id="hl-ins" hidden><div class="inspect-band"></div><i class="inspect-corner tl"></i><i class="inspect-corner tr"></i><i class="inspect-corner bl"></i><i class="inspect-corner br"></i></div>
+        <div class="finish-rail" id="hl-fin" hidden><div class="finish-seg"><i></i></div><div class="finish-seg"><i></i></div><div class="finish-seg"><i></i></div></div>
+        <span class="image-chip pos-tl" id="h-current" hidden>Current</span>
+        <span class="image-chip pos-tl" id="h-chip" hidden><i class="dot"></i><span></span></span>
+        <span class="image-chip pos-bl mono" id="h-counter" hidden></span>
+        <span class="badge pos-tr animate-pop-in-slow" id="h-verdict" data-tone="ok" hidden>QC Pass</span>
+        <span class="image-chip pos-bc" id="h-edit" hidden><svg class="ic"><use href="#i-pen"/></svg>Edit text</span>
+      </div>
+      <div class="row" style="justify-content:space-between">
+        <div class="segment fit" role="radiogroup" aria-label="View" id="view-seg"><button class="seg-item" role="radio" aria-checked="true">Current</button><button class="seg-item" role="radio" aria-checked="false">Previous</button><button class="seg-item" role="radio" aria-checked="false">Blink</button></div>
+        <button class="btn btn-sm btn-ghost"><svg class="ic"><use href="#i-download"/></svg>PNG</button>
+      </div>
+      <div class="strip" id="strip">
+        <div><div class="strip-tile checker checker-sm" data-current="true" tabindex="0"><svg class="art"><use href="#art"/></svg><span class="image-chip pos-tl" style="height:20px;padding:0 6px">Current</span><span class="badge pos-tr" data-tone="ok" style="height:18px">Pass</span></div><span class="strip-cap">generate · 2 min</span></div>
+        <div><div class="strip-tile checker checker-sm" id="strip-run" tabindex="0"><svg class="art" style="opacity:.35;filter:blur(2px)"><use href="#art"/></svg><div class="strip-line" hidden></div><span class="image-chip pos-bl mono" id="strip-run-counter" style="height:18px;padding:0 6px;font-size:10px" hidden>0:00</span></div><span class="strip-cap" id="strip-run-cap">regenerate · 3 min</span></div>
+        <div><div class="strip-tile checker checker-sm" tabindex="0"><svg class="art" style="filter:hue-rotate(160deg)"><use href="#art"/></svg><span class="badge pos-tr" data-tone="warn" style="height:18px">Warn</span></div><span class="strip-cap">edit · 1 h</span></div>
+        <div><div class="strip-tile checker checker-sm" tabindex="0"><svg class="art" style="filter:hue-rotate(300deg)"><use href="#art"/></svg><span class="badge pos-tr" data-tone="bad" style="height:18px">Fail</span></div><span class="strip-cap">generate · 3 h</span></div>
+      </div>
+      <span class="cap">strip: 96px checker-sm rounded-xl · current first + ring-2 ring-offset-2 · others opacity .7 → 1 on hover · running = line-only develop + 10px counter</span>
+    </div>
+    <aside class="rail">
+      <p class="status" role="status" id="r-status">Reading the references. The card moves to Review by itself.</p>
+      <div class="rail-actions" id="r-actions"></div>
+      <ol class="steplog" id="r-log" hidden></ol>
+      <div id="h-banner" hidden></div>
+      <p class="facts" id="h-spec" hidden>3072 × 3072 px · 300 DPI · PNG · 4.1 MB</p>
+      <p class="facts" style="margin-top:auto">2K · 1:1 · Kie · v1 · Style Card v4</p>
+    </aside>
+  </div>
+
+  <div class="demo-btns" id="hero-btns">
+    <button class="btn btn-sm btn-primary" data-play="all"><svg class="ic"><use href="#i-play"/></svg>Play the whole pipeline</button>
+    <button class="btn btn-sm btn-secondary" data-play="intake">Intake</button><button class="btn btn-sm btn-secondary" data-play="queued">Queued</button><button class="btn btn-sm btn-secondary" data-play="generating">Generating</button><button class="btn btn-sm btn-secondary" data-play="qc">QC judging</button><button class="btn btn-sm btn-secondary" data-play="landed">Landing</button><button class="btn btn-sm btn-secondary" data-play="finishing">Finishing</button><button class="btn btn-sm btn-secondary" data-play="delivered">Delivered</button>
+    <span style="width:8px"></span>
+    <button class="btn btn-sm btn-secondary" data-play="overdue">Play as overdue</button><button class="btn btn-sm btn-secondary" data-play="failed">Fail mid-way</button><button class="btn btn-sm btn-secondary" data-play="retry">Corrective retry</button><button class="btn btn-sm btn-secondary" data-play="edit">Edit region</button><button class="btn btn-sm btn-secondary" data-play="waiting">Waiting</button><button class="btn btn-sm btn-ghost" data-play="stop">Stop</button>
+  </div>
+  <p class="cap" id="hero-note">idle · nothing loops while the hero is idle except StatusDots</p>
+
+  <div class="two mt24">
+    <details class="panel" open id="qc-panel"><summary>QC report <span class="badge" id="qc-badge">Not run</span><svg class="ic chev"><use href="#i-chev"/></svg></summary>
+      <div class="panel-b"><div class="facts row" id="qc-facts" style="gap:8px;min-height:20px;margin-bottom:8px">score — · <span class="badge">unknown</span> · passed —/11 · gpt-4.1-vision</div><ul class="qc-rows" id="qc-rows"></ul><div class="well mt8" id="qc-corrective" hidden><span class="t-2xs fg3">Corrective instruction</span><p class="t-sm" style="font-weight:400">Set the banner text in the same weight as the arc; keep the bear silhouette unbroken.</p></div></div>
+    </details>
+    <details class="panel"><summary>Brief <span class="badge">Locked</span><svg class="ic chev"><use href="#i-chev"/></svg></summary><div class="panel-b t-base fg2">Vintage badge, cream and rust. Arc text “Wild &amp; free”, banner “Mountain Bears”. Front placement, T-shirt.</div></details>
+    <details class="panel"><summary>References <span class="tag">3</span><svg class="ic chev"><use href="#i-chev"/></svg></summary><div class="panel-b t-xs fg3">1 What to make · 2 Art style · 3 Typography</div></details>
+    <details class="panel"><summary>Style Card <span class="badge" data-tone="ok">v4 locked</span><svg class="ic chev"><use href="#i-chev"/></svg></summary><div class="panel-b t-xs fg3">Palette · typography · never-do rules · JSON</div></details>
+  </div>
+  <span class="cap">detail panels collapsed by default except the stage's · QC panel: facts row (score · verdict · passed n/m · model) before the list · skeleton rings while judging · rows resolve once on report arrival (keyed on generation id, no replay on refetch)</span>
+</section>
+
+<!-- ================= 6 · FINISHING STANDALONE ================= -->
+<section class="sec" id="s6">
+  <header><span class="eyebrow">06 · Finishing rail, LoadingBar, TimeCounter</span><h1>Three named steps, a gauge that never lies</h1><p>p(t) = 0.92 · (1 − e<sup>−3t/T</sup>) — asymptotic, steps once per second, never prints a percentage. Segment widths 55 / 40 / 25 mirror the expected seconds (Upscale ×4 55 s · Remove background 40 s · 300 DPI 25 s).</p></header>
+  <div class="grid g-auto">
+    <div class="panel" style="padding:20px">
+      <h3>FINISH rail (enlarged)</h3>
+      <div class="rail-lg mt16" id="rail-lg" style="margin-bottom:36px"><div class="finish-seg"><i></i></div><div class="finish-seg"><i></i></div><div class="finish-seg"><i></i></div><span class="lbl" style="left:0">Upscale ×4 · ~0:55</span><span class="lbl" style="left:47%">Remove bg · ~0:40</span><span class="lbl" style="right:0">300 DPI · ~0:25</span></div>
+      <div class="row" style="justify-content:space-between"><span class="image-chip" id="rail-lg-chip"><i class="dot dot-live" data-tone="finishing"></i><span>Finishing · Upscale ×4 · 1/3</span></span><span class="counter" id="rail-lg-counter">0:00 · ~2:00</span></div>
+      <div class="demo-btns"><button class="btn btn-sm btn-secondary" id="rail-lg-play"><svg class="ic"><use href="#i-play"/></svg>Play finishing</button></div>
+      <span class="cap">grid 55fr 40fr 25fr · 3px · track rgb(28 26 23/.35) · fill #5b5bd6 · step index time-derived from fin_jobs.started_at, labelled ~</span>
+    </div>
+    <div class="panel" style="padding:20px">
+      <h3>LoadingBar</h3>
+      <div class="col mt16" style="gap:16px">
+        <div><div class="bar" data-mode="indeterminate" id="bar-ind" role="progressbar" aria-label="Queued"><i></i></div><span class="cap">indeterminate · 33 % brand segment · slide 1400 ms · queued / dispatched</span></div>
+        <div><div class="bar" data-mode="gauge" id="bar-gauge" role="progressbar" aria-label="Analysing" style="--p:0"><i></i></div><span class="cap" id="bar-gauge-cap">gauge · width = p·100 % · 1 s linear step · working against T</span></div>
+        <div><div class="bar" data-mode="determinate" id="bar-det" role="progressbar" aria-label="Fetching" aria-valuetext="Fetching 3 of 12" style="--p:.25"><i></i></div><span class="cap" id="bar-det-cap">determinate · Fetching 3 of 12 · 400 ms out-strong · real counts only</span></div>
+      </div>
+      <div class="demo-btns"><button class="btn btn-sm btn-secondary" id="bars-play"><svg class="ic"><use href="#i-play"/></svg>Play all three</button></div>
+      <span class="cap">3px track surface-3 · role=progressbar + aria-valuetext in words, never a numeric percent</span>
+    </div>
+    <div class="panel" style="padding:20px">
+      <h3>TimeCounter</h3>
+      <div class="col mt16" style="gap:10px;align-items:flex-start">
+        <div class="row"><span class="counter">0:12 · ~0:40</span><span class="t-xs fg3">normal · elapsed · expected</span></div>
+        <div class="row"><span class="counter">0:52 · usually ~0:40</span><span class="t-xs fg3">past expected · glow slows to 3200 ms</span></div>
+        <div class="row"><span class="counter" data-tone="warn">4:10 · longer than usual</span><span class="t-xs fg3">past OVERDUE_MS (4 min) · warn text</span></div>
+        <div class="row"><span class="counter" data-tone="bad">Stopped · Retry re-queues this step</span><span class="t-xs fg3">failed · frozen overlay</span></div>
+        <div class="row"><span class="counter" id="tc-live">0:00 · ~0:40</span><span class="t-xs fg3">live at the toolbar speed · useElapsed(startIso, 1000)</span></div>
+      </div>
+      <span class="cap">mono 11 tabular · aria-hidden · thresholds unchanged: OVERDUE 4 min · SLOW 3 min · TEST_STALE 6 min · STALE 10 min</span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 7 · WIZARD ================= -->
+<section class="sec" id="s7">
+  <header><span class="eyebrow">07 · Onboarding wizard</span><h1>Four chips, one bar, one lock</h1><p>WizardProgress as 40 px chips in a surface-2 track. DraftProgress goes indeterminate → gauge (T = 35 s) → complete, with a stepping ring over the evidence thumbs. Lock success is a badge cross-fade, a check pop and one ring pulse. Nothing loops afterwards.</p></header>
+  <div class="row mb16" style="gap:10px"><h1>Onboard E2E Test Client</h1><span class="badge" data-tone="warn" id="wiz-version">Draft v4</span></div>
+  <div class="wiz" id="wiz">
+    <div class="wiz-step" data-state="done"><span class="wiz-mark"><svg class="ic" style="width:12px;height:12px;stroke-width:2.5"><use href="#i-check"/></svg></span><div style="min-width:0"><div class="t-sm">Designs</div><div class="t-xs fg3">12 uploaded</div></div></div>
+    <div class="wiz-step" data-state="done"><span class="wiz-mark"><svg class="ic" style="width:12px;height:12px;stroke-width:2.5"><use href="#i-check"/></svg></span><div style="min-width:0"><div class="t-sm">Brief</div><div class="t-xs fg3">Written · 3 tags</div></div></div>
+    <div class="wiz-step" data-state="active" id="wiz-analyse"><span class="wiz-mark" id="wiz-analyse-mark">3</span><div style="min-width:0"><div class="t-sm">Analyse</div><div class="t-xs fg3" id="wiz-analyse-sub">Draft the Style Card</div></div></div>
+    <div class="wiz-step" data-state="todo"><span class="wiz-mark">4</span><div style="min-width:0"><div class="t-sm">Lock &amp; test</div><div class="t-xs fg3">Test render, then lock</div></div></div>
+  </div>
+  <span class="cap">marker 20px: done ok-soft check · active brand number · busy StatusDot breathing + mono m:ss · attention warn · step switch = 150 ms content fade only</span>
+
+  <div class="two mt24">
+    <div class="panel" style="padding:20px">
+      <div class="row" style="justify-content:space-between"><h3>Draft progress</h3><span class="badge" id="draft-badge"><i class="dot"></i><span>Not started</span></span></div>
+      <div class="row mt8" style="justify-content:space-between"><span class="t-sm fg2" id="draft-line" style="font-weight:400">Drop the designs, write the brief, then analyse.</span><span class="counter" id="draft-counter" hidden>0:00 · ~0:35</span></div>
+      <div class="bar mt8" id="draft-bar" data-mode="idle" role="progressbar" aria-label="Analysing" style="--p:0"><i></i></div>
+      <div class="evidence mt16" id="evidence"></div>
+      <div class="well mt16" id="draft-slow" hidden><span class="t-sm" style="font-weight:400">Taking longer than usual. The analyser is still running; you can keep this tab open.</span></div>
+      <div id="draft-readout" class="col mt16" style="gap:8px" hidden></div>
+      <div class="demo-btns"><button class="btn btn-md btn-primary" id="draft-play"><span class="slot"><svg class="ic"><use href="#i-scan"/></svg></span><span>Analyse<span class="price">$0.12</span></span></button><button class="btn btn-sm btn-secondary" id="draft-fail">Fail</button></div>
+      <span class="cap">queued/dispatched = indeterminate · working = gauge T=35 + 'Reading 6 images · 0:24 · ~0:35' + stepping ring 1.2 s/thumb · done = bar completes 300 ms then readout fades up staggered 60 ms · failed = bar turns stage.failed and freezes</span>
+    </div>
+    <div class="panel" style="padding:20px">
+      <h3>Lock &amp; test</h3>
+      <div class="row mt8" style="gap:12px">
+        <div class="xfade" id="lock-xfade"><span class="badge" data-tone="warn">Draft v4</span><span class="badge" data-tone="ok" data-off="true"><svg class="ic" style="width:10px;height:10px;stroke-width:3"><use href="#i-check"/></svg>v4 locked</span></div>
+        <span class="t-xs fg3" id="lock-note">Test render passed QC · 0:48</span>
+      </div>
+      <div class="frame checker mt16" id="lock-frame" style="width:200px;margin:16px 0 0;border-radius:12px"><svg class="art"><use href="#art"/></svg><span class="badge pos-tr" data-tone="ok" style="height:18px">Pass</span></div>
+      <div class="well mt16 animate-fade-up" id="lock-box" hidden><div class="row" style="gap:12px"><span class="checkmark"><svg class="ic ic-lg draw" id="lock-check"><use href="#i-check"/></svg></span><div><div class="t-sm">Style Card v4 locked</div><div class="t-xs fg3">Cards for this client now generate with it. Previous drafts stay readable.</div></div></div></div>
+      <div class="demo-btns"><button class="btn btn-lg btn-primary" id="lock-play"><span class="slot"><svg class="ic"><use href="#i-lock"/></svg></span><span>Lock v4 &amp; test render<span class="price">$0.60</span></span></button><button class="btn btn-sm btn-ghost" id="lock-reset">Reset</button></div>
+      <span class="cap">warn 'Draft v4' cross-fades 200 ms to ok 'v4 locked' · check pops in · box fades up · frame ring-pulses once · success toast · no confetti</span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 8 · DIALOG ================= -->
+<section class="sec" id="s8">
+  <header><span class="eyebrow">08 · Dialog</span><h1>One Dialog, two entrances</h1><p>Scrim /40 light, /60 dark with a 4 px blur. Panel enters with enter-dialog 200 ms at 640 px and above, enter-sheet 240 ms on phones, and leaves in 150 ms. Escape closes; focus returns to the opener after the exit animation.</p></header>
+  <div class="two">
+    <div class="panel" style="padding:20px">
+      <h3>Generate dialog (desktop)</h3>
+      <p class="t-xs fg3 mt8">Facts in a well before the paid button: client, cost in mono, engine, Style Card badge, text tags, placement. Cancel is secondary; the primary carries the price.</p>
+      <div class="demo-btns"><button class="btn btn-md btn-primary" id="dlg-open"><svg class="ic"><use href="#i-image-plus"/></svg>Open Generate dialog</button></div>
+      <span class="cap">480 px · header px-6 pt-5 · 16/600 title + 14 fg-2 description · 32px ghost X · body 14 · footer hairline, primary last</span>
+    </div>
+    <div class="panel" style="padding:20px">
+      <h3>Bottom sheet (390 px)</h3>
+      <p class="t-xs fg3 mt8 mb8">The same file in a 390 px iframe with the dialog open: rounded-t-2xl, enter-sheet 16 px, 16 px inputs so iOS Safari does not zoom.</p>
+      <div class="phone"><iframe id="phone-frame" title="Mobile bottom sheet preview" loading="lazy"></iframe></div>
+      <span class="cap">?embed=sheet · media (max-width: 639px) · items-end · rounded-t-2xl</span>
+    </div>
+  </div>
+</section>
+
+<footer class="sec" style="padding-top:24px;padding-bottom:64px"><p class="t-xs fg3">Preview only. Tokens from merged/index.merged.css, motion from merged/animations.css and the keyframes in merged/tailwind.config.merged.js. No app file, hook, RPC or workflow is touched by anything shown here.</p></footer>
+
+<div id="sheet-stage"><div class="row" style="gap:8px"><span class="mark" aria-hidden="true">M<i></i></span><span class="wordmark">DM Studio</span></div><h1 class="mt16">E2E Test Client</h1><p class="t-xs fg3 mt8">Bottom-sheet variant of the Generate dialog.</p><div class="demo-btns"><button class="btn btn-md btn-primary" id="sheet-open">Open Generate dialog</button></div></div>
+
+<div id="dlg-root" hidden>
+  <div class="dlg-wrap">
+    <div class="scrim" id="dlg-scrim"></div>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title" id="dlg" tabindex="-1">
+      <div class="dlg-h"><div><h3 id="dlg-title">Generate the design</h3><p>Snapshots the brief and queues the first generation. Nothing is spent until you confirm here.</p></div><button class="btn btn-md btn-ghost icon-btn" id="dlg-x" title="Close" aria-label="Close"><svg class="ic"><use href="#i-x"/></svg></button></div>
+      <div class="dlg-b">
+        <dl class="well facts-dl"><dt>Client</dt><dd>E2E Test Client</dd><dt>Cost</dt><dd class="mono">$0.60</dd><dt>Engine</dt><dd>Kie · 2K · 1:1</dd><dt>Style Card</dt><dd><span class="badge" data-tone="ok">v4 locked</span></dd><dt>Text</dt><dd class="row" style="gap:4px"><span class="tag">arc · Wild &amp; free</span><span class="tag">banner · Mountain Bears</span></dd><dt>Placement</dt><dd>Front · T-shirt</dd></dl>
+        <span class="label mt16" style="margin-top:16px">AI platform</span>
+        <div class="segment" role="radiogroup" aria-label="AI platform" id="dlg-seg"><button class="seg-item" role="radio" aria-checked="true">Kie</button><button class="seg-item" role="radio" aria-checked="false">OpenRouter</button><button class="seg-item" role="radio" aria-checked="false">Auto</button></div>
+        <p class="hint">Kie is the default. Auto falls back to OpenRouter when Kie is at capacity.</p>
+      </div>
+      <div class="dlg-f"><button class="btn btn-md btn-secondary" id="dlg-cancel">Cancel</button><button class="btn btn-md btn-primary" id="dlg-go"><svg class="ic"><use href="#i-image-plus"/></svg>Generate<span class="price">$0.60</span></button></div>
+    </div>
+  </div>
+</div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<style>.hold .dot-live,.hold .develop-line::after,.hold .inspect-band,.hold .qc-ring.active,.hold .strip-line,.hold .skeleton{animation-play-state:paused!important}</style>
+<script>
+/* ---------- shared runtime (no library; JS only sets --p once per second, swaps classes, tracks one-shots) ---------- */
+window.DM=(function(){
+'use strict';
+const html=document.documentElement,$=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>[...r.querySelectorAll(s)];
+const q=new URLSearchParams(location.search),EMBED=q.get('embed');
+const I=(n,c='')=>`<svg class="ic ${c}" aria-hidden="true"><use href="#i-${n}"/></svg>`;
+let SPEED=5;
+const reduced=()=>html.dataset.motion==='reduce'||matchMedia('(prefers-reduced-motion: reduce)').matches;
+const fmt=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+const gauge=(t,T)=>.92*(1-Math.exp(-3*t/T));
+const EXP={intake:10,generate:40,qc:10,finish:120,fin:[55,40,25],analyse:35,test:55},OVERDUE=240,SLOW=180;
+function setSpeed(v){SPEED=v;html.style.setProperty('--tick',`${Math.round(1000/v)}ms`)}
+const clocks=new Set(),pend=new Set();
+function clock(o){let t=o.from||0,alive=true,id;const c={g:o.g||'x',stop(){alive=false;clearTimeout(id);clocks.delete(c)}};const step=()=>{if(!alive)return;o.tick(t);if(t>=o.until){c.stop();o.done&&o.done();return}t++;id=setTimeout(step,1000/SPEED)};clocks.add(c);id=setTimeout(step,0);return c}
+function wait(ms,fn,g='x'){const rec={g};rec.id=setTimeout(()=>{pend.delete(rec);fn()},ms);pend.add(rec);return rec.id}
+function later(s,fn,g){return wait(s*1000/SPEED,fn,g)}
+function stopGroup(g){clocks.forEach(c=>{if(c.g===g)c.stop()});pend.forEach(r=>{if(r.g===g){clearTimeout(r.id);pend.delete(r)}})}
+function restart(el,cls){el.classList.remove(cls);void el.offsetWidth;el.classList.add(cls)}
+function leave(el,ms=300,g='x'){if(el.hidden)return;el.classList.add('leaving');wait(reduced()?150:ms,()=>{el.hidden=true;el.classList.remove('leaving')},g)}
+const LABEL={intake:'Intake',review:'Review',approved:'Approved',generating:'Generating',needs_review:'Needs review',editing:'Editing',finishing:'Finishing',delivered:'Delivered',waiting:'Waiting',failed:'Failed'};
+/* toasts: max 3, fade-up in, 150 ms out, '{Noun} {past participle}' */
+function toast(text,tone='ok',ms=3200){const host=$('#toasts');while(host.children.length>=3)host.firstElementChild.remove();const el=document.createElement('div');el.className='toast';el.setAttribute('role',tone==='bad'?'alert':'status');el.innerHTML=`<i class="dot" data-tone="${tone}"></i><span>${text}</span>`;host.appendChild(el);const out=()=>{if(!el.isConnected)return;el.classList.add('out');wait(150,()=>el.remove())};el.addEventListener('click',out);wait(ms,out);return el}
+return{html,$,$$,I,get SPEED(){return SPEED},setSpeed,reduced,fmt,gauge,EXP,OVERDUE,SLOW,clock,wait,later,stopGroup,restart,leave,LABEL,toast,EMBED,q};
+})();
+
+/* ---------- 1 · tokens: live contrast from the computed variables ---------- */
+(function(){
+const {$,$$,html}=DM;
+const TOK={canvas:['#f8f7f4','#121110'],'surface-1':['#ffffff','#1c1a17'],'surface-2':['#f1efea','#242220'],'surface-3':['#e9e6df','#2c2925'],'surface-inverse':['#1c1a17','#f1efea'],brand:['#6b25e6','#7d3cf8'],'brand-hover':['#5a1bc2','#8646f9'],'brand-text':['#5a1bc2','#b799ff'],'brand-soft':['#f4f0ff','#2c1f3b'],ring:['#7d3cf8','#9865ff']};
+const hex2=h=>{h=h.replace('#','');const n=parseInt(h,16);return[n>>16&255,n>>8&255,n&255]};
+const lum=([r,g,b])=>{const f=c=>{c/=255;return c<=.03928?c/12.92:Math.pow((c+.055)/1.055,2.4)};return .2126*f(r)+.7152*f(g)+.0722*f(b)};
+const ratio=(a,b)=>{const x=lum(a),y=lum(b),hi=Math.max(x,y),lo=Math.min(x,y);return((hi+.05)/(lo+.05)).toFixed(2)};
+const tok=n=>getComputedStyle(html).getPropertyValue('--'+n).trim().split(/\s+/).map(Number);
+const rgb=a=>`rgb(${a.join(' ')})`,toHex=a=>'#'+a.map(v=>v.toString(16).padStart(2,'0')).join('');
+const row=(label,color,r,cls='')=>`<div class="r ${cls}" style="color:${color}"><span>${label}</span><span class="mono">${r}:1</span></div>`;
+const sw=(bg,rows,cap,extra='')=>`<div><div class="sw" style="background:${bg};${extra}">${rows}</div><span class="cap">${cap}</span></div>`;
+function render(){
+  const S=$('#surfaces');if(!S)return;
+  S.innerHTML=['canvas','surface-1','surface-2','surface-3'].map(n=>{const bg=tok(n);const rows=['fg-1','fg-2','fg-3'].map(f=>{const c=tok(f),banned=n==='surface-3'&&f==='fg-3';return row(banned?'fg-3 not allowed':f,rgb(c),ratio(bg,c),banned?'no':'')}).join('');return sw(rgb(bg),rows,`${n} ${TOK[n][0]} / ${TOK[n][1]}<br>now ${toHex(bg)}`)}).join('')
+   +(()=>{const bg=tok('surface-inverse'),c=tok('fg-inverse');return sw(rgb(bg),row('fg-inverse',rgb(c),ratio(bg,c)),`surface-inverse ${TOK['surface-inverse'][0]} / ${TOK['surface-inverse'][1]}<br>tooltips · nothing else`)})();
+  const B=$('#brand-sw'),W=[255,255,255],s1=tok('surface-1'),cv=tok('canvas');
+  B.innerHTML=[
+    sw(rgb(tok('brand')),row('white on fill','#fff',ratio(tok('brand'),W)),`brand ${TOK.brand[0]} / ${TOK.brand[1]}`),
+    sw(rgb(tok('brand-hover')),row('white on hover','#fff',ratio(tok('brand-hover'),W)),`brand-hover ${TOK['brand-hover'][0]} / ${TOK['brand-hover'][1]}`),
+    sw(rgb(s1),row('brand text',rgb(tok('brand-text')),ratio(s1,tok('brand-text'))),`brand-text ${TOK['brand-text'][0]} / ${TOK['brand-text'][1]}<br>never the fill as text`),
+    sw(rgb(tok('brand-soft')),row('brand text on soft',rgb(tok('brand-text')),ratio(tok('brand-soft'),tok('brand-text'))),`brand-soft ${TOK['brand-soft'][0]} / ${TOK['brand-soft'][1]}<br>selected · drag`),
+    sw(rgb(cv),row('ring on canvas','rgb(var(--fg-2))',ratio(cv,tok('ring'))),`ring ${TOK.ring[0]} / ${TOK.ring[1]}<br>focus-visible 2px + 2px offset`,`box-shadow:inset 0 0 0 2px ${rgb(tok('ring'))}`)
+  ].join('');
+  const ST=[['intake','Intake','#8a8479','#ece9e2','#4a463f','#2e2b27','#cfcac0'],['review','Review','#7d3cf8','#ece3ff','#4b1a9e','#2c1f3b','#c9b1ff'],['approved','Approved','#3b6fe0','#e3ebfd','#233f8f','#212837','#a9bff5'],['generating','Generating','#1f8fa8','#dcf1f6','#125868','#1c2d2e','#93d3e0'],['needs_review','Needs review','#d98a1f','#fbeed7','#7a4a08','#3a2c18','#f2c57c'],['editing','Editing','#2a9d8f','#dcf3ef','#175e55','#1e2f2a','#94d6cc'],['finishing','Finishing','#5b5bd6','#e6e6fb','#33338c','#262436','#b3b3f0'],['delivered','Delivered','#3d9a4f','#e1f3e4','#1f5a2b','#212e20','#9fd6aa'],['waiting','Waiting','#e0662b','#fce7dc','#7f3410','#3b261a','#f3ae8c'],['failed','Failed','#d4383f','#fbe1e2','#7f1c20','#391f1d','#f0999d']];
+  $('#stage-grid').innerHTML=ST.map(([k,l,d,ls,li,ds,dl])=>`<div class="panel" style="padding:12px"><div class="row" style="gap:8px"><span class="badge" style="background:${ls};color:${li}"><i class="dot" style="background:${d}"></i>${l}</span><span class="badge" style="background:${ds};color:${dl}"><i class="dot" style="background:${d}"></i>${l}</span></div><span class="cap">stage.${k} ${d}<br>${ls}/${li} ${ratio(hex2(ls),hex2(li))}:1<br>${ds}/${dl} ${ratio(hex2(ds),hex2(dl))}:1</span></div>`).join('');
+  $('#feedback-row').innerHTML=[['ok','delivered','Done'],['warn','needs_review','1 warning'],['bad','failed','Failed'],['info','approved','Working'],['neutral',null,'Queued']].map(([t,s,l])=>`<div class="col" style="gap:0;align-items:flex-start"><span class="badge" data-tone="${t}"><i class="dot"></i>${l}</span><span class="cap">${t}${s?' = stage.'+s:' = surface-2 / fg-2'}</span></div>`).join('');
+}
+DM.renderTokens=render;
+})();
+
+/* ---------- 2 · live clock ---------- */
+(function(){const ids=['clock-mono','clock-sans','clock-prop'];function tick(){const d=new Date(),s=[d.getHours(),d.getMinutes(),d.getSeconds()].map(v=>String(v).padStart(2,'0')).join(':');ids.forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=s})}tick();setInterval(tick,1000)})();
+
+/* ---------- 3 · controls demos ---------- */
+(function(){
+const {$,$$,I,wait,toast,restart}=DM;
+document.addEventListener('click',e=>{
+  const it=e.target.closest('.seg-item');if(it){$$('.seg-item',it.parentElement).forEach(b=>b.setAttribute('aria-checked',String(b===it)))}
+  const ch=e.target.closest('.chip[aria-pressed]');if(ch&&ch.id!=='motion-toggle')ch.setAttribute('aria-pressed',String(ch.getAttribute('aria-pressed')!=='true'));
+  const sw=e.target.closest('.switch');if(sw&&!sw.dataset.saving){sw.dataset.saving='1';sw.firstElementChild.innerHTML=I('loader','spin');wait(1500,()=>{sw.setAttribute('aria-checked',String(sw.getAttribute('aria-checked')!=='true'));sw.firstElementChild.innerHTML='';delete sw.dataset.saving})}
+});
+$$('.switch[data-saving]').forEach(sw=>{wait(1500,()=>{sw.firstElementChild.innerHTML='';delete sw.dataset.saving})});
+const lb=$('#loading-btn');lb.addEventListener('click',()=>{if(lb.getAttribute('aria-busy')==='true')return;lb.setAttribute('aria-busy','true');const slot=lb.firstElementChild,txt=lb.lastElementChild;slot.innerHTML=I('loader','spin');let n=1;txt.textContent='Uploading 1 of 3';const step=()=>{n++;if(n<=3){txt.textContent=`Uploading ${n} of 3`;wait(900,step)}else{slot.innerHTML=I('check');txt.textContent='Uploaded';wait(1200,()=>{slot.innerHTML=I('image-plus');txt.textContent='Upload 3 files';lb.removeAttribute('aria-busy')})}};wait(900,step)});
+$('#toast-btn').addEventListener('click',()=>toast(['Card duplicated','Link copied','Style Card v4 locked','Settings saved'][Math.floor(Math.random()*4)],'ok'));
+$('#toast-bad-btn').addEventListener('click',()=>toast('Generation failed · KIE 502','bad',5000));
+const skHost=$('#skeleton-demo');
+const realTiles=()=>[['E2E Test Client','Wild & free · Front','needs_review','3 h',0],['Ridge & Pine','Trail crew · Back','delivered','1 d',160],['Northwind Tees','Harbor lights · Front','review','12 min',300]].map(([c,l,s,a,h])=>`<article class="tile"><div class="thumb checker checker-sm"><svg class="art" style="filter:hue-rotate(${h}deg)"><use href="#art"/></svg></div><div class="tile-body"><div class="t-sm">${c}</div><div class="t-xs fg2">${l}</div><div class="tile-meta"><span class="badge" data-tone="${s}">${DM.LABEL[s]}</span><i class="dot" data-tone="${s}"></i><span class="mono">${a}</span></div></div></article>`).join('');
+function skeleton(){skHost.innerHTML=[0,1,2].map(i=>`<div class="tile-sk"><div class="skeleton" style="--i:${i};width:56px;height:56px"></div><div class="col" style="flex:1;gap:8px;justify-content:center"><div class="skeleton" style="--i:${i};height:12px;width:60%"></div><div class="skeleton" style="--i:${i};height:10px;width:80%"></div><div class="skeleton" style="--i:${i};height:10px;width:40%"></div></div></div>`).join('');wait(4000,()=>{skHost.innerHTML=realTiles()},'sk')}
+$('#skeleton-btn').addEventListener('click',()=>{DM.stopGroup('sk');skeleton()});
+DM.skeletonDemo=skeleton;
+})();
+
+/* ---------- 4 · board ---------- */
+(function(){
+const {$,$$,I,wait,LABEL,restart}=DM;
+const CH=[['All',null,4],['Intake','intake',0],['Review','review',0],['Approved','approved',0],['Generating','generating',1],['Needs review','needs_review',2],['Editing','editing',0],['Finishing','finishing',0],['Delivered','delivered',2],['Waiting','waiting',0],['Failed','failed',1]];
+$('#board-chips').innerHTML=CH.map(([l,t,n],i)=>`<button class="chip" aria-pressed="${i===0}">${t?`<i class="dot" data-tone="${t}"></i>`:''}${l}<span class="mono">${n}</span></button>`).join('')+`<button class="chip" aria-pressed="false">${I('user','ic-sm')}Mine</button><span class="t-xs fg3" style="margin-left:auto">4 cards</span><button class="btn btn-sm btn-ghost icon-btn" title="Refresh" aria-label="Refresh">${I('refresh')}</button>`;
+const T=[{c:'E2E Test Client',l:'Wild & free · Front · T-shirt',s:'needs_review',a:'3 h',h:0},{c:'Ridge & Pine',l:'Trail crew · Back · Hoodie',s:'generating',a:'42 s',h:160,live:true,noimg:true},{c:'Northwind Tees',l:'Harbor lights · Front · T-shirt',s:'failed',a:'12 min',h:300,note:'KIE 502 · Retry re-queues the generate step'}];
+const tile=t=>`<article class="tile" tabindex="0"><div class="thumb checker checker-sm">${t.noimg?`<span class="pos-tl" style="left:4px;top:4px"><i class="dot dot-live" data-tone="generating"></i></span>`:`<svg class="art img-in" data-loaded="true" style="filter:hue-rotate(${t.h}deg)"><use href="#art"/></svg>`}</div><div class="tile-body"><div class="t-sm">${t.c}</div><div class="t-xs fg2">${t.l}</div><div class="tile-meta"><span class="badge" data-tone="${t.s}">${LABEL[t.s]}</span><i class="dot${t.live?' dot-live':''}" data-tone="${t.s}"></i><span class="mono">${t.a}</span></div>${t.note?`<div class="t-xs fg3">${t.note}</div>`:''}</div></article>`;
+const host=$('#lane-tiles'),count=$('#lane-count');
+function render(){host.innerHTML=T.map(tile).join('');count.textContent=String(T.length)}
+render();
+let n=0;$('#tile-arrive').addEventListener('click',()=>{n++;const t={c:['Bluff Coffee','Salt & Cedar','Juniper Run'][n%3],l:'New card · Front · T-shirt',s:'needs_review',a:'now',h:(n*70)%360};T.unshift(t);host.insertAdjacentHTML('afterbegin',tile(t));count.textContent=String(T.length)});
+$('#paused-toggle').addEventListener('click',()=>{const s=$('#paused-strip');s.hidden=!s.hidden;if(!s.hidden)restart(s,'paused-strip')});
+function skeleton(){host.innerHTML=[0,1].map(i=>`<div class="tile-sk"><div class="skeleton" style="--i:${i};width:56px;height:56px"></div><div class="col" style="flex:1;gap:8px;justify-content:center"><div class="skeleton" style="--i:${i};height:12px;width:60%"></div><div class="skeleton" style="--i:${i};height:10px;width:80%"></div></div></div>`).join('');wait(1400,render,'board')}
+$('#board-skeleton').addEventListener('click',()=>{DM.stopGroup('board');skeleton()});
+DM.boardSkeleton=skeleton;
+})();
+
+/* ---------- 0 · toolbar: theme · reduced motion · speed · replay · split ---------- */
+(function(){
+const {$,$$,html,setSpeed,q,EMBED}=DM;
+function applyTheme(t){if(t)html.dataset.theme=t;else delete html.dataset.theme;try{if(t)localStorage.setItem('dm-theme',t);else localStorage.removeItem('dm-theme')}catch(e){}$$('#theme-seg .seg-item').forEach(b=>b.setAttribute('aria-checked',String((b.dataset.theme||'')===(t||''))));requestAnimationFrame(()=>DM.renderTokens());const pf=$('#phone-frame');if(pf&&pf.src)pf.src=DM.base()+'?embed=sheet'+(t?'&theme='+t:'')}
+DM.base=()=>location.href.split('#')[0].split('?')[0];
+$('#theme-seg').addEventListener('click',e=>{const b=e.target.closest('.seg-item');if(b)applyTheme(b.dataset.theme||'')});
+$$('#theme-seg .seg-item').forEach(b=>b.setAttribute('aria-checked',String((b.dataset.theme||'')===(html.dataset.theme||''))));
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>requestAnimationFrame(()=>DM.renderTokens()));
+const mt=$('#motion-toggle');mt.addEventListener('click',()=>{const on=mt.getAttribute('aria-pressed')!=='true';mt.setAttribute('aria-pressed',String(on));if(on)html.dataset.motion='reduce';else delete html.dataset.motion});
+if(matchMedia('(prefers-reduced-motion: reduce)').matches)mt.title='The OS already asks for reduced motion; this toggle adds nothing';
+$('#speed-seg').addEventListener('click',e=>{const b=e.target.closest('.seg-item');if(b)setSpeed(Number(b.dataset.speed))});
+setSpeed(5);
+const split=$('#split'),sb=$('#split-btn');
+sb.addEventListener('click',()=>{const open=split.hidden;if(open){if(!split.children.length)['light','dark'].forEach(t=>{const f=document.createElement('iframe');f.title=t+' theme';f.src=`${DM.base()}?embed=1&theme=${t}`;split.appendChild(f)});split.hidden=false;document.body.style.overflow='hidden';sb.innerHTML=`${DM.I('x')}Close split`}else{split.hidden=true;document.body.style.overflow='';sb.innerHTML=`${DM.I('columns')}Split light | dark`}});
+})();
+</script>
+
+<script>
+/* ---------- 5 · card page hero: one state machine, every state a pure function of the props the page already has ---------- */
+(function(){
+const {$,$$,I,fmt,gauge,EXP,OVERDUE,clock,wait,later,stopGroup,restart,leave,LABEL,toast,reduced}=DM;
+const G='hero',E=id=>document.getElementById(id);
+const H={frame:E('hf'),art:E('h-art'),refs:E('hl-refs'),dev:E('hl-dev'),underlay:E('hl-underlay'),rect:E('hl-rect'),rectIn:E('hl-rect-in'),ins:E('hl-ins'),fin:E('hl-fin'),chip:E('h-chip'),counter:E('h-counter'),verdict:E('h-verdict'),current:E('h-current'),edit:E('h-edit'),status:E('r-status'),actions:E('r-actions'),log:E('r-log'),stage:E('h-stage'),age:E('h-age'),banner:E('h-banner'),spec:E('h-spec'),qcRows:E('qc-rows'),qcFacts:E('qc-facts'),qcBadge:E('qc-badge'),qcCorr:E('qc-corrective'),qcPanel:E('qc-panel'),note:E('hero-note'),stripLine:$('#strip-run .strip-line'),stripCounter:E('strip-run-counter'),stripCap:E('strip-run-cap')};
+const LIVE=['approved','generating','editing','finishing'];
+const CHECKS=['Text matches the brief','Text legible at print size','Style Card palette','Linework weight','Composition inside the safe area','Background transparent','No extra text','Subject matches the brief','Typography case','Signature move present','Never-do rules'];
+const chip=(tone,text,live)=>{H.chip.hidden=false;const d=H.chip.firstElementChild;d.dataset.tone=tone;d.classList.toggle('dot-live',!!live);H.chip.lastElementChild.textContent=text};
+const counter=(text,tone)=>{if(text==null){H.counter.hidden=true;return}H.counter.hidden=false;H.counter.textContent=text;if(tone)H.counter.dataset.tone=tone;else H.counter.removeAttribute('data-tone')};
+const stage=(name,age)=>{H.stage.dataset.tone=name;H.stage.lastElementChild.textContent=LABEL[name];H.stage.firstElementChild.classList.toggle('dot-live',LIVE.includes(name));if(age)H.age.textContent=age};
+const status=t=>{if(H.status.textContent!==t)H.status.textContent=t};
+const railNow=h=>{H.actions.innerHTML=h;H.actions.classList.remove('fading')};
+const rail=h=>{H.actions.classList.add('fading');wait(150,()=>{railNow(h);restart(H.actions,'animate-fade-up')},G)};
+const log=rows=>{if(!rows){H.log.hidden=true;return}H.log.hidden=false;H.log.innerHTML=rows.map(r=>`<li data-state="${r.s}">${r.s==='done'?`<span class="glyph">${I('check')}</span>`:r.s==='active'?`<i class="dot dot-live" data-tone="${r.tone||'generating'}"></i>`:'<i class="dot hollow"></i>'}<span>${r.l}</span><span class="mono">${r.t}</span></li>`).join('')};
+const note=t=>{H.note.textContent=t};
+const showArt=settle=>{H.art.removeAttribute('hidden');H.art.dataset.loaded='true';if(settle)restart(H.art,'landed')};
+const stripRun=(on,t)=>{H.stripLine.hidden=!on;H.stripCounter.hidden=!on;if(on){H.stripCounter.textContent=fmt(t||0);H.stripCap.textContent='regenerate · running'}else H.stripCap.textContent='regenerate · 3 min'};
+const PARK=`<div class="row"><button class="btn btn-md btn-ghost" title="Park  P">${I('pause')}Park</button></div>`;
+const ACCEPT=`<button class="btn btn-lg btn-primary" title="Accept · finish  A">${I('check')}Accept · finish</button><div class="row"><button class="btn btn-md btn-secondary" title="Fix an area  F">${I('crop')}Fix an area</button><button class="btn btn-md btn-secondary" title="Try again  R">${I('refresh')}Try again</button><button class="btn btn-md btn-ghost" title="Park  P">${I('pause')}Park</button></div><div class="row" style="gap:6px"><span class="kbd">A</span><span class="t-2xs fg3">accept</span><span class="kbd">F</span><span class="t-2xs fg3">fix</span><span class="kbd">R</span><span class="t-2xs fg3">retry</span><span class="kbd">P</span><span class="t-2xs fg3">park</span></div>`;
+function qcIdle(){H.qcRows.dataset.resolving='false';H.qcRows.dataset.dim='false';H.qcRows.innerHTML='';H.qcFacts.innerHTML='score — · <span class="badge">Not run</span> · passed —/11 · gpt-4.1-vision';H.qcBadge.removeAttribute('data-tone');H.qcBadge.textContent='Not run';H.qcCorr.hidden=true}
+function qcJudging(){H.qcRows.dataset.resolving='false';H.qcRows.dataset.dim='false';H.qcRows.innerHTML=CHECKS.map((c,i)=>`<li class="qc-row" style="--i:${i}"><i class="qc-ring${i===0?' active':''}"></i><span>${c}</span></li>`).join('');H.qcFacts.innerHTML='<span class="skeleton sk-line" style="--i:0"></span><span class="skeleton sk-line" style="--i:1;max-width:72px"></span>';H.qcBadge.dataset.tone='info';H.qcBadge.innerHTML='<i class="dot dot-live"></i>Judging';H.qcPanel.open=true}
+function qcResolve(fails){H.qcRows.innerHTML=CHECKS.map((c,i)=>{const bad=fails.includes(i);return`<li class="qc-row" style="--i:${i}"><i class="qc-glyph ${bad?'bad':'ok'}">${I(bad?'x':'check')}</i><span>${c}</span><span class="note mono">${bad?'fail':'pass'}</span></li>`}).join('');H.qcRows.dataset.resolving='true';const n=CHECKS.length-fails.length,pass=!fails.length;H.qcFacts.innerHTML=`score ${pass?91:74} · <span class="badge" data-tone="${pass?'ok':'bad'}">${pass?'Pass':'Fail'}</span> · passed ${n}/11 · gpt-4.1-vision`;H.qcBadge.dataset.tone=pass?'ok':'bad';H.qcBadge.textContent=pass?'Pass':'Fail'}
+function reset(){stopGroup(G);[H.refs,H.dev,H.rect,H.ins,H.fin,H.verdict,H.current,H.edit,H.banner,H.spec].forEach(e=>{e.hidden=true;e.classList.remove('leaving')});H.underlay.setAttribute('hidden','');['data-tone','data-overdue','data-half'].forEach(a=>H.dev.removeAttribute(a));H.dev.style.setProperty('--p',0);H.rectIn.style.setProperty('--p',0);H.frame.classList.remove('frame-pulse','waiting','editing-ring','hold');H.frame.dataset.kind='';H.art.setAttribute('hidden','');H.art.classList.remove('landed');H.art.style.opacity='';H.chip.hidden=true;H.counter.hidden=true;H.log.hidden=true;H.banner.innerHTML='';$$('.finish-seg',H.fin).forEach(s=>{s.style.setProperty('--p',0);s.removeAttribute('data-done')});stripRun(false);qcIdle()}
+function idle(text){H.frame.classList.add('hold');note('idle · '+(text||'')+' · nothing loops except StatusDots')}
+const genLog=(t,active)=>[{s:'done',l:'Brief snapshot',t:'0:01'},{s:active===1?'active':'done',l:'Image model',t:active===1?fmt(t):'0:41'},{s:active===2?'active':'todo',l:'QC judge',t:active===2?fmt(t):'~0:10'},{s:'todo',l:'Ready to review',t:''}];
+const hero={
+  intake(next){reset();stage('intake','in intake for 0 s');status('Reading the references. The card moves to Review by itself.');railNow(PARK);H.refs.hidden=false;chip('intake','Reading 3 references',true);note('intake · reference_paths via useSignedUrl · 2px stage.intake ring steps every 1.2 s · counter to ~0:10');const refs=$$('.ref',H.refs);let i=0;const ring=()=>{refs.forEach((r,k)=>r.dataset.on=String(k===i%3));i++;wait(1200,ring,G)};ring();clock({g:G,until:EXP.intake,tick:t=>{counter(`${fmt(t)} · ~${fmt(EXP.intake)}`);H.age.textContent=`in intake for ${t} s`},done:()=>{stopGroup(G);next?next():idle('intake done')}})},
+  queued(next){reset();stage('approved','in approved for 0 s');status('Queued for a generation slot.');railNow(PARK);note('approved · neutral StatusDot breathing in the chip · no wash · paused → "Paused by the lead", static dot');clock({g:G,until:5,tick:t=>{chip('intake',`Queued for a generation slot · ${fmt(t)}`,true);H.age.textContent=`in approved for ${t} s`},done:()=>next?next():idle('queued')})},
+  generating(next,o={}){const from=o.from||0,until=o.until==null?EXP.generate:o.until;if(!o.keep){reset();stage('generating','in generating for 0 s')}status(o.regen?'Correcting the design.':'Drawing the design.');railNow(PARK);H.dev.hidden=false;if(o.regen){H.underlay.removeAttribute('hidden');H.art.setAttribute('hidden','')}chip('generating',o.label||'Drawing the design',true);note(o.regen?'corrective retry · INSPECT → DEVELOP 300 ms · failed image as blurred underlay · no ring pulse':'generating · DEVELOP wash clipped to p + boundary line with glow 1600 ms · p = .92·(1−e^(−3t/40)) · 1 s linear step');
+    clock({g:G,from,until,tick:t=>{const p=gauge(t,EXP.generate);H.dev.style.setProperty('--p',p);stripRun(true,t);H.age.textContent=`in generating for ${t<60?t+' s':Math.floor(t/60)+' min'}`;if(t>=OVERDUE){counter(`${fmt(t)} · longer than usual`,'warn');H.dev.dataset.overdue='true';status('Drawing the design. Longer than usual; check the queue and the paused banner.')}else if(t>EXP.generate){counter(`${fmt(t)} · usually ~${fmt(EXP.generate)}`);H.dev.dataset.overdue='true'}else counter(`${fmt(t)} · ~${fmt(EXP.generate)}`);log(genLog(t,1))},
+      done:()=>{if(o.then){o.then();return}leave(H.dev,300,G);H.underlay.setAttribute('hidden','');showArt(true);stripRun(false);wait(420,()=>next?next():(H.frame.classList.add('hold'),log(genLog(41,2)),note('image landed · Img settle 400 ms · INSPECT would start now (image_path without qc_report)')),G)}})},
+  qc(next,o={}){if(!o.keep){reset();stage('generating','in generating for 41 s')}showArt(false);H.ins.hidden=false;chip('white','Judging · 11 checks',true);qcJudging();status('Judging the design.');log(genLog(41,2));note('QC · INSPECT band 1800 ms alternate + static viewfinder corners over the sharp image · QC rows as hollow rings, first one breathing');clock({g:G,until:EXP.qc,tick:t=>{counter(`${fmt(t)} · ~${fmt(EXP.qc)}`);log(genLog(t,2))},done:()=>o.onFail?o.onFail():hero.landed(next,{keep:true})})},
+  landed(next,o={}){if(!o.keep){reset();stage('generating');showArt(false);H.ins.hidden=false;qcJudging();wait(700,()=>hero.landed(next,{keep:true}),G);return}leave(H.ins,300,G);if(!reduced())restart(H.frame,'frame-pulse');H.verdict.hidden=false;restart(H.verdict,'animate-pop-in-slow');qcResolve([]);stage('needs_review','in needs review for 0 s');status('Check the picture. Accept it, or click the picture to change its text.');H.chip.hidden=true;counter(null);H.current.hidden=false;H.edit.hidden=false;log(null);rail(ACCEPT);note('landing · overlay leaves 300 ms · one ring pulse 600 ms (never repeated for the same generation id) · verdict pop-in 240 ms · rows resolve 220 ms, stagger 50 ms · rail cross-fades');wait(900,()=>next?next():idle('needs review'),G)},
+  finishing(next,o={}){if(!o.keep){reset();showArt(false)}stage('finishing','in finishing for 0 s');H.frame.dataset.kind='finish';H.fin.hidden=false;H.current.hidden=true;H.edit.hidden=true;H.verdict.hidden=true;railNow('');note('finishing · FINISH rail 55/40/25 over the bottom edge · active segment gauge · chip names the step · StatusLine bolds the active step');const segs=$$('.finish-seg',H.fin),T=EXP.fin,NAMES=['Upscale ×4','Remove background','300 DPI'];clock({g:G,until:EXP.finish,tick:t=>{const start=[0,T[0],T[0]+T[1]];const i=t<T[0]?0:t<T[0]+T[1]?1:2;segs.forEach((s,k)=>{if(k<i)s.dataset.done='true';else s.removeAttribute('data-done');s.style.setProperty('--p',k===i?gauge(t-start[i],T[i]):0)});chip('finishing',`Finishing · ${NAMES[i]} · ${i+1}/3`,true);counter(`${fmt(t)} · ~${fmt(EXP.finish)}`);H.age.textContent=`in finishing for ${t<60?t+' s':Math.floor(t/60)+' min'}`;status(`Finishing, ${NAMES[i].toLowerCase()}.`);log(NAMES.map((n,k)=>({s:k<i?'done':k===i?'active':'todo',l:n,t:k<i?fmt(T[k]):k===i?fmt(t-start[i]):`~${fmt(T[k])}`,tone:'finishing'})))},done:()=>next?next():hero.delivered(null,{keep:true})})},
+  delivered(next,o={}){if(!o.keep){reset()}stage('delivered','delivered just now');H.fin.hidden=true;H.frame.dataset.kind='';chip('delivered','Print-ready',false);counter(null);showArt(true);H.spec.hidden=false;restart(H.spec,'animate-fade');status('Print-ready. The final PNG is in Completed.');rail(`<button class="btn btn-md btn-secondary">${I('download')}Download PNG</button><button class="btn btn-link">Open in Completed</button>`);log(null);idle('delivered · settle of the final if its path differs · mono spec line fades in 200 ms')},
+  overdue(){hero.generating(null,{from:30,until:60,then:()=>{note('overdue · past 40 s the counter reads "usually ~0:40" and the glow slows to 3200 ms · skipping to 3:55 …');later(2,()=>hero.generating(null,{keep:true,from:235,until:250,then:()=>{H.frame.classList.add('hold');note('overdue · past OVERDUE_MS (4 min) the counter turns warn "longer than usual" · no new motion, the slowdown is the cue')}}),G)}})},
+  failed(){hero.generating(null,{until:18,then:()=>{H.dev.dataset.tone='frozen';H.dev.removeAttribute('data-overdue');chip('failed','Stopped',false);counter('Stopped · Retry re-queues this step','bad');stage('failed','failed 12 s ago');status('The generate step stopped. Fix the cause and retry.');stripRun(false);log(null);railNow('');H.banner.hidden=false;H.banner.innerHTML=`<div class="well banner"><div class="mono t-xs fg2">KIE 502 · upstream timeout after 60 s · task 8f3a91c2</div><div class="row mt8"><button class="btn btn-md btn-primary" id="retry-btn"><span class="slot">${I('rotate')}</span><span>Retry</span></button><button class="btn btn-md btn-ghost" title="Park  P">${I('pause')}Park</button></div></div>`;note('failed · overlay data-tone=frozen (glow paused, wash neutral over 300 ms) · banner .well mono error + Retry primary fade-up · dot static bad');$('#retry-btn').addEventListener('click',function(){this.setAttribute('aria-busy','true');this.firstElementChild.innerHTML=I('loader','spin');wait(800,()=>{H.banner.classList.add('leaving');wait(200,()=>{H.banner.classList.remove('leaving');hero.queued(()=>hero.generating(()=>hero.qc(()=>hero.landed())))},G)},G)})}})},
+  retry(){reset();stage('generating','in generating for 41 s');hero.qc(null,{keep:true,onFail:()=>{qcResolve([3,8]);H.qcRows.dataset.dim='true';H.qcCorr.hidden=false;leave(H.ins,300,G);H.verdict.hidden=false;H.verdict.dataset.tone='bad';H.verdict.textContent='QC Fail';restart(H.verdict,'animate-pop-in-slow');status('QC failed two checks. Correcting the design automatically.');wait(900,()=>{H.verdict.hidden=true;H.verdict.dataset.tone='ok';H.verdict.textContent='QC Pass';hero.generating(()=>{H.qcRows.dataset.dim='false';H.qcCorr.hidden=true;hero.qc(()=>hero.landed(null,{keep:true}),{keep:true})},{keep:true,regen:true,label:'Correcting · attempt 2'})},G)}})},
+  edit(){reset();showArt(false);H.art.style.opacity='.85';H.frame.classList.add('editing-ring');stage('editing','in editing for 0 s');status('Fixing the area you drew.');railNow('');H.rect.hidden=false;H.rectIn.dataset.tone='editing';chip('editing','Fixing the area',true);note('editing · edit_region confines the three DEVELOP layers to a .develop-rect from mask_rect (dashed accent outline) · rest at 85 % · ring-2 ring-ring while editing');clock({g:G,until:EXP.generate,tick:t=>{H.rectIn.style.setProperty('--p',gauge(t,EXP.generate));counter(`${fmt(t)} · ~${fmt(EXP.generate)}`);stripRun(true,t);log([{s:'done',l:'Region composite',t:'0:02'},{s:'active',l:'Image model',t:fmt(t),tone:'editing'},{s:'todo',l:'QC judge',t:'~0:10'},{s:'todo',l:'Ready to review',t:''}])},done:()=>{leave(H.rect,300,G);H.art.style.opacity='';H.frame.classList.remove('editing-ring');showArt(true);if(!reduced())restart(H.frame,'frame-pulse');stripRun(false);stage('needs_review','in needs review for 0 s');H.chip.hidden=true;counter(null);H.current.hidden=false;H.edit.hidden=false;log(null);rail(ACCEPT);status('Check the picture. Accept it, or click the picture to change its text.');wait(900,()=>idle('edit landed'),G)}})},
+  waiting(){reset();showArt(false);H.frame.classList.add('waiting');stage('waiting','parked 3 h ago');chip('waiting','Parked from Review · 3 h',false);status('Parked. Resume to continue from Review.');railNow('');H.banner.hidden=false;H.banner.innerHTML=`<div class="well banner"><div class="row"><span class="badge" data-tone="warn">Waiting</span><span class="t-sm" style="font-weight:400">Client to confirm the second text line.</span></div><div class="row mt8"><button class="btn btn-md btn-primary" id="resume-btn">${I('play')}Resume</button></div></div>`;note('waiting · frame static at 70 % · Pause chip "Parked from Review · 3 h" · banner fade-up · Resume cross-fades 200 ms');$('#resume-btn').addEventListener('click',()=>{H.banner.classList.add('leaving');H.frame.classList.remove('waiting');wait(200,()=>{H.banner.hidden=true;H.banner.classList.remove('leaving');H.chip.hidden=true;stage('needs_review','in needs review for 0 s');H.current.hidden=false;H.edit.hidden=false;rail(ACCEPT);status('Check the picture. Accept it, or click the picture to change its text.');idle('resumed')},G)});idle('waiting')},
+  stop(){reset();stage('review','in review for 2 min');status('Edit the brief, then generate the design.');railNow(`<button class="btn btn-lg btn-primary" title="Opens the Generate dialog; nothing is spent until you confirm there" id="gen-open">${I('image-plus')}Generate the design<span class="price">$0.60</span></button>`+PARK);note('review · empty frame is the call to action (neutral dashed tile on .checker, only the button in brand)');$('#gen-open').addEventListener('click',e=>DM.openDialog(e.currentTarget))},
+  playAll(){reset();hero.intake(()=>hero.queued(()=>hero.generating(()=>hero.qc(()=>hero.landed(()=>later(3,()=>hero.finishing(()=>hero.delivered(null,{keep:true})),G))))))}
+};
+$('#hero-btns').addEventListener('click',e=>{const b=e.target.closest('[data-play]');if(!b)return;const k=b.dataset.play;if(k==='all')hero.playAll();else if(hero[k])hero[k]()});
+DM.hero=hero;
+})();
+
+/* ---------- 6 · finishing rail (enlarged) · LoadingBar modes · TimeCounter live ---------- */
+(function(){
+const {$,$$,fmt,gauge,EXP,clock,wait,stopGroup}=DM;
+const segs=$$('#rail-lg .finish-seg'),chipT=$('#rail-lg-chip span:last-child'),cnt=$('#rail-lg-counter'),T=EXP.fin,NAMES=['Upscale ×4','Remove background','300 DPI'];
+function railPlay(){stopGroup('rail');clock({g:'rail',until:EXP.finish,tick:t=>{const start=[0,T[0],T[0]+T[1]],i=t<T[0]?0:t<T[0]+T[1]?1:2;segs.forEach((s,k)=>{if(k<i)s.dataset.done='true';else s.removeAttribute('data-done');s.style.setProperty('--p',k===i?gauge(t-start[i],T[i]):0)});chipT.textContent=`Finishing · ${NAMES[i]} · ${i+1}/3`;cnt.textContent=`${fmt(t)} · ~${fmt(EXP.finish)}`},done:()=>{segs.forEach(s=>s.dataset.done='true');chipT.textContent='Print-ready'}})}
+$('#rail-lg-play').addEventListener('click',railPlay);
+const ind=$('#bar-ind'),ga=$('#bar-gauge'),det=$('#bar-det'),gcap=$('#bar-gauge-cap'),dcap=$('#bar-det-cap');
+function barsIdle(){ind.dataset.mode='idle';ga.dataset.mode='gauge';ga.style.setProperty('--p',0);det.dataset.mode='determinate';det.style.setProperty('--p',.25)}
+function barsPlay(){stopGroup('bars');barsIdle();ind.dataset.mode='indeterminate';wait(3000,()=>{ind.dataset.mode='idle'},'bars');clock({g:'bars',until:EXP.analyse,tick:t=>{ga.style.setProperty('--p',gauge(t,EXP.analyse));gcap.textContent=`gauge · Reading 6 images · ${fmt(t)} · ~0:35 · aria-valuetext "about ${Math.round(gauge(t,EXP.analyse)*100)}% by time, in words"`},done:()=>{ga.dataset.mode='done';gcap.textContent='gauge · completes 300 ms on done'}});let n=3;const step=()=>{det.style.setProperty('--p',n/12);det.setAttribute('aria-valuetext',`Fetching ${n} of 12`);dcap.textContent=`determinate · Fetching ${n} of 12 · 400 ms out-strong · real counts only`;if(n<12){n++;wait(700,step,'bars')}};step()}
+$('#bars-play').addEventListener('click',barsPlay);barsIdle();
+const tc=$('#tc-live');function tcPlay(){stopGroup('tc');clock({g:'tc',until:60,tick:t=>{tc.textContent=t>EXP.generate?`${fmt(t)} · usually ~0:40`:`${fmt(t)} · ~0:40`}})}
+DM.railPlay=railPlay;DM.barsPlay=barsPlay;DM.tcPlay=tcPlay;
+})();
+
+/* ---------- 7 · wizard: DraftProgress + lock success ---------- */
+(function(){
+const {$,$$,I,fmt,gauge,EXP,SLOW,clock,wait,stopGroup,restart,toast,reduced}=DM;
+const G='wiz',badge=$('#draft-badge'),line=$('#draft-line'),cnt=$('#draft-counter'),bar=$('#draft-bar'),ev=$('#evidence'),slow=$('#draft-slow'),readout=$('#draft-readout'),mark=$('#wiz-analyse-mark'),sub=$('#wiz-analyse-sub'),stepA=$('#wiz-analyse'),stepL=stepA.nextElementSibling,play=$('#draft-play');
+ev.innerHTML=[0,40,90,160,220,300].map((h,i)=>`<div class="ev checker checker-sm" data-on="false"><svg class="art" style="filter:hue-rotate(${h}deg)"><use href="#art"/></svg></div>`).join('');
+const thumbs=$$('.ev',ev);
+const setBadge=(tone,text,live)=>{if(tone)badge.dataset.tone=tone;else badge.removeAttribute('data-tone');badge.firstElementChild.classList.toggle('dot-live',!!live);badge.lastElementChild.textContent=text};
+function idle(){stopGroup(G);thumbs.forEach(t=>t.dataset.on='false');slow.hidden=true;readout.hidden=true;readout.innerHTML='';cnt.hidden=true;bar.dataset.mode='idle';bar.style.setProperty('--p',0);setBadge('', 'Not started',false);line.textContent='Drop the designs, write the brief, then analyse.';stepA.dataset.state='active';mark.textContent='3';sub.textContent='Draft the Style Card';stepL.dataset.state='todo';play.removeAttribute('aria-busy');play.firstElementChild.innerHTML=I('scan')}
+function draft(fail){idle();play.setAttribute('aria-busy','true');play.firstElementChild.innerHTML=I('loader','spin');setBadge('', 'Queued',true);line.textContent='Queued for the analyser';bar.dataset.mode='indeterminate';sub.textContent='Queued';
+  wait(3000/DM.SPEED*1.5,()=>{setBadge('info','Working',true);bar.dataset.mode='gauge';cnt.hidden=false;let i=0;const ring=()=>{thumbs.forEach((t,k)=>t.dataset.on=String(k===i%6));i++;wait(1200,ring,G)};ring();mark.innerHTML='<i class="dot dot-live" data-tone="generating"></i>';
+    clock({g:G,until:fail?12:EXP.analyse,tick:t=>{bar.style.setProperty('--p',gauge(t,EXP.analyse));line.textContent=`Reading 6 images · ${fmt(t)} · ~${fmt(EXP.analyse)}`;cnt.textContent=`${fmt(t)} · ~${fmt(EXP.analyse)}`;sub.textContent=`Analysing · ${fmt(t)}`;if(t>=SLOW)slow.hidden=false},
+      done:()=>{stopGroup(G);thumbs.forEach(t=>t.dataset.on='false');play.removeAttribute('aria-busy');play.firstElementChild.innerHTML=I('scan');
+        if(fail){bar.dataset.mode='failed';bar.style.setProperty('--p',gauge(12,EXP.analyse));setBadge('bad','Failed',false);line.textContent='The analyser stopped';cnt.hidden=true;mark.textContent='3';stepA.dataset.state='attention';sub.textContent='Failed · try again';readout.hidden=false;readout.innerHTML=`<div class="well banner"><div class="mono t-xs fg2">OpenRouter 429 · rate limited after 3 retries</div><div class="row mt8"><button class="btn btn-md btn-primary" id="draft-again">${I('rotate')}Try again</button><button class="btn btn-md btn-ghost">Show error</button></div></div>`;$('#draft-again').addEventListener('click',()=>draft(false));return}
+        bar.dataset.mode='done';setBadge('ok','Done',false);line.textContent='Style Card v4 drafted · 6 images read';cnt.hidden=true;mark.innerHTML=`<svg class="ic" style="width:12px;height:12px;stroke-width:2.5"><use href="#i-check"/></svg>`;stepA.dataset.state='done';sub.textContent='Draft v4 ready';stepL.dataset.state='active';
+        wait(300,()=>{readout.hidden=false;readout.innerHTML=[
+          `<div class="well"><div class="t-2xs fg3">Palette</div><div class="row mt8" style="gap:6px">${['#f3ecd9','#d4553a','#2f5a3e','#1c1a17'].map(h=>`<span class="col" style="gap:2px;align-items:center"><i style="display:block;width:28px;height:28px;border-radius:8px;background:${h};border:1px solid rgb(var(--line)/var(--hair))"></i><span class="mono t-2xs fg3" style="font-weight:400">${h}</span></span>`).join('')}</div></div>`,
+          `<div class="well"><div class="t-2xs fg3">Typography</div><div class="row mt8" style="gap:12px"><span class="display t-xl" style="font-weight:700">Condensed grotesque</span><span class="t-sm fg2">arc + banner · uppercase · tracked</span></div></div>`,
+          `<div class="well"><div class="t-2xs fg3">Never do</div><ul class="mt8 t-sm fg2" style="font-weight:400;display:flex;flex-direction:column;gap:2px"><li>No gradients inside the badge</li><li>No more than two type styles</li><li>Keep the silhouette unbroken</li></ul></div>`].map((h,i)=>`<div class="animate-fade-up" style="animation-delay:${i*60}ms">${h}</div>`).join('')},G)}})},G)}
+$('#draft-play').addEventListener('click',()=>draft(false));$('#draft-fail').addEventListener('click',()=>draft(true));
+const xf=$('#lock-xfade'),box=$('#lock-box'),chk=$('#lock-check'),frame=$('#lock-frame'),lockBtn=$('#lock-play'),ver=$('#wiz-version'),noteL=$('#lock-note');
+function lockReset(){[...xf.children].forEach((c,i)=>c.dataset.off=String(i!==0));box.hidden=true;chk.classList.remove('go');lockBtn.removeAttribute('aria-busy');lockBtn.firstElementChild.innerHTML=I('lock');lockBtn.lastElementChild.firstChild.textContent='Lock v4 & test render';ver.dataset.tone='warn';ver.textContent='Draft v4';noteL.textContent='Test render passed QC · 0:48';frame.classList.remove('pulse-once')}
+function lockPlay(){if(lockBtn.getAttribute('aria-busy')==='true')return;lockBtn.setAttribute('aria-busy','true');lockBtn.firstElementChild.innerHTML=I('loader','spin');wait(800,()=>{[...xf.children].forEach((c,i)=>c.dataset.off=String(i!==1));box.hidden=false;restart(box,'animate-fade-up');restart(chk,'go');if(!reduced())restart(frame,'pulse-once');ver.dataset.tone='ok';ver.textContent='v4 locked';noteL.textContent='Locked just now · cards use v4';lockBtn.firstElementChild.innerHTML=I('check');lockBtn.lastElementChild.firstChild.textContent='Locked';toast('Style Card v4 locked','ok');stepL.dataset.state='done'},G)}
+lockBtn.addEventListener('click',lockPlay);$('#lock-reset').addEventListener('click',lockReset);lockReset();
+DM.draftPlay=()=>draft(false);DM.lockReset=lockReset;DM.draftIdle=idle;
+})();
+
+/* ---------- 8 · dialog (single implementation): scrim fade 200 · enter-dialog 200 / enter-sheet 240 · leave 150 · trap · Escape · return focus ---------- */
+(function(){
+const {$,$$,I,wait,toast,EMBED}=DM;
+const root=$('#dlg-root'),dlg=$('#dlg'),scrim=$('#dlg-scrim'),go=$('#dlg-go');let opener=null,closing=false;
+function open(btn){opener=btn||document.activeElement;root.hidden=false;dlg.classList.remove('out');scrim.classList.remove('out');go.focus()}
+function close(){if(root.hidden||closing)return;closing=true;dlg.classList.add('out');scrim.classList.add('out');wait(150,()=>{root.hidden=true;closing=false;dlg.classList.remove('out');scrim.classList.remove('out');if(opener&&opener.focus)opener.focus()})}
+document.addEventListener('keydown',e=>{if(root.hidden)return;if(e.key==='Escape'){close();return}if(e.key==='Tab'){const f=$$('button:not([disabled])',dlg),a=document.activeElement;if(e.shiftKey&&a===f[0]){e.preventDefault();f[f.length-1].focus()}else if(!e.shiftKey&&a===f[f.length-1]){e.preventDefault();f[0].focus()}}if(e.key==='Enter'&&e.target.tagName!=='BUTTON'){go.click()}});
+scrim.addEventListener('click',close);$('#dlg-x').addEventListener('click',close);$('#dlg-cancel').addEventListener('click',close);
+go.addEventListener('click',()=>{if(go.getAttribute('aria-busy')==='true')return;go.setAttribute('aria-busy','true');go.firstElementChild.outerHTML=I('loader','spin');wait(700,()=>{go.removeAttribute('aria-busy');go.firstElementChild.outerHTML=I('image-plus');close();toast('Generation queued','ok');if(!EMBED&&DM.hero)DM.hero.queued(()=>DM.hero.generating(()=>DM.hero.qc(()=>DM.hero.landed())))})});
+$('#dlg-open').addEventListener('click',e=>open(e.currentTarget));
+const so=$('#sheet-open');if(so)so.addEventListener('click',e=>open(e.currentTarget));
+DM.openDialog=open;DM.closeDialog=close;
+})();
+
+/* ---------- init · replay all · embeds ---------- */
+(function(){
+const {$,html,EMBED,wait}=DM;
+DM.renderTokens();
+function replayAll(){DM.hero.playAll();DM.draftPlay();DM.lockReset();DM.railPlay();DM.barsPlay();DM.tcPlay();DM.skeletonDemo();DM.boardSkeleton()}
+$('#replay-all').addEventListener('click',replayAll);
+if(EMBED==='sheet'){wait(300,()=>DM.openDialog($('#sheet-open')))}
+else{
+  const pf=$('#phone-frame');if(pf){const t=html.dataset.theme;const io=new IntersectionObserver(en=>{if(en.some(x=>x.isIntersecting)){pf.src=DM.base()+'?embed=sheet'+(t?'&theme='+t:'');io.disconnect()}},{rootMargin:'400px'});io.observe(pf)}
+  DM.skeletonDemo();wait(400,()=>{DM.hero.playAll();DM.tcPlay()})
+}
+window.addEventListener('error',e=>{const n=$('#hero-note');if(n)n.textContent='console error: '+e.message});
+})();
+</script>
+</body>
+</html>

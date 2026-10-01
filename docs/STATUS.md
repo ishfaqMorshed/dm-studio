@@ -22,7 +22,8 @@ One page the user can open at any time. Three lists: done / ongoing / to-do. Mir
 
 ## Ongoing
 
-- WF-1b swap to `baCsaUp7HdrrSf2i` (deterministic image order + `reference_ids` in drafts) — created and verified, waiting for the user to deactivate `CsohPMosybjBoP8s` / activate the new one (see `tests/e2e/BUGS.md` → Run 5).
+- WF-1b Style Card v2 (spec `docs/stylecard-v2-spec.md` 2.1): `n8n/wf1b-style-draft.sdk.js` rewritten — Pass A per-image sheets (style_sheet v1), style_profiler v3 tokens, style-card-check gate, one OpenRouter repair, `raw` on style_draft_requests; `node n8n/tools/check.js` + `node n8n/tools/test-wf1b-style.js` green. NOT applied to n8n yet: follow `docs/runbook-wf1b-style-card-v2.md` (ops in `n8n/ops/wf1b-from-base-baCsaUp7HdrrSf2i.ops.json` / `wf1b-from-live-CsohPMosybjBoP8s.ops.json`, or re-create from code), bind WF-6, unpublish `CsohPMosybjBoP8s`, publish, then activate style_sheet v1 + style_profiler v3 in the same step (R1). Supersedes the earlier `baCsaUp7HdrrSf2i` swap (that copy is the ops base).
+- Phase 2 apply (WF-1b `CsohPMosybjBoP8s`, WF-1 `CrpmkqYiaWBtvto6`, WF-2 `KVLDYPaWZZZtOoir`, WF-3 `V83NWHjzDdyiqtNP`): consolidated runbook `n8n/ops/README.md` - canonical ops `n8n/ops/wf1b.ops.json` (65), `wf1.ops.json` (22), `wf2.ops.json` (3), `wf3.ops.json` (2) + sticky ops, live baselines verified 2026-09-30, template activation SQL per step (R1), smoke checks, rollback. Nothing applied yet; Edge Functions prompt-engine v8 / qc-judge v2 / style-card-check deploy first.
 - Card-page redesign QA leftovers (4 minor, listed in `tests/e2e/BUGS.md` → Run 4).
 
 ## To-do (in order; who)

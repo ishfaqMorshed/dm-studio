@@ -25,7 +25,7 @@ Kie.ai keeps its EXISTING credentials (bind by id): images "GPT Image 2 [DM-Kie]
    rightValue expr("{{ $('Load Config').first().json.studioSecret }}"), typeValidation loose; false branch → a Set "Rejected" (no-op end).
    pg_net triggers and self-calls always send the header, so the IF is the auth.
 4. Supabase REST / RPC / Storage calls: HTTP Request WITHOUT credential; headers apikey = anonKey, x-studio-secret = studioSecret (+ Content-Type / Prefer as needed).
-5. Edge Function calls (prompt-engine, qc-judge): POST <sbUrl>/functions/v1/<name> with the same two headers.
+5. Edge Function calls (prompt-engine, qc-judge, style-card-check): POST <sbUrl>/functions/v1/<name> with the same two headers.
 6. Self-calls between workflows (dispatcher → worker webhook, ping): header x-studio-secret from config.
 7. Ideogram: header Api-Key = ideogramKey. imgbb: query key = imgbbKey. ModelsLab: key inside JSON body = mlKey.
 8. No Code node over 20 lines except the owner's frozen "Set 300 DPI" and the two verbatim ModelsLab evaluators.
@@ -41,6 +41,10 @@ Kie.ai keeps its EXISTING credentials (bind by id): images "GPT Image 2 [DM-Kie]
    (generations_card_id_fkey and cards_current_generation_fk), and an unnamed embed answers 300 PGRST201. The response key stays `cards`.
 12. cards.current_generation_id is written by an HTTP PATCH on cards (policy cards_worker_update, anon + studio_secret_ok()), not by rpc
    set_current_generation, which is staff-only (is_staff()) and returns 42501 to the worker.
+13. WF-1b's final status is an HTTP PATCH on style_draft_requests (policy sdr_worker_all, anon + studio_secret_ok()) because rpc
+   style_draft_update has no `raw` argument: "Draft → done" writes {status, style_card_id, n8n_execution_id, raw}, "Draft → failed" writes
+   {status, last_error, n8n_execution_id, raw}; "Draft → working" still calls the RPC. raw = {sheets, card, validation, template_versions}
+   (column added by studio_21). Vision HTTP nodes (Describe Designs, Profile Style and their OpenRouter twins) use timeout 240000.
 
 ## Workflow set and create order (all in folder QKT7A5gRiL349k8X, projectId i0N36mu4STExMeN4, never publish from code)
 WF-0 Studio Config → WF-5 Poll → WF-2 Generate → WF-3 Edit → WF-1 Intake → WF-1b Style Draft → WF-4 Finisher → WF-6 Error → WF-7 Lessons

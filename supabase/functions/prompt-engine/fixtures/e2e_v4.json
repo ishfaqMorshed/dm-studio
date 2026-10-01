@@ -1,0 +1,197 @@
+{
+  "source": "live rows fetched 2026-09-30 (read-only): style_cards 2e6c714a-cb42-4a2d-8aa7-6810931a441f (E2E Test Client v4, locked; json verbatim), cards 8620187c-c6f0-416c-9f44-cd8919d30073 (studio_20 style test card with client_submission.subject), clients bef63960 (style_brief + garment_colors).",
+  "style_card_id": "2e6c714a-cb42-4a2d-8aa7-6810931a441f",
+  "style_card_version": 4,
+  "style_card_status": "locked",
+  "style_card_snapshot": {
+    "mood": [
+      "Rustic",
+      "Outdoorsy",
+      "Nostalgic",
+      "Adventurous",
+      "Vintage"
+    ],
+    "rules": {
+      "text_case": "upper",
+      "palette_mode": "flexible",
+      "lock_typography": true,
+      "lock_composition": false
+    },
+    "forbid": [
+      "gradients",
+      "photo-realism",
+      "drop shadows",
+      "3D effects",
+      "thin hairlines on inner illustrations",
+      "complex multi-layered shading"
+    ],
+    "medium": "Flat vector graphic design with vintage stipple distressing",
+    "palette": [
+      {
+        "hex": "#F0EBE1",
+        "name": "Cream Base",
+        "weight": "dominant"
+      },
+      {
+        "hex": "#1A1A1A",
+        "name": "Charcoal Black",
+        "weight": "secondary"
+      },
+      {
+        "hex": "#DAA53F",
+        "name": "Mustard Yellow",
+        "weight": "accent"
+      },
+      {
+        "hex": "#B84B34",
+        "name": "Rust Orange",
+        "weight": "accent"
+      },
+      {
+        "hex": "#324B3B",
+        "name": "Forest Green",
+        "weight": "accent"
+      }
+    ],
+    "shading": "Completely flat color blocking with zero shading, highlights, or dimension.",
+    "texture": "Subtle, uniform stipple/speckle grunge overlay applied across the entire design, giving a printed or weathered vintage feel.",
+    "evidence": [
+      "IMAGE 1, 2, 4: feature a mustard yellow background circle.",
+      "IMAGE 3, 5: feature a rust orange background circle.",
+      "IMAGE 6: exception - uses a dark green background circle instead of warm sun tones.",
+      "IMAGE 1, 2, 3, 4, 5, 6: use the exact same mountain and pine tree vector silhouettes.",
+      "IMAGE 1, 2, 3, 4, 5, 6: apply an identical stipple distress texture uniformly across all colors."
+    ],
+    "linework": {
+      "style": "Clean, crisp geometric vector edges with no hand-drawn wobble, relying purely on solid shapes.",
+      "weight": "Thick outer ring and thin inner ring for the badge frame; interior landscape elements have zero linework."
+    },
+    "subjects": [
+      "Vintage outdoor badges",
+      "Mountain peaks",
+      "Pine trees",
+      "Sun or moon circles",
+      "Wilderness outfitter logos"
+    ],
+    "background": "flat mid-grey #808080, isolated artwork",
+    "typography": {
+      "case": "UPPER",
+      "vibe": "Bold, tall, condensed vintage sans-serif with a rugged, industrial, or classic park-ranger aesthetic.",
+      "placement": "Arched along the upper inner curve of the badge frame with wide kerning/tracking. A second line of text is centered horizontally inside the bottom rectangular banner."
+    },
+    "composition": "Concentric circular badge format. A large, solid-colored circle anchors the center, partially covered by flat mountain silhouettes in the foreground. A cluster of stylized pine trees sits on the lower left of the mountains. A heavy solid rectangular horizontal banner overlaps the bottom quarter of the circle.",
+    "garment_colors": [
+      "black",
+      "navy",
+      "heather grey",
+      "forest green"
+    ],
+    "signature_moves": [
+      "circular badge frame",
+      "ink banner across the bottom",
+      "QA test move",
+      "solid black mountain silhouette crossing a large colored circle",
+      "cluster of flat green pine trees positioned exclusively on the left side",
+      "widely tracked arched text filling the top negative space"
+    ]
+  },
+  "card": {
+    "id": "8620187c-c6f0-416c-9f44-cd8919d30073",
+    "client_id": "bef63960-2c70-47a3-b727-2c08165b5dae",
+    "brief_text": "Style Card test render. SUBJECT: mountain silhouettes - a brand-new design of this subject in this client's established look. The text below is lettering only: draw the subject above, never the thing the words name.",
+    "print_text": [
+      {
+        "role": "headline",
+        "text": "E2E TEST CLIENT"
+      },
+      {
+        "role": "sub",
+        "text": "EST. 2026"
+      }
+    ],
+    "reference_paths": [
+      "bef63960-2c70-47a3-b727-2c08165b5dae/library/7dda95fb-8f8d-4899-a54e-0a49016d9fad.jpg",
+      "bef63960-2c70-47a3-b727-2c08165b5dae/library/c1a78249-1361-407e-91c4-1d1ef16d22ae.jpg",
+      "bef63960-2c70-47a3-b727-2c08165b5dae/library/35acbec1-c639-4b4f-87c7-b628978768ab.jpg"
+    ],
+    "reference_roles": null,
+    "reference_analysis": {
+      "notes": "The primary design is Image 1. Images 2 and 3 show variations in text, central mountain silhouette (Image 2 has a small building/structure added), and sun color (Image 3 is yellow). The design in Image 1 should be recreated exactly as shown. Note the consistent overall distressed texture applied to all elements, including the solid shapes and text.",
+      "palette": [
+        {
+          "hex": "#F0EAD6",
+          "name": "Cream"
+        },
+        {
+          "hex": "#B6452B",
+          "name": "Rust Red"
+        },
+        {
+          "hex": "#1A1A18",
+          "name": "Dark Charcoal/Black"
+        },
+        {
+          "hex": "#2B4C3F",
+          "name": "Pine Green"
+        }
+      ],
+      "art_style": "Vintage badge/logo design, flat vector illustration, distressed texture, minimalist rendering.",
+      "composition": "Circular badge layout. 'SUMMIT SEEKERS' arcs along the top inner edge of the circle. A rectangular black banner cuts across the bottom portion of the circle, extending slightly past the outer edge, containing the text 'SINCE 2005' centered in cream. The central mountain/sun/tree illustration is anchored on the horizontal line created by the top edge of the banner.",
+      "text_detected": [
+        "SUMMIT SEEKERS",
+        "SINCE 2005"
+      ],
+      "subject_structure": "A circular badge with a double outline (thin inner, thick outer). Inside, a large rust-red circle (sun/moon) serves as the backdrop. Overlapping the bottom half of the red circle are minimalist, solid black mountains with sharp, triangular peaks. In front of the mountains, on the left side, is a row of four stylized pine trees consisting of green stacked triangles and small black trunks. The entire design has an overall subtle distressed/speckled texture.",
+      "typography_transcription": "Bold, sans-serif, slightly condensed font for the arched top text. Solid, bold sans-serif font for the bottom banner text."
+    },
+    "garment_color": "black",
+    "placement": "front_chest",
+    "avoid_notes": null,
+    "similarity_tier": 1,
+    "client_submission": {
+      "source": "style_test",
+      "subject": "mountain silhouettes",
+      "brief_text": "Style Card test render. SUBJECT: mountain silhouettes - a brand-new design of this subject in this client's established look. The text below is lettering only: draw the subject above, never the thing the words name.",
+      "print_text": [
+        {
+          "role": "headline",
+          "text": "E2E TEST CLIENT"
+        },
+        {
+          "role": "sub",
+          "text": "EST. 2026"
+        }
+      ],
+      "reference_paths": [
+        "bef63960-2c70-47a3-b727-2c08165b5dae/library/7dda95fb-8f8d-4899-a54e-0a49016d9fad.jpg",
+        "bef63960-2c70-47a3-b727-2c08165b5dae/library/c1a78249-1361-407e-91c4-1d1ef16d22ae.jpg",
+        "bef63960-2c70-47a3-b727-2c08165b5dae/library/35acbec1-c639-4b4f-87c7-b628978768ab.jpg"
+      ]
+    }
+  },
+  "client": {
+    "id": "bef63960-2c70-47a3-b727-2c08165b5dae",
+    "name": "E2E Test Client",
+    "default_similarity_tier": 3,
+    "style_brief": {
+      "avoid": [
+        "gradients",
+        "photo-realism"
+      ],
+      "niche": "vintage outdoor badges for hikers",
+      "audience": "US, Etsy",
+      "must_have": [
+        "circular badge frame",
+        "ink banner across the bottom"
+      ],
+      "text_case": "upper",
+      "palette_mode": "strict",
+      "lock_typography": true,
+      "lock_composition": false
+    },
+    "garment_colors": [
+      "black",
+      "white"
+    ]
+  }
+}

@@ -1,0 +1,177 @@
+{
+  "source": "live rows fetched 2026-09-30 (read-only): generations 006b5ba1-da74-4fa7-bae4-154a078d2613 (style_card_snapshot verbatim = style_cards 695743b6 json, verified byte-identical), cards eff7b92d-1239-43ee-ade9-1eb504cc0e48, clients f947a150 (Chicken Happy Hour). style_card_status is the live style_cards.status of 695743b6 (draft) - the row a test render snapshotted.",
+  "generation_id": "006b5ba1-da74-4fa7-bae4-154a078d2613",
+  "kind": "generate",
+  "style_card_id": "695743b6-823e-4243-82db-e51ee8facd45",
+  "style_card_version": 2,
+  "style_card_status": "draft",
+  "style_card_snapshot": {
+    "mood": [
+      "Rustic",
+      "Sassy",
+      "Humorous",
+      "Endearing"
+    ],
+    "rules": {
+      "text_case": "as_typed",
+      "palette_mode": "strict",
+      "lock_typography": true,
+      "lock_composition": true
+    },
+    "forbid": [
+      "Gradients and soft airbrush shading",
+      "Photorealism or 3D rendering",
+      "Clean, minimalist flat-vector icons without texture",
+      "Asymmetrical or left-aligned layouts",
+      "Omitting the bottom center social media handle",
+      "Heavy grunge that severely obscures or eats away at the legibility of the typography"
+    ],
+    "medium": "Vintage etching, woodcut, and scratchboard-style illustration combined with typography.",
+    "palette": [
+      {
+        "hex": "#0C0C0C",
+        "name": "Line Art Black",
+        "weight": "dominant"
+      },
+      {
+        "hex": "#F9F9F9",
+        "name": "High Contrast White",
+        "weight": "secondary"
+      },
+      {
+        "hex": "#8C3B1A",
+        "name": "Rust Brown",
+        "weight": "accent"
+      },
+      {
+        "hex": "#DC6A15",
+        "name": "Burnt Orange",
+        "weight": "accent"
+      },
+      {
+        "hex": "#F5A623",
+        "name": "Golden Yellow",
+        "weight": "accent"
+      }
+    ],
+    "shading": "Achieved entirely through linework density, hatching, and cross-hatching, creating high-contrast shading without the use of smooth gradients or solid halftones.",
+    "texture": "Highly gritty and textured organically through the dense linework, simulating real animal fur. Typography occasionally features subtle rough or stamped distressed edges.",
+    "evidence": [
+      "IMAGE 1, 2, 7: Classic, strict black-and-white etching style designed for dark garments.",
+      "IMAGE 3, 8: Introduces a bright accent color (orange/yellow) to highlight accessories and specific emphasis text.",
+      "IMAGE 4, 5, 6, 9: Uses four-point sparkles scattered around the central subject to fill negative space.",
+      "IMAGE 1, 2, 3, 4, 5, 6, 7, 8, 9: The social media handle is placed at the exact bottom center of every single design.",
+      "IMAGE 5, 6, 9: Demonstrates the colored variation of the linework, using rich rust browns and blacks to color the fur on light-colored garments.",
+      "IMAGE 3: Exception - uses a rough, dry-brush textured font for the secondary text, contrasting with the cleaner serifs usually favored.",
+      "IMAGE 7: Exception - features a split-panel composition to show two different states ('mood swings') rather than a single central hero subject."
+    ],
+    "linework": {
+      "style": "Dense, intricate hand-drawn hatching, contouring, and scratchy strokes to build highly realistic fur and hair textures.",
+      "weight": "Fine, ultra-detailed thin lines"
+    },
+    "subjects": [
+      "Highland cows",
+      "Highland calves",
+      "Farm animals with humorous accessories (sunglasses, hats)",
+      "Sunflowers and field wildflowers"
+    ],
+    "background": "flat mid-grey #808080, isolated artwork",
+    "typography": {
+      "case": "as_typed",
+      "vibe": "Vintage Western slab serifs, retro bold display serifs, and woodtype styles, frequently paired with a softer flowing script or rough brush font for secondary phrasing.",
+      "placement": "Stacked centrally above and below the hero illustration, often curving around the top of the artwork, with a social handle locked to the bottom margin."
+    },
+    "composition": "Centrally aligned and vertically stacked. A central hero illustration (highland cow) sits perfectly in the middle, framed by arched or straight primary text above and straight secondary text below. The composition is always anchored by a small social media handle at the very bottom center.",
+    "garment_colors": [
+      "black",
+      "heather grey",
+      "tan"
+    ],
+    "signature_moves": [
+      "Highly detailed, etching-style highland cow illustrations",
+      "Anchoring every design with a social media handle (@TheHappyHourFarm or @HighlandCowHappyHour) at the bottom center",
+      "Framing the central artwork symmetrically with bold text on top and bottom",
+      "Scattering four-point sparkles/stars in the negative space around the animal (especially on lighter garments)"
+    ]
+  },
+  "card": {
+    "id": "eff7b92d-1239-43ee-ade9-1eb504cc0e48",
+    "client_id": "f947a150-3ea2-479d-a010-d7082fca1011",
+    "brief_text": "Style Card test render: a brand-new design in this client's established look - pick a subject from their usual subject matter - with the text below.",
+    "print_text": [
+      {
+        "role": "headline",
+        "text": "CHICKEN HAPPY HOUR"
+      },
+      {
+        "role": "sub",
+        "text": "EST. 2026"
+      }
+    ],
+    "reference_paths": [
+      "f947a150-3ea2-479d-a010-d7082fca1011/library/0f3c8d9a-b00b-4685-816e-434d39869038.jpg",
+      "f947a150-3ea2-479d-a010-d7082fca1011/library/38b249bb-ae12-4237-872f-062ec20a8c82.jpg",
+      "f947a150-3ea2-479d-a010-d7082fca1011/library/d7efbc66-b80d-4571-9a81-a841f11b92cf.jpg"
+    ],
+    "reference_roles": null,
+    "reference_analysis": {
+      "notes": "Designed as a single-color (white ink) print on a dark garment. The black background should be treated as transparent/garment color. All shading and tonal values are achieved purely through varying the density and thickness of the white line work. No halftones are used.",
+      "palette": [
+        {
+          "hex": "#FFFFFF",
+          "name": "White"
+        }
+      ],
+      "art_style": "Vintage etching or scratchboard illustration, heavily detailed with fine line hatching and cross-hatching to create texture, fur, and shading. High rendering maturity, reminiscent of classic woodblock prints.",
+      "composition": "Center-aligned, tightly grouped vertical layout. The design is top-heavy with the illustration of the calf seamlessly interacting with the large title text 'HOME' in the center. The secondary script text sits immediately below to anchor the block, followed by the small, centered social handle at the very bottom.",
+      "text_detected": [
+        "HOME",
+        "is where your herd is",
+        "@TheHappyHourFarm"
+      ],
+      "subject_structure": "The central hero subject is a fluffy Highland cow calf depicted from the chest up. It features long, shaggy hair with distinctive locks draping over its forehead, fuzzy ears protruding horizontally, and a detailed snout. The calf's two front legs are visible, with detailed cloven hooves positioned as if resting directly on top of the large letters of the word 'HOME' below, making the text act as a physical ledge. The artwork relies entirely on intricate white lines and negative space.",
+      "typography_transcription": "The primary word 'HOME' is in a large, bold, western or circus-style slab serif font featuring scalloped, decorative serifs and internal vertical line hatching that gives a textured, 3D wood-carved appearance. Beneath it, 'is where your herd is' is written in a smooth, flowing, casual cursive script font. The bottom social handle '@TheHappyHourFarm' is set in a simple, clean, modern sans-serif font."
+    },
+    "garment_color": "black",
+    "placement": "front_chest",
+    "avoid_notes": null,
+    "similarity_tier": 1,
+    "client_submission": {
+      "source": "style_test",
+      "brief_text": "Style Card test render: a brand-new design in this client's established look - pick a subject from their usual subject matter - with the text below.",
+      "print_text": [
+        {
+          "role": "headline",
+          "text": "CHICKEN HAPPY HOUR"
+        },
+        {
+          "role": "sub",
+          "text": "EST. 2026"
+        }
+      ],
+      "reference_paths": [
+        "f947a150-3ea2-479d-a010-d7082fca1011/library/0f3c8d9a-b00b-4685-816e-434d39869038.jpg",
+        "f947a150-3ea2-479d-a010-d7082fca1011/library/38b249bb-ae12-4237-872f-062ec20a8c82.jpg",
+        "f947a150-3ea2-479d-a010-d7082fca1011/library/d7efbc66-b80d-4571-9a81-a841f11b92cf.jpg"
+      ]
+    }
+  },
+  "client": {
+    "id": "f947a150-3ea2-479d-a010-d7082fca1011",
+    "name": "Chicken Happy Hour",
+    "default_similarity_tier": 3,
+    "style_brief": {},
+    "garment_colors": []
+  },
+  "live_rendered_prompt_length": 8838,
+  "live_rendered_prompt_defects": [
+    "'..' after every Style Card part",
+    "'as_typed case' and 'as_typed' in the QUOTE header",
+    "'(highland cow)' in composition",
+    "'@TheHappyHourFarm' in signature moves",
+    "'Omitting the bottom center social media handle' as a NEGATIVE",
+    "'Printed on black / heather grey / tan garments'",
+    "bare 'NICHE' in the tier 1 rule",
+    "typography rendered twice"
+  ]
+}

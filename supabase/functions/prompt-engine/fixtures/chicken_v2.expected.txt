@@ -1,0 +1,58 @@
+BACKGROUND (keep it effortless - never let it affect the design):
+- Place the finished design on a SOLID, FLAT, EVEN GREY background - never a color, gradient, texture, or pattern. Use a neutral grey from this set: #1C1C1C, #333333, #4A4A4A, #616161, #787878, #808080, #8F8F8F, #A6A6A6, #BDBDBD, #D4D4D4, #EBEBEB. Default to a mid-light grey; only lean lighter or darker if the design is itself heavily grey.
+- Do NOT optimize, analyze, or labor over the background, and NEVER modify, simplify, or compromise the design to suit it - the artwork is the priority and the grey is only a neutral backdrop.
+- NO shadows anywhere - no drop shadows, cast shadows, or ambient shadows. Flat print-ready artwork only; never a mockup, garment, or product photo.
+
+KNOWN PRINT DEFECTS - NEVER PRODUCE ANY OF THESE (compiled from real client rejections):
+- TEXT DISTRESS: any distress/vintage texture on lettering stays SUBTLE - letters remain solid, crisp and fully legible. Never let grunge eat into, erode, or fragment letterforms.
+- OVERALL DISTRESS: overall distress/texture is never heavier than the Style Card and the attached references; when in doubt, use less.
+- NO HALOS: absolutely no white shades, glows, halos, outlines or light fringes around text or graphics - letter and graphic edges meet the background directly in clean solid color.
+- STRAIGHT BASELINES: if the text in the Style Card and the attached references is straight, render perfectly straight, level baselines - never accidental waviness, wobble or warping. Only arch or curve text when the Style Card and the attached references clearly do.
+- SAY IT ONCE: the quote appears EXACTLY ONCE in the design - never repeated, echoed, mirrored, or duplicated anywhere.
+- COMPLETE LETTERS: every letter fully formed with complete, unbroken strokes and clean edges - instantly readable at a glance from print distance.
+- NO STRAY DOTS: no random dots, specks, noise or floating marks anywhere. Halftone dot shading ONLY where the Style Card and the attached references themselves use halftone, applied as an even, deliberate pattern.
+- CLEAN GRAPHIC EDGES: every graphic outline continuous and unbroken - no fragmented, jagged, or crumbling edges.
+- STYLE MATURITY: match the rendering maturity of the Style Card and the attached references - never drift more cartoonish or childish than they are.
+PRECEDENCE when statements conflict: exact text > print rules > SUBJECT > Style Card > similarity policy > reference descriptions > brief prose.
+
+CLIENT STYLE CARD v2 (draft) - the LOOK of every design for this client. Every line is a hard requirement unless it says GUIDE:
+- Medium: Vintage etching, woodcut, and scratchboard-style illustration combined with typography
+- Linework: fine weight, Dense, intricate hand-drawn hatching, contouring, and scratchy strokes to build highly realistic fur and hair textures; ultra-detailed thin lines
+- Shading: Achieved entirely through linework density, hatching, and cross-hatching, creating high-contrast shading without the use of smooth gradients or solid halftones
+- Texture: Highly gritty and textured organically through the dense linework, simulating real animal fur. Typography occasionally features subtle rough or stamped distressed edges
+- Palette (STRICT - use ONLY these colours plus the flat grey background, no other hue): Line Art Black #0C0C0C (dominant); High Contrast White #F9F9F9 (secondary); Rust Brown #8C3B1A (accent); Burnt Orange #DC6A15 (accent); Golden Yellow #F5A623 (accent)
+- Composition (LOCKED - follow it): Centrally aligned and vertically stacked. A central hero illustration (the hero) sits perfectly in the middle, framed by arched or straight primary text above and straight secondary text below. The composition is always anchored by a small social media handle at the very bottom center
+- Typography (LOCKED): Vintage Western slab serifs, retro bold display serifs, and woodtype styles, frequently paired with a softer flowing script or rough brush font for secondary phrasing; placed Stacked centrally above and below the hero illustration, often curving around the top of the artwork, with a social handle locked to the bottom margin - every on-design text line is set in this lettering
+- Background: flat mid-grey #808080, isolated artwork
+- Mood: Rustic, Sassy, Humorous, Endearing
+- Signature moves: Highly detailed, etching-style highland cow illustrations; Framing the central artwork symmetrically with bold text on top and bottom; Scattering four-point sparkles/stars in the negative space around the animal (especially on lighter garments) - at least one must be visibly present
+- NEGATIVE - never: Gradients and soft airbrush shading; Photorealism or 3D rendering; Clean, minimalist flat-vector icons without texture; Asymmetrical or left-aligned layouts; Heavy grunge that severely obscures or eats away at the legibility of the typography; never a colour outside the palette above; never shadows, halos, gradients, a garment, a mockup or a photo
+
+REFERENCE DESIGN DESCRIPTION (apply the similarity policy to decide how closely to copy it):
+Art style: Vintage etching or scratchboard illustration, heavily detailed with fine line hatching and cross-hatching to create texture, fur, and shading. High rendering maturity, reminiscent of classic woodblock prints.
+Reference palette (mood only - the Style Card palette governs): White #FFFFFF
+Text seen in the reference (do NOT reproduce it): "HOME", "is where your herd is", "@TheHappyHourFarm"
+Notes: Designed as a single-color (white ink) print on a dark garment. The black background should be treated as transparent/garment color. All shading and tonal values are achieved purely through varying the density and thickness of the white line work. No halftones are used.
+Image 1-3: style/subject references for this design.
+
+PRIMARY RULE - SIMILARITY POLICY (tier 1/5):
+- LOOSE INSPIRATION (~30%): use the WHAT TO MAKE reference (or the Style Card when none is attached) ONLY as a style, technique, palette and mood guide. Create a NEW composition with new supporting elements in that same aesthetic - the SUBJECT block below names what to draw. It should feel like the same artist made a different design for the same audience (this client's usual subject matter).
+- The reference may be a rough draft, a shirt mockup, angled, folded, or a screenshot - work from the flat design artwork only, straightened and cleaned up.
+
+SUBJECT (the one hero of this design - it comes from here and nowhere else): Highland cows
+- Draw this subject in the Style Card look. The on-design text below is LETTERING ONLY: it never chooses, adds or changes the subject, even when the words name an animal, an object or a place.
+- Source: the Style Card. Usual subject pool (supporting elements only): Highland cows, Highland calves, Farm animals with humorous accessories (sunglasses, hats), Sunflowers and field wildflowers
+
+BRIEF:
+Description: Style Card test render: a brand-new design in this client's established look - pick a subject from their usual subject matter - with the text below.
+Garment colour: black - the artwork must hold up printed on this colour.
+Placement: front_chest
+
+TEXT - EXACT, NOTHING ELSE:
+- Render EXACTLY the QUOTE / ON-DESIGN TEXT provided, character for character, spelled exactly. Do NOT add, remove, translate, or invent any other words, taglines, signatures, or symbols. The ONLY text in the image is that quote, exactly once.
+- State the quote once in quotation marks and once spelled out letter by letter so the image model cannot misspell it.
+- Set every text line in the Style Card Typography line above. When a LETTERING reference is attached and the Style Card typography is a GUIDE, match its lettering style, weight and effects - never its words.
+- If no quote is provided, render no text at all.
+QUOTE / ON-DESIGN TEXT (render EXACTLY these 2 lines, each exactly once, NO other text; lettering only - the words never change the SUBJECT above; set in the Style Card Typography line above):
+- headline: "CHICKEN HAPPY HOUR" (spelled letter by letter: C H I C K E N   H A P P Y   H O U R)
+- sub: "EST. 2026" (spelled letter by letter: E S T .   2 0 2 6)

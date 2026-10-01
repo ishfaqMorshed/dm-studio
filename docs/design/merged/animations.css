@@ -1,0 +1,118 @@
+/*
+ * DM Studio — src/lib/animations.css (MERGED; plain CSS, no @apply, import from src/main.tsx after index.css).
+ * Everything here is driven by (a) a class toggled from the same stage/status props a component already
+ * renders from, and (b) one custom property --p set once per second by useElapsed. No container queries:
+ * the develop line is 20 % of the frame tall, so translateY in its own height (500 % = one frame) positions it.
+ * Colours are the existing stage tokens; the checkerboard is the warm .checker class from index.css.
+ */
+
+/* ---------- frame ---------- */
+.frame { position: relative; overflow: hidden; border-radius: 16px; }
+.frame > .frame-layer { position: absolute; inset: 0; pointer-events: none; }
+
+/* ---------- status dot ---------- */
+.dot { display: inline-block; width: 6px; height: 6px; border-radius: 9999px; flex: none; }
+.dot-live { animation: breathe 1600ms ease-in-out infinite; }
+
+/* ---------- DEVELOP (generating / regenerate / edit) ---------- */
+.develop { --p: 0; --tone: 31 143 168; --line: #4ca5b9; }            /* stage.generating */
+.develop[data-tone='editing'] { --tone: 42 157 143; --line: #55b1a5; }  /* stage.editing */
+.develop[data-tone='frozen'] { --tone: 122 117 106; --line: #cfcbc0; }  /* failed: neutral, no glow */
+.develop-wash {
+  position: absolute; inset: 0;
+  background: linear-gradient(to bottom, rgb(var(--tone) / 0.14), rgb(var(--tone) / 0.08));
+  clip-path: inset(0 0 calc((1 - var(--p)) * 100%) 0);
+  transition: clip-path 1000ms linear;
+}
+.develop-underlay {                                     /* blurred parent image (regenerate / edit only) */
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;
+  filter: blur(18px) saturate(0.6); transform: scale(1.06); opacity: 0.55;
+  clip-path: inset(0 0 calc((1 - var(--p)) * 100%) 0);
+  transition: clip-path 1000ms linear;
+}
+.develop-line {
+  position: absolute; left: 0; right: 0; top: 0; height: 20%;
+  background: linear-gradient(to bottom, transparent, rgb(var(--tone) / 0.35));
+  transform: translateY(calc(var(--p) * 500% - 100%));  /* 500 % of own height = one frame */
+  transition: transform 1000ms linear;
+}
+.develop-line::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
+  background: var(--line); box-shadow: 0 0 12px 2px rgb(var(--tone) / 0.7);
+  animation: glow 1600ms ease-in-out infinite;
+}
+.develop[data-overdue='true'] .develop-line::after { animation-duration: 3200ms; }
+.develop[data-tone='frozen'] .develop-line::after { animation-play-state: paused; box-shadow: none; }
+/* edit_region: the same three layers inside a positioned box sized from mask_rect (rectToPixels) */
+.develop-rect { position: absolute; overflow: hidden; outline: 1px dashed rgb(183 153 255 / 0.9); border-radius: 6px; }
+
+/* ---------- INSPECT (QC judging): colourless light, up and down, static viewfinder corners ---------- */
+.inspect-band {
+  position: absolute; left: 0; right: 0; top: 0; height: 25%;
+  background: linear-gradient(to bottom, transparent, rgb(28 26 23 / 0.10), transparent);
+  animation: inspect 1800ms cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+}
+.inspect-band::after {
+  content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 1px;
+  background: rgb(28 26 23 / 0.55); box-shadow: 0 0 10px 1px rgb(28 26 23 / 0.2);
+}
+.inspect-corner { position: absolute; width: 14px; height: 14px; border: 1.5px solid rgb(28 26 23 / 0.6); }
+.inspect-corner.tl { left: 10px; top: 10px; border-right: 0; border-bottom: 0; }
+.inspect-corner.tr { right: 10px; top: 10px; border-left: 0; border-bottom: 0; }
+.inspect-corner.bl { left: 10px; bottom: 10px; border-right: 0; border-top: 0; }
+.inspect-corner.br { right: 10px; bottom: 10px; border-left: 0; border-top: 0; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .inspect-band { background: linear-gradient(to bottom, transparent, rgb(255 255 255 / 0.18), transparent); }
+  :root:not([data-theme='light']) .inspect-band::after { background: rgb(255 255 255 / 0.7); box-shadow: 0 0 10px 1px rgb(255 255 255 / 0.35); }
+  :root:not([data-theme='light']) .inspect-corner { border-color: rgb(255 255 255 / 0.75); }
+}
+:root[data-theme='dark'] .inspect-band { background: linear-gradient(to bottom, transparent, rgb(255 255 255 / 0.18), transparent); }
+:root[data-theme='dark'] .inspect-band::after { background: rgb(255 255 255 / 0.7); box-shadow: 0 0 10px 1px rgb(255 255 255 / 0.35); }
+:root[data-theme='dark'] .inspect-corner { border-color: rgb(255 255 255 / 0.75); }
+
+/* QC checklist: hollow rings while judging → rows resolve top-down with a 50 ms stagger */
+.qc-ring { width: 14px; height: 14px; border-radius: 9999px; border: 1.5px solid rgb(163 158 146 / 0.6); flex: none; }
+.qc-ring.active { animation: breathe 1600ms ease-in-out infinite; }
+.qc-rows[data-resolving='true'] .qc-row { animation: resolve-row 220ms cubic-bezier(0.23, 1, 0.32, 1) both; animation-delay: calc(var(--i) * 50ms); }
+.qc-rows[data-resolving='true'] .qc-glyph { animation: pop-in 200ms cubic-bezier(0.23, 1, 0.32, 1) both; animation-delay: calc(var(--i) * 50ms); }
+
+/* ---------- FINISH rail: three named steps, time gauge per segment ---------- */
+.finish-rail { position: absolute; left: 8px; right: 8px; bottom: 8px; display: grid; grid-template-columns: 55fr 40fr 25fr; gap: 4px; }
+.finish-seg { position: relative; height: 3px; border-radius: 9999px; background: rgb(28 26 23 / 0.35); overflow: hidden; }
+.finish-seg > i { position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--p, 0) * 100%); background: #5b5bd6; border-radius: inherit; transition: width 1000ms linear; }
+.finish-seg[data-done='true'] > i { width: 100%; }
+
+/* ---------- landing / leaving ---------- */
+.landed { animation: settle 400ms cubic-bezier(0.23, 1, 0.32, 1) both; }
+.frame-pulse { animation: ring-pulse 600ms ease-out 1; }
+.leaving { animation: fade-out 300ms ease-out both; }
+
+/* ---------- images: blur-in on load (Img primitive toggles data-loaded) ---------- */
+.img-in { opacity: 0; filter: blur(8px); transform: scale(1.02); transition: opacity 400ms cubic-bezier(0.23, 1, 0.32, 1), filter 400ms cubic-bezier(0.23, 1, 0.32, 1), transform 400ms cubic-bezier(0.23, 1, 0.32, 1); }
+.img-in[data-loaded='true'] { opacity: 1; filter: none; transform: none; }
+
+/* ---------- skeleton (sized to final content; stagger via --i) ---------- */
+.skeleton { border-radius: 8px; background-color: rgb(var(--surface-2)); background-image: linear-gradient(90deg, transparent 0%, rgb(var(--surface-3)) 50%, transparent 100%); background-size: 200% 100%; animation: shimmer 1600ms linear infinite; animation-delay: calc(var(--i, 0) * 60ms); }
+
+/* ---------- indeterminate bar ---------- */
+.bar { position: relative; height: 3px; border-radius: 9999px; background: rgb(var(--surface-3)); overflow: hidden; }
+.bar > i { position: absolute; top: 0; bottom: 0; left: 0; border-radius: inherit; background: rgb(var(--brand)); }
+.bar[data-mode='indeterminate'] > i { width: 33%; animation: slide 1400ms cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+.bar[data-mode='gauge'] > i { width: calc(var(--p, 0) * 100%); transition: width 1000ms linear; }
+.bar[data-mode='determinate'] > i { width: calc(var(--p, 0) * 100%); transition: width 400ms cubic-bezier(0.23, 1, 0.32, 1); }
+
+/* ---------- reduced motion: keep fades and once-per-second steps, drop loops and movement ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .dot-live, .qc-ring.active, .develop-line::after, .skeleton, .bar[data-mode='indeterminate'] > i { animation: none !important; }
+  .inspect-band { display: none; }
+  .develop-line { display: none; }
+  .develop-wash, .develop-underlay, .finish-seg > i, .bar > i { transition: none !important; }
+  .bar[data-mode='indeterminate'] > i { width: 33%; }
+  .landed, .qc-rows[data-resolving='true'] .qc-row, .qc-rows[data-resolving='true'] .qc-glyph,
+  .animate-fade-up, .animate-enter-dialog, .animate-enter-sheet, .animate-pop-in, .animate-resolve-row, .animate-settle {
+    animation: fade 150ms ease-out both !important; animation-delay: 0ms !important;
+  }
+  .img-in { transition: opacity 200ms ease-out; filter: none; transform: none; }
+  .frame-pulse, .animate-ring-pulse, .animate-draw, .animate-scan, .animate-inspect, .animate-slide, .animate-shimmer, .animate-glow, .animate-glow-slow, .animate-breathe { animation: none !important; }
+  .leaving, .animate-leave { animation: fade-out 150ms ease-out both !important; }
+}

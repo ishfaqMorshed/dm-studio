@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DM Studio system sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..700&family=Instrument+Sans:ital,wght@0,400..600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" />
+<style>
+  /* ---- tokens (same values as index.proposed.css) ---- */
+  .theme-light{
+    --canvas:248 247 244;--surface-1:255 255 255;--surface-2:241 239 234;--surface-3:233 230 223;--surface-inverse:28 26 23;
+    --line:28 26 23;--hair:.10;--strong:.16;--fg-1:28 26 23;--fg-2:92 87 78;--fg-3:113 108 97;--fg-ph:148 143 131;--fg-inv:241 239 234;
+    --brand:107 37 230;--brand-hover:90 27 194;--brand-text:90 27 194;--brand-soft:244 240 255;--ring:125 60 248;
+    --checker-a:233 230 223;--checker-b:248 247 244;
+    --shadow-card:0 0 0 1px rgb(28 26 23/.06),0 1px 2px rgb(28 26 23/.05);
+    --shadow-pop:0 0 0 1px rgb(28 26 23/.08),0 4px 12px -2px rgb(28 26 23/.10);
+    --shadow-modal:0 0 0 1px rgb(28 26 23/.08),0 16px 40px -12px rgb(28 26 23/.22);
+    --ok-text:47 122 61;--warn-text:154 93 12;--bad-text:180 42 49;
+    --nr-bg:#fbeed7;--nr-fg:#7a4a08;--gen-bg:#dcf1f6;--gen-fg:#125868;--ok-bg:#e1f3e4;--ok-fg:#1f5a2b;--bad-bg:#fbe1e2;--bad-fg:#7f1c20;--rev-bg:#ece3ff;--rev-fg:#4b1a9e;--fin-bg:#e6e6fb;--fin-fg:#33338c;
+  }
+  .theme-dark{
+    --canvas:18 17 16;--surface-1:28 26 23;--surface-2:36 34 32;--surface-3:44 41 37;--surface-inverse:241 239 234;
+    --line:255 255 255;--hair:.08;--strong:.14;--fg-1:241 239 234;--fg-2:163 158 146;--fg-3:143 138 126;--fg-ph:111 106 96;--fg-inv:28 26 23;
+    --brand:125 60 248;--brand-hover:134 70 249;--brand-text:183 153 255;--brand-soft:44 31 59;--ring:152 101 255;
+    --checker-a:35 33 31;--checker-b:26 25 23;
+    --shadow-card:none;
+    --shadow-pop:0 0 0 1px rgb(255 255 255/.10),0 8px 24px -8px rgb(0 0 0/.6);
+    --shadow-modal:0 0 0 1px rgb(255 255 255/.10),0 24px 56px -16px rgb(0 0 0/.7);
+    --ok-text:159 214 170;--warn-text:242 197 124;--bad-text:240 153 157;
+    --nr-bg:#3a2c18;--nr-fg:#f2c57c;--gen-bg:#1c2d2e;--gen-fg:#93d3e0;--ok-bg:#212e20;--ok-fg:#9fd6aa;--bad-bg:#391f1d;--bad-fg:#f0999d;--rev-bg:#2c1f3b;--rev-fg:#c9b1ff;--fin-bg:#262436;--fin-fg:#b3b3f0;
+  }
+  *{box-sizing:border-box;margin:0}
+  html,body{height:100%}
+  body{display:grid;grid-template-columns:1fr 1fr;font-family:"Instrument Sans",system-ui,sans-serif;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;font-feature-settings:"kern","liga","calt"}
+  .theme{background:rgb(var(--canvas));color:rgb(var(--fg-1));padding:0 0 24px;min-height:100vh}
+  .hair{border-color:rgb(var(--line)/var(--hair))}
+  .strong{border-color:rgb(var(--line)/var(--strong))}
+  /* header */
+  .hdr{height:56px;display:flex;align-items:center;gap:20px;padding:0 24px;border-bottom:1px solid rgb(var(--line)/var(--hair));background:rgb(var(--canvas)/.85);backdrop-filter:blur(12px);position:sticky;top:0}
+  .mark{width:24px;height:24px;border-radius:6px;background:rgb(var(--brand));display:grid;place-items:center;color:#fff}
+  .word{font-family:"Bricolage Grotesque";font-weight:600;font-size:15px;letter-spacing:-.01em}
+  .scope{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px 0 8px;border-radius:999px;border:1px solid rgb(var(--line)/var(--hair));background:rgb(var(--surface-2));font-size:12px;font-weight:500;color:rgb(var(--fg-1))}
+  .nav{display:flex;gap:4px;height:56px}
+  .nav a{display:flex;align-items:center;padding:0 10px;font-size:13px;font-weight:500;color:rgb(var(--fg-2));text-decoration:none;position:relative}
+  .nav a.on{color:rgb(var(--fg-1))}
+  .nav a.on::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;border-radius:2px;background:rgb(var(--brand))}
+  .right{margin-left:auto;display:flex;align-items:center;gap:14px;font-size:12px;color:rgb(var(--fg-3))}
+  .dot{display:inline-block;width:6px;height:6px;border-radius:999px}
+  .live{animation:pulse 1.2s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .avatar{width:24px;height:24px;border-radius:999px;background:rgb(var(--surface-3));display:grid;place-items:center;font-size:11px;font-weight:600;color:rgb(var(--fg-2))}
+  /* layout */
+  .page{padding:24px}
+  h1{font-family:"Bricolage Grotesque";font-size:24px;line-height:28px;letter-spacing:-.015em;font-weight:600}
+  .sub{font-size:12px;color:rgb(var(--fg-3));margin-top:2px}
+  .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .sec{margin-top:24px}
+  .eyebrow{font-size:11px;font-weight:500;color:rgb(var(--fg-3));margin-bottom:8px}
+  /* buttons */
+  .btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:8px;font-size:13px;font-weight:500;border:1px solid transparent;cursor:default}
+  .btn.sm{height:28px;padding:0 10px;font-size:12px}
+  .btn.lg{height:40px;padding:0 16px;font-size:14px;font-weight:600}
+  .primary{background:rgb(var(--brand));color:#fff;box-shadow:inset 0 1px 0 rgb(255 255 255/.18),0 1px 2px rgb(28 26 23/.2)}
+  .secondary{background:rgb(var(--surface-1));border-color:rgb(var(--line)/var(--strong));color:rgb(var(--fg-1))}
+  .theme-dark .secondary{background:rgb(var(--surface-2));border-color:rgb(var(--line)/.10)}
+  .ghost{color:rgb(var(--fg-2))}
+  .danger{border-color:rgb(212 56 63/.4);color:rgb(var(--bad-text))}
+  .price{margin-left:4px;border-radius:999px;background:rgb(255 255 255/.2);padding:0 6px;font-size:11px;font-variant-numeric:tabular-nums}
+  .focus{box-shadow:0 0 0 2px rgb(var(--canvas)),0 0 0 4px rgb(var(--ring))}
+  .spin{width:14px;height:14px;border:2px solid rgb(255 255 255/.35);border-top-color:#fff;border-radius:999px;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  /* badges */
+  .badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:999px;font-size:11px;font-weight:500}
+  .tag{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:6px;font-size:11px;font-weight:500;background:rgb(var(--surface-2));color:rgb(var(--fg-2))}
+  .chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:999px;font-size:12px;font-weight:500;border:1px solid rgb(var(--line)/var(--hair));background:rgb(var(--surface-1));color:rgb(var(--fg-2))}
+  .theme-dark .chip{background:rgb(var(--surface-2))}
+  .chip.on{background:rgb(var(--surface-3));color:rgb(var(--fg-1));border-color:rgb(var(--line)/var(--strong))}
+  .mono{font-family:"IBM Plex Mono";font-size:11px;font-variant-numeric:tabular-nums;color:rgb(var(--fg-3))}
+  /* inputs */
+  .input{height:32px;width:100%;border-radius:8px;border:1px solid rgb(var(--line)/var(--strong));background:rgb(var(--surface-1));padding:0 10px;font:inherit;font-size:13px;color:rgb(var(--fg-1))}
+  .theme-dark .input{background:rgb(var(--canvas));border-color:rgb(var(--line)/.12)}
+  .input.focused{border-color:rgb(var(--ring));box-shadow:0 0 0 3px rgb(125 60 248/.25)}
+  .input::placeholder{color:rgb(var(--fg-ph))}
+  label.l{display:block;font-size:12px;font-weight:500;color:rgb(var(--fg-2));margin-bottom:4px}
+  .hint{font-size:12px;color:rgb(var(--fg-3));margin-top:4px}
+  /* panel / tile */
+  .panel{border-radius:16px;background:rgb(var(--surface-1));border:1px solid rgb(var(--line)/var(--hair));box-shadow:var(--shadow-card)}
+  .ph{display:flex;justify-content:space-between;align-items:flex-start;padding:16px 20px 8px}
+  .pt{font-size:13px;font-weight:600}
+  .ps{font-size:12px;color:rgb(var(--fg-3));margin-top:2px}
+  .pb{padding:0 20px 20px}
+  .well{border-radius:12px;background:rgb(var(--surface-2));padding:12px}
+  .lane{width:288px}
+  .lanehdr{display:flex;align-items:center;gap:8px;height:32px;font-size:13px;font-weight:600}
+  .lanehdr .cnt{margin-left:auto}
+  .tile{border-radius:12px;background:rgb(var(--surface-1));border:1px solid rgb(var(--line)/var(--hair));padding:12px;display:grid;grid-template-columns:56px 1fr;gap:10px;box-shadow:var(--shadow-card);margin-top:8px}
+  .thumb{width:56px;height:56px;border-radius:8px;background-color:rgb(var(--checker-b));background-image:conic-gradient(rgb(var(--checker-a)) 25%,transparent 0 50%,rgb(var(--checker-a)) 0 75%,transparent 0);background-size:12px 12px;display:grid;place-items:center;overflow:hidden}
+  .art{width:40px;height:40px;border-radius:999px;background:#c8553d;box-shadow:inset 0 0 0 6px #f3e7cf, inset 0 0 0 8px #1c1a17}
+  .t1{font-size:13px;font-weight:500;line-height:18px}
+  .t2{font-size:12px;color:rgb(var(--fg-2));line-height:16px}
+  .t3{font-size:12px;color:rgb(var(--fg-3));display:flex;align-items:center;gap:6px;margin-top:6px}
+  /* frame + rail */
+  .card{display:grid;grid-template-columns:1fr 352px;gap:24px;padding:20px}
+  .frame{aspect-ratio:1/1;border-radius:16px;background-color:rgb(var(--checker-b));background-image:conic-gradient(rgb(var(--checker-a)) 25%,transparent 0 50%,rgb(var(--checker-a)) 0 75%,transparent 0);background-size:16px 16px;position:relative;overflow:hidden;display:grid;place-items:center}
+  .frame .big{width:60%;aspect-ratio:1;border-radius:999px;background:#c8553d;box-shadow:inset 0 0 0 14px #f3e7cf, inset 0 0 0 18px #1c1a17}
+  .ichip{position:absolute;display:inline-flex;align-items:center;height:24px;padding:0 8px;border-radius:999px;background:rgb(18 17 16/.7);color:#fff;font-size:11px;font-weight:500;backdrop-filter:blur(4px)}
+  .scan{position:absolute;left:0;right:0;top:0;height:20%;background:linear-gradient(to bottom,transparent,rgb(183 153 255/.35),transparent);animation:scan 1.6s ease-in-out infinite}
+  .scan::after{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:#d5c4ff;box-shadow:0 0 12px 2px #9865ff}
+  @keyframes scan{from{transform:translateY(-100%)}to{transform:translateY(500%)}}
+  .rail{display:flex;flex-direction:column;gap:12px}
+  .status{font-size:13px;color:rgb(var(--fg-2))}
+  .steps{display:flex;flex-direction:column;gap:6px;font-size:12px;color:rgb(var(--fg-3))}
+  .steps div{display:flex;align-items:center;gap:8px}
+  .steps .now{color:rgb(var(--fg-1))}
+  .bar{height:2px;border-radius:2px;background:rgb(var(--surface-3));overflow:hidden;margin-top:4px}
+  .bar i{display:block;height:100%;width:38%;background:rgb(var(--brand))}
+  .kbd{display:inline-flex;height:20px;min-width:20px;align-items:center;justify-content:center;border-radius:6px;border:1px solid rgb(var(--line)/.12);background:rgb(var(--surface-2));padding:0 6px;font-family:"IBM Plex Mono";font-size:11px;color:rgb(var(--fg-2))}
+  .dialog{border-radius:16px;background:rgb(var(--surface-1));box-shadow:var(--shadow-modal);max-width:480px}
+  .dh{padding:20px 24px 0}
+  .dt{font-size:16px;font-weight:600}
+  .dd{font-size:14px;color:rgb(var(--fg-2));margin-top:2px}
+  .db{padding:16px 24px;font-size:14px;color:rgb(var(--fg-2))}
+  .df{display:flex;justify-content:flex-end;gap:8px;padding:16px 24px;border-top:1px solid rgb(var(--line)/var(--hair))}
+  .swatches{display:grid;grid-template-columns:repeat(8,1fr);gap:6px}
+  .sw{height:28px;border-radius:6px;border:1px solid rgb(var(--line)/var(--hair))}
+  .empty{display:flex;flex-direction:column;align-items:center;gap:6px;padding:40px 16px;text-align:center}
+  .empty .ic{width:40px;height:40px;border-radius:999px;background:rgb(var(--surface-2));display:grid;place-items:center;color:rgb(var(--fg-3))}
+  .toast{display:flex;gap:10px;align-items:flex-start;max-width:360px;border-radius:12px;background:rgb(var(--surface-1));padding:12px 16px;font-size:13px;box-shadow:var(--shadow-modal)}
+</style>
+</head>
+<body>
+<template id="tpl">
+  <div class="hdr">
+    <div class="row" style="gap:8px"><span class="mark"><svg width="16" height="16" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 22.5 12 9.5l4 8 4-8 4 13"/><circle cx="16" cy="24" r="1.6" fill="#f2c57c" stroke="none"/></svg></span><span class="word">DM Studio</span></div>
+    <span class="scope">◎ E2E Test Client <span style="color:rgb(var(--fg-3))">⌄</span></span>
+    <nav class="nav"><a class="on">Board</a><a>Completed</a><a>Clients</a><a>Settings</a></nav>
+    <div class="right"><span class="row" style="gap:6px"><span class="dot live" style="background:#1f8fa8"></span><span class="mono" style="color:rgb(var(--fg-2))">2 running</span></span><span class="avatar">S</span></div>
+  </div>
+  <div class="page">
+    <div class="row" style="justify-content:space-between;align-items:flex-start">
+      <div><h1>E2E Test Client</h1><div class="sub">4 cards · only this client. Choose “All clients” in the header for the whole board.</div></div>
+      <div class="row"><span class="btn secondary">▤ New cards from images</span><span class="btn primary">＋ New card</span></div>
+    </div>
+
+    <div class="sec row">
+      <span class="chip on"><span class="dot" style="background:#d98a1f"></span>Needs review <span class="mono" style="color:inherit">2</span></span>
+      <span class="chip"><span class="dot" style="background:#3d9a4f"></span>Delivered <span class="mono">2</span></span>
+      <span class="chip"><span class="dot" style="background:#1f8fa8"></span>Generating <span class="mono">0</span></span>
+      <span class="chip">Mine</span>
+    </div>
+
+    <div class="sec" style="display:flex;gap:24px;align-items:flex-start">
+      <div class="lane">
+        <div class="lanehdr"><span class="dot" style="background:#d98a1f"></span>Needs review<span class="cnt mono">2</span></div>
+        <div class="tile"><div class="thumb"><div class="art"></div></div><div><div class="t1">E2E Test Client</div><div class="t2">WILD &amp; FREE</div><div class="row" style="gap:6px;margin-top:6px"><span class="badge" style="background:var(--nr-bg);color:var(--nr-fg)">Needs review</span><span class="mono">3 h</span></div></div></div>
+        <div class="tile"><div class="thumb"><div class="art"></div></div><div><div class="t1">E2E Test Client</div><div class="t2">MOUNTAIN BEARS</div><div class="row" style="gap:6px;margin-top:6px"><span class="badge" style="background:var(--gen-bg);color:var(--gen-fg)"><span class="dot live" style="background:#1f8fa8"></span>Generating</span><span class="mono">0:31</span></div></div></div>
+      </div>
+      <div class="lane">
+        <div class="lanehdr"><span class="dot" style="background:#3b6fe0"></span>Approved<span class="cnt mono">0</span></div>
+        <div class="panel empty" style="margin-top:8px;border-style:dashed;box-shadow:none;background:transparent"><div class="ic">☐</div><div class="pt">Nothing approved</div><div class="ps">Cards land here after Generate.</div></div>
+      </div>
+    </div>
+
+    <div class="sec panel card">
+      <div class="frame"><div class="big"></div><div class="scan"></div><span class="ichip" style="left:12px;top:12px">Generating · 0:31 / ~0:40</span><span class="ichip" style="right:12px;top:12px;background:rgb(var(--surface-1)/.0)"></span></div>
+      <div class="rail">
+        <div class="status">Drawing the design with Style Card v1.</div>
+        <div class="steps"><div>✓ Read references <span class="mono">9 s</span></div><div class="now"><span class="dot live" style="background:#1f8fa8"></span>Generating image <span class="mono">0:31</span></div><div>○ QC judging</div><div>○ Finishing: upscale → background → 300 DPI</div></div>
+        <div class="bar"><i></i></div>
+        <span class="btn lg primary" style="justify-content:center;margin-top:8px">✓ Accept · finish</span>
+        <div class="row"><span class="btn secondary">⌗ Fix an area <span class="kbd">F</span></span><span class="btn secondary">↻ Try again</span><span class="btn ghost">Park</span></div>
+        <div class="mono" style="margin-top:4px">1bed5147 · form · received 29 Sep</div>
+      </div>
+    </div>
+
+    <div class="sec" style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+      <div class="panel">
+        <div class="ph"><div><div class="pt">Buttons</div><div class="ps">md 32px · sm 28px · lg 40px</div></div></div>
+        <div class="pb">
+          <div class="row"><span class="btn primary">Generate the design <span class="price">$0.60</span></span><span class="btn secondary">Duplicate</span><span class="btn ghost">Park</span><span class="btn danger">Discard draft</span></div>
+          <div class="row" style="margin-top:8px"><span class="btn sm secondary">Show previous</span><span class="btn sm primary focus">Focused</span><span class="btn primary" style="opacity:.5">Disabled</span><span class="btn primary"><span class="spin"></span>Uploading 2 of 3</span></div>
+          <div class="row" style="margin-top:12px"><span class="badge" style="background:var(--ok-bg);color:var(--ok-fg)">QC pass</span><span class="badge" style="background:var(--bad-bg);color:var(--bad-fg)">QC fail</span><span class="badge" style="background:var(--rev-bg);color:var(--rev-fg)">Review</span><span class="badge" style="background:var(--fin-bg);color:var(--fin-fg)">Finishing</span><span class="badge" style="background:rgb(var(--surface-2));color:rgb(var(--fg-2))">Queued</span><span class="tag">Try again</span><span class="tag">ref</span><span class="mono">4500 × 5400 px · 300 DPI</span></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="ph"><div><div class="pt">Inputs</div><div class="ps">32px · 8px radius · 3px focus tint</div></div></div>
+        <div class="pb" style="display:grid;gap:12px">
+          <div><label class="l">Headline</label><input class="input" value="WILD & FREE"/><div class="hint">Reads exactly as it prints.</div></div>
+          <div><label class="l">Sub</label><input class="input focused" placeholder="Second line"/></div>
+          <div><label class="l">Placement</label><input class="input" value="Front · centre chest      ⌄"/></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start">
+      <div class="dialog"><div class="dh"><div class="dt">Generate the design</div><div class="dd">Uses the brief and Style Card v1. This step spends money.</div></div><div class="db"><div class="well row" style="justify-content:space-between"><span>Cost</span><span class="mono" style="color:rgb(var(--fg-1));font-size:13px">$0.60</span></div></div><div class="df"><span class="btn secondary">Cancel</span><span class="btn primary">Generate <span class="price">$0.60</span></span></div></div>
+      <div style="display:grid;gap:12px">
+        <div class="toast"><span class="dot" style="background:#3d9a4f;margin-top:7px"></span><div>Text edit queued<div class="t3" style="margin-top:2px">The card is now editing.</div></div></div>
+        <div class="swatches">
+          <div class="sw" style="background:rgb(var(--canvas))"></div><div class="sw" style="background:rgb(var(--surface-1))"></div><div class="sw" style="background:rgb(var(--surface-2))"></div><div class="sw" style="background:rgb(var(--surface-3))"></div><div class="sw" style="background:rgb(var(--fg-3))"></div><div class="sw" style="background:rgb(var(--fg-2))"></div><div class="sw" style="background:rgb(var(--fg-1))"></div><div class="sw" style="background:rgb(var(--brand))"></div>
+        </div>
+        <div class="mono">canvas · surface-1 · surface-2 · surface-3 · fg-3 · fg-2 · fg-1 · brand</div>
+      </div>
+    </div>
+  </div>
+</template>
+<div class="theme theme-light"></div>
+<div class="theme theme-dark"></div>
+<script>
+  const t = document.getElementById('tpl').content
+  document.querySelectorAll('.theme').forEach(el => el.appendChild(t.cloneNode(true)))
+</script>
+</body>
+</html>

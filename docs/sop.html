@@ -492,26 +492,52 @@
         <p class="section-lede">The Style Card is the per-client aesthetic contract. The magic prompt is assembled in layers, in a fixed order, from data the pipeline already has. Neither contains a client name; both are looked up by the card's client id.</p>
 
         <h3>7.1 Style Card schema</h3>
+        <p>Schema 2 (migration studio_21) is additive: the 14 schema 1 keys keep their types. The key list below is identical to docs/generation-spec.md section 2 and to the reference row prompt_templates <code>style_card_render</code> v2.</p>
 <pre><code>{
-  "version": 1,
+  "schema": 2,
   "medium": "hand-inked linework with flat screen-print fills",
-  "linework": { "weight": "medium-bold", "style": "clean, closed shapes, no sketchy strokes" },
-  "shading": "flat fills, two-tone at most, no gradients",
+  "realism": "stylised",
+  "linework": { "weight": "bold", "style": "clean, closed shapes, no sketchy strokes", "outline": "thick" },
+  "shading": "flat fills, two-tone at most",
+  "shading_method": "flat",
   "texture": "subtle grain on fills only",
+  "edge_finish": "clean",
   "palette": [
-    { "name": "bone",   "hex": "#EDE6D6", "weight": "dominant" },
-    { "name": "rust",   "hex": "#B5472A", "weight": "accent" },
-    { "name": "ink",    "hex": "#1C1B1A", "weight": "outline" }
+    { "name": "bone", "hex": "#EDE6D6", "weight": "dominant",  "role": "fill", "images": [1, 2, 3] },
+    { "name": "rust", "hex": "#B5472A", "weight": "accent",    "role": "accent", "images": [1, 3] },
+    { "name": "ink",  "hex": "#1C1B1A", "weight": "outline",   "role": "line", "images": [1, 2, 3] }
   ],
-  "composition": "centred single subject, symmetrical, badge silhouette, no borders",
-  "typography": { "vibe": "condensed grotesque, all caps", "placement": "arched above subject" },
-  "background": "flat mid-grey #808080, no scene",
+  "palette_variants": [
+    { "garment": "dark",  "hexes": ["#EDE6D6", "#B5472A"], "images": [1, 3] },
+    { "garment": "light", "hexes": ["#1C1B1A", "#B5472A"], "images": [2] }
+  ],
+  "composition": "centred single hero, symmetrical, badge silhouette, no borders",
+  "hero": { "framing": "chest_up", "scale": "large" },
+  "typography": {
+    "vibe": "condensed grotesque", "placement": "arched above the hero", "case": "UPPER",
+    "headline":  { "family": "condensed_sans", "weight": "bold", "effects": ["arched"] },
+    "secondary": { "family": "slab_serif", "weight": "regular", "effects": [] }
+  },
+  "background": "flat mid-grey #808080, isolated artwork",
   "mood": ["vintage", "bold", "outdoorsy"],
-  "forbid": ["gradients", "photoreal", "drop shadows", "thin hairlines", "more than 4 colours"],
-  "garment_colors": ["black", "heather"]
+  "subjects": ["Highland cows", "chickens"],
+  "subject_sources": { "Highland cows": "both", "chickens": "brief" },
+  "brand_text": { "items": [{ "text": "@TheHappyHourFarm", "role": "handle", "placement": "bottom_margin" }], "always_present": true },
+  "forbid": ["gradients", "photo-realism", "drop shadows", "thin hairlines"],
+  "signature_moves": ["a single rust accent per design", "halftone only on the hero"],
+  "garment_colors": ["black", "heather"],
+  "representative_images": [1, 3, 5],
+  "field_evidence": { "linework.weight": { "images": [1, 2, 3, 5], "contradicts": [4], "agreement": 0.8 } },
+  "brief_check": { "must_have_seen": ["badge silhouette"], "must_have_not_seen": [], "avoid_seen_in": [] },
+  "evidence": ["IMAGE 1, 2, 3: bold closed outlines on every hero", "IMAGE 4: exception - hairline sketch"],
+  "rules": { "palette_mode": "strict", "text_case": "upper", "lock_typography": true, "lock_composition": false },
+  "reference_ids": ["uuid", "uuid", "uuid"],
+  "source": "library",
+  "validation": { "errors": [], "warnings": [], "fixes": [], "checked_at": "2026-09-30T00:00:00Z" }
 }</code></pre>
         <ul>
-          <li>Drafted by the "style profiler" vision prompt from the client's reference library (up to the Settings maximum), or from a first card's references when the library is empty. Returns exactly this schema plus evidence notes.</li>
+          <li>Drafted by the two-pass "style profiler" (one sheet per library image, then the card) from the client's reference library, up to the Settings maximum. The written brief comes first: niche, at least one subject and one garment colour are required before a draft can be requested. The card is checked and auto-fixed before it is stored; blocking errors stop the lock.</li>
+          <li>brand_text is text, never style: it is drawn only when a brief's text lines contain it and is never sent to QC as a forbid. subjects and garment_colors are not rendered in the style block (the SUBJECT and BRIEF blocks carry them).</li>
           <li>A designer edits and locks it. A locked card is never changed; corrections are a new version.</li>
           <li>Every generation stores the card id, version and a JSON snapshot, so any output can be audited.</li>
         </ul>

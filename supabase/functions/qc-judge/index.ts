@@ -1,12 +1,14 @@
-// qc-judge — Supabase Edge Function (Deno). Normalises the vision QC verdict for one generation and writes
+// qc-judge v2 — Supabase Edge Function (Deno). Normalises the vision QC verdict for one generation and writes
 // generations.qc_report / needs_regen / text_elements. Contract: docs/generation-spec.md §3 "qc-judge".
 //
 // Auth: rejected unless the caller sends x-studio-secret and rpc studio_secret_ok (called with that header forwarded)
 // returns true. verify_jwt is off; the apikey is the project's publishable key (public), never a service-role key.
-// POST {generation_id, qc_raw, exact_text_lines?: string[], style_card?: object}
+// POST {generation_id, qc_raw, exact_text_lines?: string[], style_card?: object, expected_subject?: string, attempt?: number}
 //   qc_raw = the Gemini response text, the whole chat-completions response object, or the parsed verdict object.
 //   exact_text_lines defaults to the card's print_text lines when omitted; style_card defaults to the generation's
-//   style_card_snapshot when omitted.
+//   style_card_snapshot; expected_subject defaults to magic_prompt_json.subject.text (prompt-engine v8), else
+//   brief_snapshot.subject, else cards.client_submission.subject; attempt defaults to generations.attempt.
+//   settings.qc_subject_regen (studio_21, default true) decides whether a wrong hero regenerates once.
 
 import { normaliseQc, normaliseTextLines } from './qc.ts';
 export { normaliseQc } from './qc.ts';
@@ -30,16 +32,34 @@ async function secretOk(secret: string): Promise<boolean> {
   return v === true;
 }
 
-type GenRow = { id: string; attempt: number | null; style_card_snapshot: unknown; cards: { print_text: unknown } | null };
+type GenRow = {
+  id: string; attempt: number | null; style_card_snapshot: unknown;
+  magic_prompt_json: { subject?: { text?: unknown } } | null;
+  brief_snapshot: { subject?: unknown } | null;
+  cards: { print_text: unknown; client_submission: { subject?: unknown } | null } | null;
+};
 
 // The embed names the FK explicitly: generations.card_id -> cards and cards.current_generation_id -> generations are
 // both relationships, so a bare cards(...) embed is ambiguous (PostgREST 300 PGRST201).
 async function loadGeneration(secret: string, id: string): Promise<GenRow | null> {
-  const u = `${SB_URL}/rest/v1/generations?id=eq.${id}&select=id,attempt,style_card_snapshot,cards!generations_card_id_fkey(print_text)`;
+  const u = `${SB_URL}/rest/v1/generations?id=eq.${id}&select=id,attempt,style_card_snapshot,magic_prompt_json,brief_snapshot,cards!generations_card_id_fkey(print_text,client_submission)`;
   const r = await fetch(u, { headers: sbHeaders(secret, { accept: 'application/json' }) });
   if (!r.ok) throw new Error(`load generation failed: ${r.status} ${(await r.text()).slice(0, 200)}`);
   const rows = (await r.json()) as GenRow[];
   return rows[0] ?? null;
+}
+
+/** settings.qc_subject_regen; true (the column default) when the row or the column is missing (pre-studio_21). */
+async function loadSubjectRegen(secret: string): Promise<boolean> {
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/settings?id=eq.1&select=qc_subject_regen`, { headers: sbHeaders(secret, { accept: 'application/json' }) });
+    if (!r.ok) return true;
+    const rows = (await r.json()) as { qc_subject_regen?: unknown }[];
+    const v = rows[0]?.qc_subject_regen;
+    return typeof v === 'boolean' ? v : true;
+  } catch {
+    return true;
+  }
 }
 
 async function patchGeneration(secret: string, id: string, patch: Record<string, unknown>): Promise<void> {
@@ -48,6 +68,8 @@ async function patchGeneration(secret: string, id: string, patch: Record<string,
   });
   if (!r.ok) throw new Error(`patch generation failed: ${r.status} ${(await r.text()).slice(0, 200)}`);
 }
+
+const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
 
 export async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') return json(405, { error: 'POST only' });
@@ -62,17 +84,24 @@ export async function handler(req: Request): Promise<Response> {
   if (!UUID_RE.test(generation_id)) return json(400, { error: 'generation_id must be a uuid' });
 
   try {
-    const gen = await loadGeneration(secret, generation_id);
+    const [gen, qc_subject_regen] = await Promise.all([loadGeneration(secret, generation_id), loadSubjectRegen(secret)]);
     if (!gen) return json(404, { error: 'generation not found', generation_id });
 
     const exact_text_lines = body.exact_text_lines !== undefined && body.exact_text_lines !== null
       ? normaliseTextLines(body.exact_text_lines)
       : normaliseTextLines(gen.cards?.print_text);
     const style_card = body.style_card !== undefined && body.style_card !== null ? body.style_card : gen.style_card_snapshot;
+    const expected_subject = str(body.expected_subject) || str(gen.magic_prompt_json?.subject?.text) || str(gen.brief_snapshot?.subject) || str(gen.cards?.client_submission?.subject);
+    const bodyAttempt = Number(body.attempt);
+    const attempt = Number.isFinite(bodyAttempt) && bodyAttempt >= 1 ? Math.floor(bodyAttempt) : (gen.attempt ?? 1);
 
-    const { qc_report, needs_regen, text_elements } = normaliseQc(body.qc_raw, { exact_text_lines, style_card, attempt: gen.attempt ?? 1 });
+    const { qc_report, needs_regen, text_elements } = normaliseQc(body.qc_raw, { exact_text_lines, style_card, attempt, expected_subject, qc_subject_regen });
     await patchGeneration(secret, generation_id, { qc_report, needs_regen, text_elements });
-    return json(200, { generation_id, qc_report, needs_regen, text_elements, corrective_instruction: qc_report.corrective_instruction });
+    return json(200, {
+      generation_id, qc_report, needs_regen, text_elements,
+      corrective_instruction: qc_report.corrective_instruction,
+      verdict: qc_report.verdict, style_match: qc_report.style_match, expected_subject, qc_subject_regen,
+    });
   } catch (e) {
     return json(500, { error: (e as Error).message ?? String(e), generation_id });
   }

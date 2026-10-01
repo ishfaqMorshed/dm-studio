@@ -1,19 +1,28 @@
-// qc-judge — pure normaliser for the vision QC verdict.
+// qc-judge v2 — pure normaliser for the vision QC verdict.
 // No Deno / network here so it can be unit-tested anywhere (deno test, or node --experimental-strip-types).
 //
 // Input verdict schema = the T-Shirt Engine 9-point JSON (docs/tshirt-engine/EXTRACT.md §3.8, node `Build QC Request`):
 // {"text_found":"...","text_matches":true,"text_once":true,"extra_text":false,"text_legible":true,"no_halos":true,
 //  "background_ok":true,"no_shadows":true,"flat_artwork":true,"edges_clean":true,"issues":["..."],"pass":true}
 // DM Studio additions the QC prompt may also return (all optional, tolerated when absent):
-//  palette_ok:boolean, style_violations:string[], min_text_height_frac:number, text_elements:[{text,role?,height_frac?}], cropped:boolean
+//  qc_prompt v1 tail: palette_ok:boolean, style_violations:string[], min_text_height_frac:number, text_elements:[{text,role?,height_frac?}], cropped:boolean
+//  qc_prompt v2 tail (studio_21): "style": {subject_seen, subject_ok:true|false|null, palette_ok, off_palette_colours:[{name,hex,area}],
+//    medium_ok, typography_ok, composition_ok, forbid_hits:[n], case_seen, text_height_ok, min_text_height_frac, cropped}
+//
+// v2 (2026-09-30): style_match {score, checks[{id, field, pass, note}]} judged against the Style Card only; verdict 'warn'
+// for style-only findings (core checks decide 'fail'); the wrong hero regenerates once when settings.qc_subject_regen is on
+// and an expected subject exists; the forbid regex matcher is gone (the judge reports forbid_hits by number).
 
 export type QcCheck = { id: string; name: string; pass: boolean | null; note: string };
+export type StyleCheck = { id: string; field: string; pass: boolean | null; note: string };
+export type StyleMatch = { score: number | null; checks: StyleCheck[]; subject_seen: string; case_seen: string };
 
 export type QcReport = {
-  version: 1;
-  verdict: 'pass' | 'fail' | 'unverified';
+  version: 2;
+  verdict: 'pass' | 'warn' | 'fail' | 'unverified';
   checks: QcCheck[];
   score: number | null;
+  style_match: StyleMatch | null;
   needs_regen: boolean;
   corrective_instruction: string | null;
   style_violations: string[];
@@ -30,9 +39,15 @@ export type QcContext = {
   exact_text_lines?: unknown;
   style_card?: unknown;
   attempt?: unknown;
+  /** magic_prompt_json.subject.text (the SUBJECT block); '' when the design has no explicit subject */
+  expected_subject?: unknown;
+  /** settings.qc_subject_regen (default true): regenerate once when the judge reports the wrong hero */
+  qc_subject_regen?: unknown;
 };
 
 type Verdict = Record<string, unknown>;
+
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 
 // ---- the 9 checks, verbatim ids from the engine's verdict schema -------------------------------------------------
 // `mode` mirrors Parse QC scoring: 'strictTrue' counts only === true, 'notFalse' counts anything but === false,
@@ -48,6 +63,11 @@ const CORE_CHECKS: { id: string; name: string; mode: 'strictTrue' | 'notFalse' |
   { id: 'flat_artwork',  name: 'Flat artwork, not a mockup',             mode: 'strictTrue',  regen: true },
   { id: 'edges_clean',   name: 'Continuous edges, no stray dots',        mode: 'notFalse',    regen: true },
 ];
+
+/** style_match check ids -> the Style Card field they judge (deep links in the UI). */
+export const STYLE_FIELDS: Record<string, string> = {
+  palette: 'palette', medium: 'medium', typography: 'typography.headline', composition: 'composition', subject: 'subjects', forbid: 'forbid',
+};
 
 // Verbatim template pieces from `Build Corrective Gen Request` (EXTRACT.md §3.9).
 const CORRECTIVE_HEAD = 'CRITICAL CORRECTIONS - a previous attempt failed quality inspection. Fix ALL of the following while keeping everything else identical: ';
@@ -79,6 +99,16 @@ function toStrList(v: unknown): string[] {
   if (Array.isArray(v)) return v.filter((x) => x !== null && x !== undefined && x !== '').map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).map((s) => s.trim()).filter(Boolean);
   if (typeof v === 'string' && v.trim()) return [v.trim()];
   return [];
+}
+
+function toIntList(v: unknown): number[] {
+  const arr = Array.isArray(v) ? v : (v === null || v === undefined || v === '' ? [] : [v]);
+  const out: number[] = [];
+  for (const x of arr) {
+    const n = typeof x === 'number' ? x : (typeof x === 'string' ? Number(x.replace(/[^\d.-]/g, '')) : NaN);
+    if (Number.isFinite(n) && Math.round(n) >= 1 && !out.includes(Math.round(n))) out.push(Math.round(n));
+  }
+  return out;
 }
 
 export function normaliseTextLines(v: unknown): string[] {
@@ -145,13 +175,75 @@ export function buildCorrective(issues: string[], expectedLines: string[]): stri
   return add;
 }
 
+/** The sentence appended to the corrective instruction when the judge reports the wrong hero. */
+export function subjectCorrection(expectedSubject: string, subjectSeen: string): string {
+  return 'Draw ' + expectedSubject + ' as the hero, not ' + (subjectSeen || 'what the text names') + '; the text is lettering only and never chooses the subject';
+}
+
+// ---- style_match (qc_prompt v2 "style" key, judged against the Style Card only) ---------------------------------------
+export function buildStyleMatch(v: Verdict, card: Record<string, unknown> | null, expectedSubject: string): StyleMatch {
+  const style = isObj(v.style) ? v.style : {};
+  const rules = card && isObj(card.rules) ? card.rules : {};
+  const forbid = card ? toStrList(card.forbid) : [];
+  const checks: StyleCheck[] = [];
+  const nr = 'not reported';
+  const push = (id: string, pass: boolean | null, note: string) => checks.push({ id, field: STYLE_FIELDS[id], pass, note: pass === null && !note ? nr : note });
+
+  // palette: palette_ok, plus off_palette_colours with a LARGE area in flexible mode
+  {
+    const ok = toBool(style.palette_ok);
+    const off = (Array.isArray(style.off_palette_colours) ? style.off_palette_colours : []).filter(isObj);
+    const large = off.filter((o) => /large/i.test(String(o.area ?? '')));
+    const flexible = rules.palette_mode === 'flexible';
+    const offNote = off.length ? 'off-palette: ' + off.map((o) => [String(o.name ?? '').trim(), String(o.hex ?? '').trim().toUpperCase()].filter(Boolean).join(' ') + (o.area ? ' (' + String(o.area) + ')' : '')).join(', ') : '';
+    let pass: boolean | null;
+    if (ok === undefined) pass = flexible && large.length ? false : (off.length ? true : null);
+    else pass = ok && !(flexible && large.length);
+    push('palette', pass, pass === false ? (offNote || 'palette drifts from the Style Card') : offNote);
+  }
+  {
+    const ok = toBool(style.medium_ok);
+    push('medium', ok === undefined ? null : ok, ok === false ? 'not drawn in the card medium, linework or shading method' : '');
+  }
+  {
+    const ok = toBool(style.typography_ok);
+    push('typography', ok === undefined ? null : ok, ok === false ? 'letterform style or placement differs from the card typography' : '');
+  }
+  {
+    if (rules.lock_composition === false) push('composition', true, 'guide - not judged');
+    else {
+      const ok = toBool(style.composition_ok);
+      push('composition', ok === undefined ? null : ok, ok === false ? 'composition differs from the card' : '');
+    }
+  }
+  const subjectSeen = typeof style.subject_seen === 'string' ? style.subject_seen.trim() : '';
+  {
+    const raw = style.subject_ok;
+    const ok = raw === null ? null : toBool(raw);
+    const pass = ok === undefined ? null : ok;
+    const drawn = subjectSeen ? 'drawn: ' + subjectSeen : '';
+    push('subject', pass, pass === null ? (raw === null || !expectedSubject ? (drawn ? drawn + ' (no subject given)' : 'no subject given') : '') : drawn);
+  }
+  {
+    const hits = toIntList(style.forbid_hits).filter((n) => n <= forbid.length || !forbid.length);
+    const named = hits.map((n) => 'forbidden element present: ' + (forbid[n - 1] ?? '#' + n));
+    const reported = 'forbid_hits' in style;
+    push('forbid', hits.length ? false : (reported ? true : null), named.join('; '));
+  }
+  const judged = checks.filter((c) => c.pass !== null);
+  const score = judged.length ? Math.round((judged.filter((c) => c.pass === true).length / judged.length) * 100) : null;
+  return { score, checks, subject_seen: subjectSeen, case_seen: typeof style.case_seen === 'string' ? style.case_seen.trim() : '' };
+}
+
 // ---- main -------------------------------------------------------------------------------------------------------------
 export function normaliseQc(raw: unknown, ctx: QcContext = {}): { qc_report: QcReport; needs_regen: boolean; text_elements: unknown[] } {
   const expected = normaliseTextLines(ctx.exact_text_lines);
   const attemptN = toNum(ctx.attempt);
   const attempt = attemptN && attemptN >= 1 ? Math.floor(attemptN) : 1;
-  const card = ctx.style_card && typeof ctx.style_card === 'object' ? (ctx.style_card as Record<string, unknown>) : null;
+  const card = isObj(ctx.style_card) ? ctx.style_card : null;
   const palette = card && Array.isArray(card.palette) ? (card.palette as unknown[]) : [];
+  const expectedSubject = typeof ctx.expected_subject === 'string' ? ctx.expected_subject.trim() : '';
+  const subjectRegenOn = ctx.qc_subject_regen === undefined || ctx.qc_subject_regen === null ? true : toBool(ctx.qc_subject_regen) !== false;
 
   const { verdict, error } = extractVerdict(raw);
   const known = CORE_CHECKS.map((c) => c.id).concat(['pass', 'issues', 'text_found']);
@@ -164,7 +256,7 @@ export function normaliseQc(raw: unknown, ctx: QcContext = {}): { qc_report: QcR
     checks.push({ id: 'style_palette', name: 'Palette matches Style Card', pass: null, note: 'unverified' });
     if (expected.length) checks.push({ id: 'text_height', name: 'Text large enough to print', pass: null, note: 'unverified' });
     const report: QcReport = {
-      version: 1, verdict: 'unverified', checks, score: null, needs_regen: false, corrective_instruction: null,
+      version: 2, verdict: 'unverified', checks, score: null, style_match: null, needs_regen: false, corrective_instruction: null,
       style_violations: [], text_ok: null, text_found: '', expected_text: expected, min_text_height_frac: null,
       issues: [], parse_error, attempt,
     };
@@ -172,6 +264,7 @@ export function normaliseQc(raw: unknown, ctx: QcContext = {}): { qc_report: QcR
   }
 
   const v = verdict as Verdict;
+  const style = isObj(v.style) ? v.style : {};
   const issues = toStrList(v.issues);
   const text_found = typeof v.text_found === 'string' ? v.text_found.trim() : (v.text_found == null ? '' : String(v.text_found));
 
@@ -190,34 +283,33 @@ export function normaliseQc(raw: unknown, ctx: QcContext = {}): { qc_report: QcR
   });
   const score = Math.round((ok / CORE_CHECKS.length) * 100);
 
-  // -- optional: cropping (regen-worthy when the judge reports it)
-  const cropped = toBool(v.cropped);
+  // -- optional: cropping (regen-worthy when the judge reports it; qc_prompt v2 reports it inside "style")
+  const cropped = toBool(v.cropped ?? style.cropped);
   if (cropped !== undefined) {
     checks.push({ id: 'not_cropped', name: 'Artwork not cropped by the frame', pass: !cropped, note: cropped ? (issueFor(issues, 'crop') ?? 'artwork touches or leaves the frame') : '' });
     if (cropped) failedRegen.push('not_cropped');
   }
 
-  // -- Style Card palette check + rules-violated list (designer flags, never regen)
+  // -- Style Card: style_match (v2) + the compat palette check + the rules-violated list (designer flags)
+  const style_match = buildStyleMatch(v, card, expectedSubject);
   const style_violations = toStrList(v.style_violations);
-  const paletteOk = toBool(v.palette_ok);
+  const paletteOk = toBool(style.palette_ok ?? v.palette_ok);
   const paletteViolation = style_violations.find((s) => /palette|colou?r|hex/i.test(s));
-  if (paletteOk === false && !paletteViolation) style_violations.push('palette drifts from the Style Card' + (palette.length ? ' (' + palette.map(hexOf).filter(Boolean).join(', ') + ')' : ''));
-  const palettePass = paletteOk !== false && !paletteViolation;
+  const paletteCheck = style_match.checks.find((c) => c.id === 'palette');
+  const palettePass = paletteOk !== false && !paletteViolation && paletteCheck?.pass !== false;
+  if (!palettePass && !paletteViolation) style_violations.push(paletteCheck?.note && paletteCheck.pass === false ? paletteCheck.note : 'palette drifts from the Style Card' + (palette.length ? ' (' + palette.map(hexOf).filter(Boolean).join(', ') + ')' : ''));
   checks.push({
     id: 'style_palette', name: 'Palette matches Style Card',
     pass: palettePass,
-    note: palettePass ? (paletteOk === undefined ? (palette.length ? 'not reported' : 'no palette on Style Card') : '') : (paletteViolation ?? 'palette drifts from the Style Card'),
+    note: palettePass ? (paletteOk === undefined && paletteCheck?.pass === null ? (palette.length ? 'not reported' : 'no palette on Style Card') : '') : (paletteViolation ?? style_violations[style_violations.length - 1]),
   });
-  // Forbidden elements from the Style Card the judge named in issues/violations
-  const forbid = card ? toStrList(card.forbid) : [];
-  for (const f of forbid) {
-    const re = new RegExp(f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    if (issues.concat(style_violations).some((s) => re.test(s)) && !style_violations.some((s) => s.toLowerCase().includes(f.toLowerCase()))) style_violations.push('forbidden element present: ' + f);
-  }
+  // forbid hits the judge numbered (the v1 regex matcher over issues is gone)
+  const forbidCheck = style_match.checks.find((c) => c.id === 'forbid');
+  if (forbidCheck?.pass === false) for (const n of forbidCheck.note.split('; ')) if (n && !style_violations.includes(n)) style_violations.push(n);
 
-  // -- text height (informational unless the judge says it is too small)
-  const min_text_height_frac = toNum(v.min_text_height_frac);
-  const textHeightOk = toBool(v.text_height_ok);
+  // -- text height (informational unless the judge says it is too small; v2 reports it inside "style")
+  const min_text_height_frac = toNum(v.min_text_height_frac ?? style.min_text_height_frac);
+  const textHeightOk = toBool(v.text_height_ok ?? style.text_height_ok);
   if (expected.length) {
     const pass = textHeightOk !== false;
     checks.push({ id: 'text_height', name: 'Text large enough to print', pass, note: pass ? (min_text_height_frac === null ? 'not reported' : 'min glyph height ' + (min_text_height_frac * 100).toFixed(1) + '% of image') : (issueFor(issues, 'small') ?? 'text too small to print') });
@@ -229,13 +321,18 @@ export function normaliseQc(raw: unknown, ctx: QcContext = {}): { qc_report: QcR
   const et = toBool(v.extra_text) === false;
   const text_ok = tm && to && et;
 
-  // -- overall: `pass` from the judge, else derived from the checks
-  let pass = toBool(v.pass);
-  if (pass === undefined) pass = checks.every((c) => c.pass !== false);
-  if (pass && checks.some((c) => c.pass === false)) pass = false; // the judge said pass but a check is explicitly false: trust the checks
+  // -- overall: core checks decide 'fail'; style findings (or a judge pass:false with every check green) are 'warn'
+  const judgePass = toBool(v.pass);
+  const coreFailed = checks.some((c) => c.pass === false && c.id !== 'style_palette');
+  const subjectCheck = style_match.checks.find((c) => c.id === 'subject');
+  const subjectRegen = subjectRegenOn && !!expectedSubject && subjectCheck?.pass === false;
+  const styleWarn = (style_match.score !== null && style_match.score < 100) || judgePass === false || !palettePass;
+  const verdictWord: QcReport['verdict'] = coreFailed || subjectRegen ? 'fail' : (styleWarn ? 'warn' : 'pass');
 
-  const needs_regen = !pass && failedRegen.length > 0;
-  const corrective_instruction = needs_regen ? buildCorrective(issues, expected) : null;
+  const needs_regen = (coreFailed && failedRegen.length > 0) || subjectRegen;
+  const correctiveIssues = issues.slice();
+  if (subjectRegen) correctiveIssues.push(subjectCorrection(expectedSubject, style_match.subject_seen));
+  const corrective_instruction = needs_regen ? buildCorrective(correctiveIssues, expected) : null;
 
   // -- text_elements for generations.text_elements
   let text_elements: unknown[] = [];
@@ -246,9 +343,9 @@ export function normaliseQc(raw: unknown, ctx: QcContext = {}): { qc_report: QcR
   }
 
   const report: QcReport = {
-    version: 1,
-    verdict: pass ? 'pass' : 'fail',
-    checks, score, needs_regen, corrective_instruction, style_violations, text_ok, text_found,
+    version: 2,
+    verdict: verdictWord,
+    checks, score, style_match, needs_regen, corrective_instruction, style_violations, text_ok, text_found,
     expected_text: expected, min_text_height_frac, issues, parse_error: null, attempt,
   };
   return { qc_report: report, needs_regen, text_elements };
