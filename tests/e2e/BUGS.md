@@ -185,3 +185,14 @@ The corrected WF-1b (`baCsaUp7HdrrSf2i`: library order `created_at.desc,id.desc`
 - **Steps:** v4 locked; select draft v3 in step 3 → step 4 "Lock v3 & test render".
 - **Actual:** v3 got status locked, but `current_style_card()` picks the highest locked version, so v4 stayed current while the wizard said "every new brief uses v3".
 - **Fix:** migration studio_22 — `lock_style_card` re-issues an older draft as the next version (copy of its json, locked, note "locked from vN") when a newer version is already locked, so the newest locked version is always the chosen one.
+
+---
+
+## Run 6 (2026-10-01): Style Card v2 front end (workflow wf_c430f90e-252 + a signed-in pass by the main session)
+
+Verified live on the E2E client: brief step shows Subjects (required) / Brand text / Typography note; with no subject the header reads "Missing: at least one subject" and Analyse is disabled with the reason; after adding "Highland cows, chickens" and saving, the confirm dialog lists niche, subjects, brand text, garments, must/never counts, images, the template in use (truthfully "style_profiler v2" until the new WF-1b is live) and the cost; one Analyse (~$0.02) wrote draft v6 in ~40 s; the readout shows validation chips computed with the shared rules (2 errors "brief subject missing" — expected until the new profiler is live — 3 warnings, 13 auto-fixes) with "Fix in editor" links; step 1 shows Design/Mockup/Draft, garment, "Best example of" and Outlier controls per tile plus the amber tagging hint; step 4 blocks "Lock v6 & test render" with the first error as the reason and lists the warnings; the editor opens the field from `?field=`, has enum selects and "Clean up (9)"; the public brief form reads "Three references, one job each" with "1 · What to make / 2 · Art style / 3 · Lettering" and hints (roles come from `start_brief`, studio_24); the designer New card dialog uses the same labels with "Style Card only" on empty slots; the card page References panel captions legacy cards "Style reference" with the explanatory note; Settings lists the slot order. No console errors on any current load.
+
+Open / follow-ups:
+- Deploy prompt-engine v8, qc-judge v2 and style-card-check; apply the n8n ops and activate the templates per `n8n/ops/README.md` (ship-together rule R1). Until then: drafts have no `reference_ids`/`validation`, QC reports have no `style_match` ("not reported"), and every analysis fails the brief-subject check because style_profiler v2 ignores the brief subjects.
+- Migrations studio_19–24 were applied with execute_sql and are not recorded in `supabase_migrations.schema_migrations` (that table stops at studio_18c) — record them before the next CLI migration run.
+- Test client state after this run: brief subjects ["Highland cows","chickens"] (kept), draft v6, v5 locked current.

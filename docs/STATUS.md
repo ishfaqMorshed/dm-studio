@@ -1,4 +1,4 @@
-# DM Studio — status (updated 2026-09-30)
+# DM Studio — status (updated 2026-10-01)
 
 One page the user can open at any time. Three lists: done / ongoing / to-do. Mirror into SOP section 11 when the SOP is republished as v1.2.
 
@@ -20,11 +20,12 @@ One page the user can open at any time. Three lists: done / ongoing / to-do. Mir
 
 - 2026-09-30 — Onboarding wizard `/clients/:id/onboard`: drop 5–16 designs (tick/untick, per-image note, profiler-order numbering) → written brief & lock parameters (`clients.style_brief`, tier, garment colours; saved through `save_onboarding_brief`, any staff) → Analyse (~$0.02, live progress) → visual Style Card (swatches, typography, chips cross-checked against the brief, per-image evidence with exception warnings, stale-rules banner) → Test render (~$0.10, hidden `style_test` card, auto-approve with the draft) → Lock. Migration studio_19 (test-card order, `max_style_refs` 16, `save_onboarding_brief`).
 
+- 2026-10-01 — **Style Card v2** (spec `docs/stylecard-v2-spec.md`): migration studio_21 (reference roles, brief gate, 9 new templates inactive) + studio_23/24; shared validator `_shared/style_card_rules.ts` + Edge Function `style-card-check`; prompt-engine v8 (SUBJECT block, precedence, per-slot references, lint at render) and qc-judge v2 (style match, subject regen) with a Node test harness (`npm run test:functions`, 78 tests); n8n sources for WF-1b (two-pass + validator + repair), WF-1 (per-slot reads), WF-2/3 (QC with Style Card + subject) with ready-to-apply ops and runbooks; front end: brief with subjects/brand text + Analyse gate, design tags, validation chips, labelled reference slots on the public form / New card / card page / Settings, QC style match, editor v2 with Clean up. Lock & test step 4 (lock first, explicit subject). Front-end design system researched and specified (`docs/design/`, preview page).
+
 ## Ongoing
 
-- WF-1b Style Card v2 (spec `docs/stylecard-v2-spec.md` 2.1): `n8n/wf1b-style-draft.sdk.js` rewritten — Pass A per-image sheets (style_sheet v1), style_profiler v3 tokens, style-card-check gate, one OpenRouter repair, `raw` on style_draft_requests; `node n8n/tools/check.js` + `node n8n/tools/test-wf1b-style.js` green. NOT applied to n8n yet: follow `docs/runbook-wf1b-style-card-v2.md` (ops in `n8n/ops/wf1b-from-base-baCsaUp7HdrrSf2i.ops.json` / `wf1b-from-live-CsohPMosybjBoP8s.ops.json`, or re-create from code), bind WF-6, unpublish `CsohPMosybjBoP8s`, publish, then activate style_sheet v1 + style_profiler v3 in the same step (R1). Supersedes the earlier `baCsaUp7HdrrSf2i` swap (that copy is the ops base).
-- Phase 2 apply (WF-1b `CsohPMosybjBoP8s`, WF-1 `CrpmkqYiaWBtvto6`, WF-2 `KVLDYPaWZZZtOoir`, WF-3 `V83NWHjzDdyiqtNP`): consolidated runbook `n8n/ops/README.md` - canonical ops `n8n/ops/wf1b.ops.json` (65), `wf1.ops.json` (22), `wf2.ops.json` (3), `wf3.ops.json` (2) + sticky ops, live baselines verified 2026-09-30, template activation SQL per step (R1), smoke checks, rollback. Nothing applied yet; Edge Functions prompt-engine v8 / qc-judge v2 / style-card-check deploy first.
-- Card-page redesign QA leftovers (4 minor, listed in `tests/e2e/BUGS.md` → Run 4).
+- **Deployment of Style Card v2** (needs a session where the n8n/Supabase tools accept typed arguments, or the user in the UIs): deploy Edge Functions prompt-engine, qc-judge, style-card-check; apply `n8n/ops/*.ops.json`; activate the new template versions per `n8n/ops/README.md` rule R1; then the acceptance run on Happy Hour Farm (needs the user's niche / subjects / brand text / garments).
+- Front-end redesign (presentation-only) once the user approves `docs/design/preview.html`.
 
 ## To-do (in order; who)
 
