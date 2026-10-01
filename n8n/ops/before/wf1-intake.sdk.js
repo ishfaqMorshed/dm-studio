@@ -19,7 +19,7 @@ const sampleRefPath2 = sampleClientId + '/' + sampleCardId + '/2.jpg';
 const sampleSignedPath = '/object/sign/refs/' + sampleRefPath1 + '?token=redacted';
 const sampleSignedUrl = supabaseUrl + '/storage/v1' + sampleSignedPath;
 
-const sampleClient = { id: sampleClientId, name: 'Test Client', default_similarity_tier: 3, garment_colors: ['black', 'navy'], notes: 'Loves vintage badges', style_brief: { niche: 'camping and outdoor humour', audience: 'families who camp' } };
+const sampleClient = { id: sampleClientId, name: 'Test Client', default_similarity_tier: 3, garment_colors: ['black', 'navy'], notes: 'Loves vintage badges' };
 const sampleCard = {
   id: sampleCardId,
   client_id: sampleClientId,
@@ -27,7 +27,6 @@ const sampleCard = {
   brief_text: 'Retro camping badge with a bear over a lake',
   print_text: [{ role: 'headline', text: 'FAMILY FIRST' }],
   reference_paths: [sampleRefPath1, sampleRefPath2],
-  reference_roles: ['subject', 'art_style'],
   reference_analysis: null,
   garment_color: 'black',
   placement: 'front_chest',
@@ -37,31 +36,41 @@ const sampleCard = {
   clients: sampleClient
 };
 const sampleAnalysis = {
-  art_style: 'bold vintage badge illustration; stylised realism; bold clean closed outlines linework; halftone shading; light grain texture; clean edges',
-  palette: [{ name: 'cream', hex: '#F2E8D5', role: 'fill' }, { name: 'forest green', hex: '#2F5D3A', role: 'line' }],
-  subject_structure: 'bear silhouette, standing in profile, full_figure framing, large scale; supporting elements lake, pine trees',
-  composition: 'badge layout; full_figure framing; text zones arched along the top and a banner below',
-  typography_transcription: '',
-  text_detected: ['WILD & FREE'],
-  notes: 'reference 2 is a worn shirt mockup; judged as flat artwork',
-  references: [
-    { slot: 1, role: 'subject', hero: { subject: 'bear silhouette', pose: 'standing in profile', framing: 'full_figure', scale: 'large' }, supporting_elements: ['lake', 'pine trees'], layout: 'badge', text_zones: 'arched along the top and a banner below', text_detected: ['WILD & FREE'] },
-    { slot: 2, role: 'art_style', medium: 'bold vintage badge illustration', realism: 'stylised', line_weight: 'bold', line_style: 'clean closed outlines', shading: 'halftone', texture: 'light grain', edge_finish: 'clean', palette: [{ name: 'cream', hex: '#F2E8D5', role: 'fill' }, { name: 'forest green', hex: '#2F5D3A', role: 'line' }], text_detected: [] }
-  ],
-  roles: ['subject', 'art_style'],
-  same_design: false,
-  template_version: 3
+  art_style: 'bold vintage badge illustration, screen-print feel',
+  palette: [{ name: 'cream', hex: '#F2E8D5' }, { name: 'forest green', hex: '#2F5D3A' }],
+  subject_structure: 'centered bear silhouette over a lake inside a circular badge',
+  typography_transcription: 'FAMILY FIRST',
+  text_detected: ['FAMILY FIRST'],
+  composition: 'circular badge, text arched along the top',
+  notes: 'reference 2 is a worn shirt mockup; judged as flat artwork'
 };
-const sampleAnalysisContent = JSON.stringify({ references: sampleAnalysis.references, same_design: false, notes: sampleAnalysis.notes });
+const sampleStyleCard = {
+  medium: 'screen-print style vector illustration',
+  linework: { weight: 'bold', style: 'clean, closed outlines' },
+  shading: 'flat fills with sparse halftone',
+  texture: 'light grain',
+  palette: [{ name: 'cream', hex: '#F2E8D5', weight: 'dominant' }, { name: 'forest green', hex: '#2F5D3A', weight: 'secondary' }],
+  composition: 'centered badge or stacked lockup',
+  typography: { vibe: 'vintage condensed sans', placement: 'arched top', case: 'upper' },
+  background: 'flat mid-grey #808080, isolated artwork',
+  mood: ['rugged', 'warm'],
+  subjects: ['wildlife', 'camping', 'family'],
+  forbid: ['gradients', 'photorealism'],
+  signature_moves: ['thick outer keyline', 'two-tone hero'],
+  garment_colors: ['black', 'navy']
+};
+const sampleAnalysisContent = '{"art_style":"bold vintage badge illustration, screen-print feel","palette":[{"name":"cream","hex":"#F2E8D5"}],"subject_structure":"centered bear over a lake","typography_transcription":"FAMILY FIRST","text_detected":["FAMILY FIRST"],"composition":"circular badge","notes":"reference 2 is a mockup"}';
+const sampleStyleContent = '{"medium":"screen-print style vector illustration","linework":{"weight":"bold","style":"clean"},"shading":"flat fills","texture":"light grain","palette":[{"name":"cream","hex":"#F2E8D5","weight":"dominant"}],"composition":"centered badge","typography":{"vibe":"vintage sans","placement":"arched top","case":"upper"},"background":"flat mid-grey #808080, isolated artwork","mood":["rugged"],"subjects":["wildlife"],"forbid":["gradients"],"signature_moves":["thick keyline"],"garment_colors":["black"]}';
 const sampleAnalysisResponse = { id: 'chatcmpl-analysis', object: 'chat.completion', model: 'gemini-3.1-pro', choices: [{ index: 0, message: { role: 'assistant', content: sampleAnalysisContent }, finish_reason: 'stop' }], usage: { prompt_tokens: 1400, completion_tokens: 260 } };
+const sampleStyleResponse = { id: 'chatcmpl-style', object: 'chat.completion', model: 'gemini-3.1-pro', choices: [{ index: 0, message: { role: 'assistant', content: sampleStyleContent }, finish_reason: 'stop' }], usage: { prompt_tokens: 2200, completion_tokens: 420 } };
 const sampleConfig = { sbUrl: supabaseUrl, anonKey: 'sb_publishable_redacted', n8nBaseUrl: n8nBaseUrl, studioSecret: 'redacted', ideogramKey: 'redacted', imgbbKey: 'redacted', mlKey: 'redacted', upscaleModel: 'ultra_resolution', upscaleScale: 4 };
 const sampleVisionBody = { messages: [{ role: 'user', content: [{ type: 'text', text: 'You are a precise visual analyst ...' }, { type: 'image_url', image_url: { url: sampleSignedUrl } }] }], response_format: { type: 'json_object' } };
 
 const intakeNote = sticky(
   '## DM Studio · WF-1 Intake (cards insert → /webhook/studio-intake)\n' +
-  'Payload {card_id, client_id} from the pg_net trigger. Respond 200 immediately, then: Tag Execution (cards.n8n_execution_id, read by WF-6) → Get Vision Model (settings vision_model, ai_platform, openrouter_models, **reference_roles**) → Get Card (+client incl. style_brief; cards.reference_roles) → Get Templates (prompt_templates slug **analysis_prompt**, active v3 = per-slot JSON contract; prompts are never inlined here) → sign the card\'s reference_paths (POST /storage/v1/object/sign/refs/<path>, 1 h) → Build Analysis Request (one SLOT_BLOCK per attached image from cards.reference_roles, else settings.reference_roles, else subject/art_style/typography: subject = WHAT TO MAKE, art_style = ART STYLE, typography = LETTERING; NICHE = style_brief.niche, else the client name; BRIEF and TEXT_LINES are context) → Analyze References (Kie gemini-3.1-pro chat/completions, or OpenRouter behind Analysis Platform? / Kie Analysis Down?; text + one image_url part per reference, JSON mode, 240 s) → Parse Analysis (v3 {references:[...]} → stores references / roles / same_design / notes / template_version plus the flat compat keys art_style, palette, subject_structure, composition, typography_transcription, text_detected, each mapped from its OWN slot - a missing slot leaves its key ""; legacy v2 single-object or array replies and v1 STYLE:/TYPOGRAPHY_TEXT: replies keep the old handling) → PATCH cards.reference_analysis → Style Card check.\n\n' +
-  '**Style Card check:** locked or draft card exists → move_card(review). Otherwise, if the client has a reference library → insert style_draft_requests (WF-1b drafts from the library; the DB trigger refuses while the onboarding brief lacks niche / subject / garment colour) → Draft Requested? → move_card(review). Library empty, or the insert refused → move_card(review) with the note "no Style Card yet - finish onboarding (brief, analyse, lock) before approving". WF-1 never drafts a Style Card itself: the single-brief fallback profiler was retired 2026-09-30 (style_profiler is WF-1b only).\n\n' +
-  'Any failure in the analysis lane → Fail Message → move_card(failed, message). Template tokens replaced at runtime: {{NICHE}}, {{CLIENT_NAME}}, {{BRIEF}}, {{TEXT_LINES}}, {{SLOT_BLOCKS}}, {{IMAGE_COUNT}}, {{CLIENT_NOTES}}, {{GARMENT_COLORS}}.\n\n' +
+  'Payload {card_id, client_id} from the pg_net trigger. Respond 200 immediately, then: Tag Execution (cards.n8n_execution_id, read by WF-6) → Get Card (+client) → Get Templates (prompt_templates slugs **analysis_prompt** (active v2, JSON contract), **style_profiler**; prompts are never inlined here) → sign the card\'s reference_paths (POST /storage/v1/object/sign/refs/<path>, 1 h) → Analyze References (Kie gemini-3.1-pro chat/completions, text + one image_url part per reference, JSON mode) → Parse Analysis (JSON first; a v1-style STYLE:/TYPOGRAPHY_TEXT: text reply is mapped to art_style/typography_transcription/text_detected instead of failing) → PATCH cards.reference_analysis → Style Card check.\n\n' +
+  '**Style Card check:** locked or draft card exists → move_card(review). Otherwise, if the client has a reference library → insert style_draft_requests (WF-1b drafts from the library); if the library is empty → draft from these references with the same style_profiler prompt → new_style_card_version → move_card(review). The fallback draft is best-effort: a vision or JSON failure still moves the card to review.\n\n' +
+  'Any failure in the analysis lane → Fail Message → move_card(failed, message). Template tokens replaced at runtime: {{NICHE}}, {{CLIENT_NAME}}, {{BRIEF}}, {{TEXT_LINES}}, {{IMAGE_COUNT}}, {{CLIENT_NOTES}}, {{GARMENT_COLORS}}.\n\n' +
   '**Config convention (no credentials except Kie):** the webhook has NO n8n auth. First node **Load Config** runs the sub-workflow WF-0 Studio Config (paste its id into `const configWorkflowId` before creating this workflow); every later node reads `$(\'Load Config\').first().json.<field>`. **Secret OK?** compares the incoming `x-studio-secret` header with config.studioSecret - the pg_net trigger always sends it; mismatch ends in the no-op **Rejected** node. Every Supabase REST/RPC/Storage call sends headers apikey = anonKey and x-studio-secret = studioSecret from config, no credential attached. Vision calls keep the existing credential **Gemini 3.1 Pro [DM-Kie]** (0l2nHQUQNnsCAfTR). Nothing to paste in this workflow: all keys live in WF-0.',
   { color: 4, width: 400, height: 800, position: [-460, 80] }
 );
@@ -197,7 +206,7 @@ const getVisionModel = node({
     name: 'Get Vision Model',
     parameters: {
       method: 'GET',
-      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/settings?id=eq.1&select=vision_model,ai_platform,openrouter_models,reference_roles"),
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/settings?id=eq.1&select=vision_model,ai_platform,openrouter_models"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
@@ -213,7 +222,7 @@ const getVisionModel = node({
     onError: 'continueRegularOutput',
     position: [1080, 496]
   },
-  output: [{ vision_model: 'gemini-3.1-pro', ai_platform: 'kie', openrouter_models: { vision: 'google/gemini-3.1-pro-preview', image: 'openai/gpt-image-2.5-sunburst', edit: 'google/gemini-2.5-flash-image', text: 'anthropic/claude-sonnet-4.6' }, reference_roles: ['subject', 'art_style', 'typography'] }]
+  output: [{ vision_model: 'gemini-3.1-pro', ai_platform: 'kie', openrouter_models: { vision: 'google/gemini-3.1-pro-preview', image: 'openai/gpt-image-2.5-sunburst', edit: 'google/gemini-2.5-flash-image', text: 'anthropic/claude-sonnet-4.6' } }]
 });
 
 const getCard = node({
@@ -250,7 +259,7 @@ const getTemplates = node({
     name: 'Get Templates',
     parameters: {
       method: 'GET',
-      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/prompt_templates?slug=eq.analysis_prompt&active=is.true&select=slug,version,body&order=version.desc"),
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/prompt_templates?slug=in.(analysis_prompt,style_profiler)&active=is.true&select=slug,version,body&order=version.desc"),
       sendHeaders: true,
       headerParameters: {
         parameters: [
@@ -267,7 +276,7 @@ const getTemplates = node({
     onError: 'continueErrorOutput',
     position: [1440, 304]
   },
-  output: [{ slug: 'analysis_prompt', version: 3, body: 'You are a precise visual analyst for a "{{NICHE}}" print-on-demand design for the client {{CLIENT_NAME}}. ... The brief for this design: {{BRIEF}} ... {{TEXT_LINES}} ... Each attached image has ONE job. Read every image ONLY for its job and ignore everything else about it:\n{{SLOT_BLOCKS}}\n... Return ONLY this JSON object - no markdown fences, one object per attached image in slot order with the role given above, omitting slots that are not attached: {"references":[{"slot":1,"role":"subject","hero":{},"supporting_elements":[],"layout":"","text_zones":"","text_detected":[]},{"slot":2,"role":"art_style","medium":"","palette":[],"text_detected":[]},{"slot":3,"role":"typography","headline":{},"secondary":{},"placement":"","case":"","text_detected":[]}],"same_design":false,"notes":""}' }]
+  output: [{ slug: 'analysis_prompt', version: 2, body: 'You are a precise visual analyst for a "{{NICHE}}" print-on-demand design. ... Return ONLY this JSON object - no markdown fences: {"art_style":"","palette":[{"name":"","hex":"#RRGGBB"}],"subject_structure":"","typography_transcription":"","text_detected":[],"composition":"","notes":""}' }]
 });
 
 const listReferencePaths = node({
@@ -320,12 +329,12 @@ const buildAnalysisRequest = node({
   config: {
     name: 'Build Analysis Request',
     parameters: {
-      jsCode: "const cfg = $('Load Config').first().json;\nconst card = $('Get Card').first().json;\nconst settings = $('Get Vision Model').first().json || {};\nconst rows = $('Get Templates').all().map((i) => i.json);\nconst tpl = rows.find((r) => r.slug === 'analysis_prompt');\nif (!tpl || !tpl.body) throw new Error('no active analysis_prompt template in prompt_templates');\nconst urls = $input.all().map((i) => cfg.sbUrl + '/storage/v1' + String(i.json.signedURL || '')).filter((u) => /token=/.test(u));\nif (!urls.length) throw new Error('no signed reference URLs');\nconst lines = (Array.isArray(card.print_text) ? card.print_text : []).map((t) => (t && t.text) || '').filter(Boolean);\nconst client = card.clients || {};\nconst sb = (client.style_brief && typeof client.style_brief === 'object') ? client.style_brief : {};\n// one SLOT_BLOCK per attached image: cards.reference_roles (stamped at submit / New card), else the settings order, else the recorded default\nconst BLOCK = { subject: 'IMAGE n - WHAT TO MAKE: the hero subject and exactly how it is posed and framed, every supporting element and its placement, the overall layout and where the text zones sit. Do NOT describe its colours, technique or lettering.', art_style: 'IMAGE n - ART STYLE: only how it is drawn - medium, line weight and style, shading method, texture and distress, edge finish, rendering realism, and the palette as uppercase hex with a role per colour. Do NOT describe its subject or its words.', typography: 'IMAGE n - LETTERING: only the letterforms - headline lettering family and weight, secondary lettering, placement relative to the art, case, effects (outline, inline hatching, arch, banner, drop line, distressed). Do NOT describe its subject or colours.' };\nconst order = Array.isArray(settings.reference_roles) && settings.reference_roles.length ? settings.reference_roles : ['subject', 'art_style', 'typography'];\nconst given = Array.isArray(card.reference_roles) && card.reference_roles.length ? card.reference_roles : order;\nconst roles = urls.map((u, i) => (BLOCK[given[i]] ? given[i] : (BLOCK[order[i]] ? order[i] : 'subject')));\nconst vars = { NICHE: String(sb.niche || '').trim() || client.name || '', CLIENT_NAME: client.name || '', CLIENT_NOTES: client.notes || '', GARMENT_COLORS: JSON.stringify(client.garment_colors || []), BRIEF: card.brief_text || 'not given', TEXT_LINES: lines.length ? lines.join('\\n') : 'NONE', IMAGE_COUNT: String(urls.length), SLOT_BLOCKS: roles.map((r, i) => BLOCK[r].replace('IMAGE n', 'IMAGE ' + (i + 1))).join('\\n') };\nconst text = String(tpl.body).replace(/\\{\\{\\s*([A-Z_]+)\\s*\\}\\}/g, (m, k) => (k in vars ? vars[k] : m));\nconst content = [{ type: 'text', text }].concat(urls.map((url) => ({ type: 'image_url', image_url: { url } })));\nreturn { json: { body: { messages: [{ role: 'user', content }], response_format: { type: 'json_object' } }, template_version: tpl.version, reference_urls: urls, text_lines: lines, roles } };"
+      jsCode: "const cfg = $('Load Config').first().json;\nconst card = $('Get Card').first().json;\nconst rows = $('Get Templates').all().map((i) => i.json);\nconst tpl = rows.find((r) => r.slug === 'analysis_prompt');\nif (!tpl || !tpl.body) throw new Error('no active analysis_prompt template in prompt_templates');\nconst urls = $input.all().map((i) => cfg.sbUrl + '/storage/v1' + String(i.json.signedURL || '')).filter((u) => /token=/.test(u));\nif (!urls.length) throw new Error('no signed reference URLs');\nconst lines = (Array.isArray(card.print_text) ? card.print_text : []).map((t) => (t && t.text) || '').filter(Boolean);\nconst client = card.clients || {};\nconst vars = { NICHE: client.name || '', CLIENT_NAME: client.name || '', CLIENT_NOTES: client.notes || '', GARMENT_COLORS: JSON.stringify(client.garment_colors || []), BRIEF: card.brief_text || '', TEXT_LINES: lines.length ? lines.join('\\n') : 'NONE', IMAGE_COUNT: String(urls.length) };\nconst text = String(tpl.body).replace(/\\{\\{\\s*([A-Z_]+)\\s*\\}\\}/g, (m, k) => (k in vars ? vars[k] : m));\nconst content = [{ type: 'text', text }].concat(urls.map((url) => ({ type: 'image_url', image_url: { url } })));\nreturn { json: { body: { messages: [{ role: 'user', content }], response_format: { type: 'json_object' } }, template_version: tpl.version, reference_urls: urls, text_lines: lines } };"
     },
     onError: 'continueErrorOutput',
     position: [2160, 304]
   },
-  output: [{ body: sampleVisionBody, template_version: 3, reference_urls: [sampleSignedUrl], text_lines: ['FAMILY FIRST'], roles: ['subject'] }]
+  output: [{ body: sampleVisionBody, template_version: 1, reference_urls: [sampleSignedUrl], text_lines: ['FAMILY FIRST'] }]
 });
 
 const analyzeReferences = node({
@@ -347,7 +356,7 @@ const analyzeReferences = node({
       sendBody: true,
       specifyBody: 'json',
       jsonBody: expr('{{ JSON.stringify($json.body) }}'),
-      options: { timeout: 240000 }
+      options: { timeout: 120000 }
     },
     credentials: { httpHeaderAuth: kieVisionCredential },
     retryOnFail: true,
@@ -366,12 +375,12 @@ const parseAnalysis = node({
     name: 'Parse Analysis',
     parameters: {
       mode: 'runOnceForEachItem',
-      jsCode: "if (!$json.choices) { const e = (typeof $json.error === 'object' && $json.error) || {}; const via = $('OpenRouter Analyze').isExecuted ? ($('Analyze References').isExecuted ? 'Kie and OpenRouter' : 'OpenRouter') : 'Kie'; let why = String($json.msg || e.message || (typeof $json.error === 'string' ? $json.error : '') || 'no reply'); const inner = why.match(/message\\\\?\":\\\\?\"([^\"\\\\]+)/); if (inner) why = inner[1]; const code = $json.code || e.status || e.httpCode || e.code || '?'; if (via !== 'Kie' && (String(code) === '401' || String(code) === '403')) why = 'OpenRouter API key missing or invalid - add it in n8n WF-0 Studio Config (OpenRouter Config node)'; throw new Error('Vision service unavailable (' + via + ' error ' + code + ' - ' + why.replace(/:/g, ' -').slice(0, 160) + '). Nothing was changed; try again in a few minutes.'); }\nconst content = ($json.choices && $json.choices[0] && $json.choices[0].message && $json.choices[0].message.content) || '';\nconst cleaned = String(content).replace(/```json|```/g, '').trim();\nconst tryParse = (t) => { try { return JSON.parse(t); } catch (e) { return null; } };\nlet analysis = tryParse(cleaned); if (analysis === null) { const m = cleaned.match(/\\{[\\s\\S]*\\}/); analysis = m ? tryParse(m[0]) : null; }\nconst req = $('Build Analysis Request').first().json; const roles = Array.isArray(req.roles) ? req.roles : [];\nconst str = (v) => (v === undefined || v === null || typeof v === 'object' ? '' : String(v).trim()); const arr = (v) => (Array.isArray(v) ? v.map(str).filter(Boolean) : []); const join = (parts, sep) => parts.filter(Boolean).join(sep); const w = (v, suf, pre) => (str(v) ? (pre || '') + str(v) + (suf || '') : '');\nif (analysis && Array.isArray(analysis.references)) { // analysis_prompt v3 - one object per attached image, each read for ONE role; the flat keys are the day-one compat view, each mapped from its own slot\n  const refs = analysis.references.filter((r) => r && typeof r === 'object' && !Array.isArray(r)).map((r, i) => Object.assign({ slot: i + 1 }, r, { role: str(r.role) || roles[(Number(r.slot) || i + 1) - 1] || '' }));\n  const by = (role) => refs.find((r) => r.role === role) || {}; const s = by('subject'), a = by('art_style'), t = by('typography'); const h = (s.hero && typeof s.hero === 'object') ? s.hero : { subject: s.hero }; const th = t.headline || {}, ts = t.secondary || {}; const sup = arr(s.supporting_elements);\n  const art_style = join([w(a.medium), w(a.realism, ' realism'), w(join([str(a.line_weight), str(a.line_style)], ' '), ' linework'), w(a.shading, ' shading'), w(a.texture, ' texture'), w(a.edge_finish, ' edges')], '; '); const composition = join([w(s.layout, ' layout'), w(h.framing, ' framing'), w(s.text_zones, '', 'text zones ')], '; ');\n  const subject_structure = join([join([str(h.subject), str(h.pose), w(h.framing, ' framing'), w(h.scale, ' scale')], ', '), sup.length ? 'supporting elements ' + sup.join(', ') : ''], '; '); const typography_transcription = join([w(join([str(th.family), str(th.weight), arr(th.effects).join(', ')], ' '), '', 'headline '), w(join([str(ts.family), str(ts.weight), arr(ts.effects).join(', ')], ' '), '', 'secondary '), w(t.placement, '', 'placed '), w(t.case, ' case')], '; ');\n  analysis = { art_style, palette: Array.isArray(a.palette) ? a.palette : '', subject_structure, composition, typography_transcription, text_detected: [...new Set(refs.flatMap((r) => arr(r.text_detected)))], notes: str(analysis.notes), references: refs, roles, same_design: analysis.same_design === true, template_version: req.template_version || 3 };\n} else if (Array.isArray(analysis)) { const objs = analysis.filter((o) => o && typeof o === 'object' && !Array.isArray(o)); const primary = objs[0] || null; if (primary && objs.length > 1) primary.notes = [str(primary.notes), 'Supporting references (style and subject cues only, not the design to re-create) - ' + objs.slice(1).map((o, i) => 'IMAGE ' + (i + 2) + ' - ' + str(o.subject_structure || o.art_style).slice(0, 300)).join(' | ')].filter(Boolean).join(' '); analysis = primary; } // legacy v2 array reply - IMAGE 1 is the design, the rest become a note\nif (!analysis || typeof analysis !== 'object' || Array.isArray(analysis)) { // v1 text reply (STYLE: / TYPOGRAPHY_TEXT: / TYPOGRAPHY_STYLE:) -> minimal reference_analysis object\n  const block = (k) => { const r = cleaned.match(new RegExp('(?:^|\\\\n)' + k + ':\\\\s*([\\\\s\\\\S]*?)(?=\\\\n[A-Z_]+:|$)')); return r ? r[1].trim() : ''; }; const style = block('STYLE'), text = block('TYPOGRAPHY_TEXT'), hasText = Boolean(text) && !/^none$/i.test(text);\n  if (!style) throw new Error('reference analysis is neither JSON nor a STYLE block - reply was ' + cleaned.slice(0, 200).replace(/:/g, '='));\n  analysis = { art_style: style, palette: '', subject_structure: '', typography_transcription: hasText ? text : '', text_detected: hasText ? [text] : [], composition: '', notes: 'parsed from a STYLE/TYPOGRAPHY_TEXT text reply (analysis_prompt v1 format)' }; }\nif (!Array.isArray(analysis.text_detected)) analysis.text_detected = analysis.typography_transcription && !/^none$/i.test(String(analysis.typography_transcription)) ? [String(analysis.typography_transcription)] : [];\nreturn { json: { reference_analysis: analysis, template_version: req.template_version, reference_count: req.reference_urls.length } };"
+      jsCode: "if (!$json.choices) { const e = (typeof $json.error === 'object' && $json.error) || {}; const via = $('OpenRouter Analyze').isExecuted ? ($('Analyze References').isExecuted ? 'Kie and OpenRouter' : 'OpenRouter') : 'Kie'; let why = String($json.msg || e.message || (typeof $json.error === 'string' ? $json.error : '') || 'no reply'); const inner = why.match(/message\\\\?\":\\\\?\"([^\"\\\\]+)/); if (inner) why = inner[1]; const code = $json.code || e.status || e.httpCode || e.code || '?'; if (via !== 'Kie' && (String(code) === '401' || String(code) === '403')) why = 'OpenRouter API key missing or invalid - add it in n8n WF-0 Studio Config (OpenRouter Config node)'; throw new Error('Vision service unavailable (' + via + ' error ' + code + ' - ' + why.replace(/:/g, ' -').slice(0, 160) + '). Nothing was changed; try again in a few minutes.'); }\nconst content = ($json.choices && $json.choices[0] && $json.choices[0].message && $json.choices[0].message.content) || '';\nconst cleaned = String(content).replace(/```json|```/g, '').trim();\nconst tryParse = (t) => { try { return JSON.parse(t); } catch (e) { return null; } };\nlet analysis = tryParse(cleaned);\nif (analysis === null) { const m = cleaned.match(/\\{[\\s\\S]*\\}/); analysis = m ? tryParse(m[0]) : null; }\nif (Array.isArray(analysis)) {\n  // The model sometimes answers with one object per image (typically when the references are unrelated designs).\n  // IMAGE 1 is the design to re-create; the others become supporting notes so nothing is silently dropped.\n  const objs = analysis.filter((o) => o && typeof o === 'object' && !Array.isArray(o));\n  const primary = objs[0] || null;\n  if (primary && objs.length > 1) {\n    const extra = objs.slice(1).map((o, i) => 'IMAGE ' + (i + 2) + ' - ' + String(o.subject_structure || o.art_style || '').slice(0, 300)).join(' | ');\n    primary.notes = [String(primary.notes || '').trim(), 'Supporting references (style and subject cues only, not the design to re-create) - ' + extra].filter(Boolean).join(' ');\n  }\n  analysis = primary;\n}\nif (!analysis || typeof analysis !== 'object' || Array.isArray(analysis)) {\n  // v1-style text reply (STYLE: / TYPOGRAPHY_TEXT: / TYPOGRAPHY_STYLE:) -> minimal reference_analysis object\n  const block = (k) => { const r = cleaned.match(new RegExp('(?:^|\\\\n)' + k + ':\\\\s*([\\\\s\\\\S]*?)(?=\\\\n[A-Z_]+:|$)')); return r ? r[1].trim() : ''; };\n  const style = block('STYLE');\n  if (!style) throw new Error('reference analysis is neither JSON nor a STYLE block - reply was ' + cleaned.slice(0, 200).replace(/:/g, '='));\n  const text = block('TYPOGRAPHY_TEXT');\n  const hasText = Boolean(text) && !/^none$/i.test(text);\n  analysis = { art_style: style, palette: '', subject_structure: '', typography_transcription: hasText ? text : '', text_detected: hasText ? [text] : [], composition: '', notes: 'parsed from a STYLE/TYPOGRAPHY_TEXT text reply (analysis_prompt v1 format)' };\n}\nif (!Array.isArray(analysis.text_detected)) analysis.text_detected = analysis.typography_transcription && !/^none$/i.test(String(analysis.typography_transcription)) ? [String(analysis.typography_transcription)] : [];\nconst req = $('Build Analysis Request').first().json;\nreturn { json: { reference_analysis: analysis, template_version: req.template_version, reference_count: req.reference_urls.length } };"
     },
     onError: 'continueErrorOutput',
     position: [2640, 304]
   },
-  output: [{ reference_analysis: sampleAnalysis, template_version: 3, reference_count: 2 }]
+  output: [{ reference_analysis: sampleAnalysis, template_version: 1, reference_count: 2 }]
 });
 
 const saveAnalysis = node({
@@ -523,6 +532,113 @@ const requestStyleDraft = node({
   output: [{ id: sampleRequestId, client_id: sampleClientId, status: 'queued', style_card_id: null }]
 });
 
+const buildStyleRequest = node({
+  type: 'n8n-nodes-base.code',
+  version: 2,
+  config: {
+    name: 'Build Style Request',
+    parameters: {
+      jsCode: "const card = $('Get Card').first().json;\nconst rows = $('Get Templates').all().map((i) => i.json);\nconst tpl = rows.find((r) => r.slug === 'style_profiler');\nif (!tpl || !tpl.body) throw new Error('no active style_profiler template in prompt_templates');\nconst urls = $('Build Analysis Request').first().json.reference_urls || [];\nif (!urls.length) throw new Error('no signed reference URLs for the style draft');\nconst client = card.clients || {};\nconst sb = (client.style_brief && typeof client.style_brief === 'object') ? client.style_brief : {};\nconst list = (v) => (Array.isArray(v) ? v.map((x) => String(x || '').trim()).filter(Boolean) : String(v || '').split(/\\n|;/).map((x) => x.trim()).filter(Boolean));\nconst rules = { palette_mode: sb.palette_mode === 'flexible' ? 'flexible' : 'strict', text_case: ['upper', 'title'].includes(sb.text_case) ? sb.text_case : 'as_typed', lock_typography: sb.lock_typography !== false, lock_composition: sb.lock_composition !== false };\nconst briefVars = { NICHE: [sb.niche, sb.audience].filter(Boolean).join(' / ') || 'not given', MUST_HAVE: list(sb.must_have).join('; ') || 'none given', AVOID: list(sb.avoid).join('; ') || 'none given', PALETTE_MODE: rules.palette_mode, TEXT_CASE: rules.text_case, LOCK_TYPOGRAPHY: rules.lock_typography ? 'locked' : 'a guide', LOCK_COMPOSITION: rules.lock_composition ? 'locked' : 'a guide' };\nconst vars = Object.assign({ CLIENT_NAME: client.name || '', CLIENT_NOTES: client.notes || 'none', GARMENT_COLORS: JSON.stringify(client.garment_colors || []), IMAGE_COUNT: String(urls.length), REFERENCE_NOTES: 'These are the references attached to one brief, not a curated library.' }, briefVars);\nconst text = String(tpl.body).replace(/\\{\\{\\s*([A-Z_]+)\\s*\\}\\}/g, (m, k) => (k in vars ? vars[k] : m));\nconst content = [{ type: 'text', text }].concat(urls.map((url) => ({ type: 'image_url', image_url: { url } })));\nreturn { json: { body: { messages: [{ role: 'user', content }], response_format: { type: 'json_object' } }, template_version: tpl.version, source: 'card_references', rules } };"
+    },
+    onError: 'continueRegularOutput',
+    position: [4080, 592]
+  },
+  output: [{ body: sampleVisionBody, template_version: 1, source: 'card_references' }]
+});
+
+const profileStyle = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
+  config: {
+    name: 'Profile Style',
+    parameters: {
+      method: 'POST',
+      url: expr("https://api.kie.ai/{{ $('Get Vision Model').first().json.vision_model || 'gemini-3.1-pro' }}/v1/chat/completions"),
+      authentication: 'genericCredentialType',
+      genericAuthType: 'httpHeaderAuth',
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'Content-Type', value: 'application/json' }
+        ]
+      },
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: expr('{{ JSON.stringify($json.body) }}'),
+      options: { timeout: 120000 }
+    },
+    credentials: { httpHeaderAuth: kieVisionCredential },
+    retryOnFail: true,
+    maxTries: 3,
+    waitBetweenTries: 5000,
+    onError: 'continueRegularOutput',
+    alwaysOutputData: true,
+    position: [4320, 592]
+  },
+  output: [sampleStyleResponse]
+});
+
+const parseStyleCard = node({
+  type: 'n8n-nodes-base.code',
+  version: 2,
+  config: {
+    name: 'Parse Style Card',
+    parameters: {
+      mode: 'runOnceForEachItem',
+      jsCode: "const REQUIRED = ['medium', 'linework', 'shading', 'texture', 'palette', 'composition', 'typography', 'background', 'mood', 'subjects', 'forbid', 'signature_moves', 'garment_colors'];\nlet card = null, error = '';\nconst vendorDown = !$json.choices;\nconst e0 = (typeof $json.error === 'object' && $json.error) || {};\nconst via = $('OpenRouter Profile Style').isExecuted ? ($('Profile Style').isExecuted ? 'Kie and OpenRouter' : 'OpenRouter') : 'Kie';\nif (vendorDown) { const e = e0; let why = String($json.msg || e.message || (typeof $json.error === 'string' ? $json.error : '') || 'no reply'); const inner = why.match(/message\\\\?\":\\\\?\"([^\"\\\\]+)/); if (inner) why = inner[1]; const code = $json.code || e.status || e.httpCode || e.code || '?'; if (via !== 'Kie' && (String(code) === '401' || String(code) === '403')) why = 'OpenRouter API key missing or invalid - add it in n8n WF-0 Studio Config (OpenRouter Config node)'; error = 'Vision service unavailable (' + via + ' error ' + code + ' - ' + why.replace(/:/g, ' -').slice(0, 160) + '). Draft the Style Card from the client panel later.'; }\ntry {\n  const content = ($json.choices && $json.choices[0] && $json.choices[0].message && $json.choices[0].message.content) || '';\n  const cleaned = String(content).replace(/```json|```/g, '').trim();\n  const m = cleaned.match(/\\{[\\s\\S]*\\}/);\n  card = JSON.parse(m ? m[0] : cleaned);\n} catch (e) { if (!vendorDown) error = 'style profiler returned no JSON'; card = null; }\nif (vendorDown) card = null;\nelse if (card && typeof card === 'object' && !Array.isArray(card)) {\n  const missing = REQUIRED.filter((k) => !(k in card));\n  if (missing.length) { error = 'style card missing keys - ' + missing.join(', '); card = null; }\n  else card.rules = Object.assign({}, card.rules || {}, $('Build Style Request').first().json.rules || {});\n} else if (card) { error = 'style profiler returned no object'; card = null; }\nif ($json.error && !error) error = String($json.error.message || $json.error).slice(0, 300);\nreturn { json: { ok: !!card, style_card: card, error } };"
+    },
+    position: [4560, 592]
+  },
+  output: [{ ok: true, style_card: sampleStyleCard, error: '' }]
+});
+
+const styleDraftOk = ifElse({
+  version: 2.2,
+  config: {
+    name: 'Style Draft OK?',
+    parameters: {
+      conditions: {
+        options: looseOptions,
+        conditions: [
+          { id: 'o', leftValue: expr('{{ $json.ok }}'), operator: { type: 'boolean', operation: 'true', singleValue: true } }
+        ],
+        combinator: 'and'
+      },
+      options: {}
+    },
+    position: [4800, 592]
+  },
+  output: [{ ok: true, style_card: sampleStyleCard, error: '' }]
+});
+
+const newStyleCardVersion = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
+  config: {
+    name: 'New Style Card Version',
+    parameters: {
+      method: 'POST',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/rpc/new_style_card_version"),
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'Content-Type', value: 'application/json' }
+        ]
+      },
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: expr("{{ JSON.stringify({ p_client_id: $('Config').first().json.clientId, p_json: $json.style_card }) }}"),
+      options: { timeout: 15000 }
+    },
+    onError: 'continueRegularOutput',
+    alwaysOutputData: true,
+    position: [5040, 496]
+  },
+  output: [{ id: sampleStyleCardId, client_id: sampleClientId, version: 1, status: 'draft', json: sampleStyleCard, note: null }]
+});
+
 const cardReview = node({
   type: 'n8n-nodes-base.httpRequest',
   version: 4.2,
@@ -551,57 +667,6 @@ const cardReview = node({
     onError: 'continueRegularOutput',
     alwaysOutputData: true,
     position: [5280, 304]
-  },
-  output: [{ ...sampleCard, stage: 'review', reference_analysis: sampleAnalysis, clients: undefined }]
-});
-
-const draftRequested = ifElse({
-  version: 2.2,
-  config: {
-    name: 'Draft Requested?',
-    parameters: {
-      conditions: {
-        options: looseOptions,
-        conditions: [
-          { id: 'd', leftValue: expr('{{ $json.id ?? "" }}'), operator: { type: 'string', operation: 'regex' }, rightValue: uuidPattern }
-        ],
-        combinator: 'and'
-      },
-      options: {}
-    },
-    position: [4320, 400]
-  },
-  output: [{ id: sampleRequestId, client_id: sampleClientId, status: 'queued', style_card_id: null }]
-});
-
-const cardReviewNoCard = node({
-  type: 'n8n-nodes-base.httpRequest',
-  version: 4.2,
-  config: {
-    name: 'Card → review (no Style Card)',
-    parameters: {
-      method: 'POST',
-      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/rpc/move_card"),
-      sendHeaders: true,
-      headerParameters: {
-        parameters: [
-          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
-          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
-          { name: 'Content-Type', value: 'application/json' }
-        ]
-      },
-      sendBody: true,
-      specifyBody: 'json',
-      jsonBody: expr("{{ JSON.stringify({ p_card_id: $('Config').first().json.cardId, p_stage: 'review', p_note: 'no Style Card yet - finish onboarding (brief, analyse, lock) before approving' }) }}"),
-      options: { timeout: 15000 }
-    },
-    executeOnce: true,
-    retryOnFail: true,
-    maxTries: 3,
-    waitBetweenTries: 3000,
-    onError: 'continueRegularOutput',
-    alwaysOutputData: true,
-    position: [4560, 592]
   },
   output: [{ ...sampleCard, stage: 'review', reference_analysis: sampleAnalysis, clients: undefined }]
 });
@@ -709,7 +774,7 @@ const orAnalyze = node({
       sendBody: true,
       specifyBody: 'json',
       jsonBody: expr("{{ JSON.stringify(Object.assign({}, $('Build Analysis Request').first().json.body, { model: ($('Get Vision Model').first().json.openrouter_models || {}).vision || 'google/gemini-3.1-pro-preview' })) }}"),
-      options: { timeout: 240000 }
+      options: { timeout: 180000 }
     },
     retryOnFail: true,
     maxTries: 2,
@@ -717,6 +782,75 @@ const orAnalyze = node({
     onError: 'continueRegularOutput',
     alwaysOutputData: true,
     position: [2520, -80]
+  },
+  output: [{ id: 'gen-or-sample', model: 'google/gemini-3.1-pro-preview', choices: [{ index: 0, message: { role: 'assistant', content: '{}' }, finish_reason: 'stop' }] }]
+});
+
+const stylePlatform = switchCase({
+  version: 3.2,
+  config: {
+    name: 'Style Platform?',
+    parameters: {
+      rules: {
+        values: [
+          { outputKey: 'Kie', renameOutput: true, conditions: { options: looseOptions, conditions: [{ leftValue: expr("{{ $('Get Vision Model').first().json.ai_platform || 'kie' }}"), operator: { type: 'string', operation: 'notEquals' }, rightValue: 'openrouter' }], combinator: 'and' } },
+          { outputKey: 'OpenRouter', renameOutput: true, conditions: { options: looseOptions, conditions: [{ leftValue: expr("{{ $('Get Vision Model').first().json.ai_platform || 'kie' }}"), operator: { type: 'string', operation: 'equals' }, rightValue: 'openrouter' }], combinator: 'and' } }
+        ]
+      },
+      options: {}
+    },
+    position: [4200, 784]
+  },
+  output: [{}]
+});
+
+const kieStyleDown = ifElse({
+  version: 2.2,
+  config: {
+    name: 'Kie Style Down?',
+    parameters: {
+      conditions: {
+        options: looseOptions,
+        conditions: [
+          { id: 'a1', leftValue: expr("{{ $('Get Vision Model').first().json.ai_platform || 'kie' }}"), operator: { type: 'string', operation: 'equals' }, rightValue: 'auto' },
+          { id: 'a2', leftValue: expr("{{ $json.choices ? 'up' : 'down' }}"), operator: { type: 'string', operation: 'equals' }, rightValue: 'down' }
+        ],
+        combinator: 'and'
+      },
+      options: {}
+    },
+    position: [4440, 784]
+  },
+  output: [{}]
+});
+
+const orProfileStyle = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
+  config: {
+    name: 'OpenRouter Profile Style',
+    parameters: {
+      method: 'POST',
+      url: 'https://openrouter.ai/api/v1/chat/completions',
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'Authorization', value: expr("Bearer {{ $('Load Config').first().json.openrouterKey }}") },
+          { name: 'Content-Type', value: 'application/json' },
+          { name: 'X-Title', value: 'DM Studio' }
+        ]
+      },
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: expr("{{ JSON.stringify(Object.assign({}, $('Build Style Request').first().json.body, { model: ($('Get Vision Model').first().json.openrouter_models || {}).vision || 'google/gemini-3.1-pro-preview' })) }}"),
+      options: { timeout: 180000 }
+    },
+    retryOnFail: true,
+    maxTries: 2,
+    waitBetweenTries: 5000,
+    onError: 'continueRegularOutput',
+    alwaysOutputData: true,
+    position: [4440, 976]
   },
   output: [{ id: 'gen-or-sample', model: 'google/gemini-3.1-pro-preview', choices: [{ index: 0, message: { role: 'assistant', content: '{}' }, finish_reason: 'stop' }] }]
 });
@@ -743,8 +877,17 @@ export default workflow('dm-studio-wf1-intake', 'DM Studio · WF-1 Intake')
   .to(getStyleCards)
   .to(hasStyleCard.onTrue(cardReview).onFalse(countLibrary))
   .add(countLibrary)
-  .to(libraryHasRefs.onTrue(requestStyleDraft).onFalse(cardReviewNoCard))
+  .to(libraryHasRefs.onTrue(requestStyleDraft).onFalse(buildStyleRequest))
   .add(requestStyleDraft)
-  .to(draftRequested.onTrue(cardReview).onFalse(cardReviewNoCard))
+  .to(cardReview)
+  .add(buildStyleRequest)
+  .to(stylePlatform.onCase(0, profileStyle).onCase(1, orProfileStyle))
+  .add(profileStyle)
+  .to(kieStyleDown.onTrue(orProfileStyle).onFalse(parseStyleCard))
+  .add(orProfileStyle)
+  .to(parseStyleCard)
+  .to(styleDraftOk.onTrue(newStyleCardVersion).onFalse(cardReview))
+  .add(newStyleCardVersion)
+  .to(cardReview)
   .add(failMessage)
   .to(cardFailed);

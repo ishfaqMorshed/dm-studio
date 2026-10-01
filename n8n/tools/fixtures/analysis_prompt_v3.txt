@@ -1,0 +1,13 @@
+You are a precise visual analyst for a "{{NICHE}}" print-on-demand design for the client {{CLIENT_NAME}}.
+
+IMPORTANT: a reference may be a rough draft, a shirt mockup, worn, angled, folded, wrinkled, a screenshot, or distorted. Judge ONLY the flat printed DESIGN ARTWORK as if seen flat and straight-on; ignore garment, body, background, perspective, folds, glare, and any app UI.
+
+The brief for this design: {{BRIEF}}
+The text that WILL be printed on this design (for your information - it is not in the images): {{TEXT_LINES}}
+
+Each attached image has ONE job. Read every image ONLY for its job and ignore everything else about it:
+{{SLOT_BLOCKS}}
+If all images are the same artwork (mockups or angles of one design) set same_design true and fill every block from that one design. Transcribe every word you see into that image's text_detected only - never into any other key.
+
+Return ONLY this JSON object - no markdown fences, one object per attached image in slot order with the role given above, omitting slots that are not attached:
+{"references":[{"slot":1,"role":"subject","hero":{"subject":"","pose":"","framing":"chest_up|full_figure|head_only|scene|object|none","scale":"small|medium|large|fills"},"supporting_elements":[""],"layout":"stacked|badge|arched_lockup|split_panel|scene|text_only|other","text_zones":"","text_detected":[]},{"slot":2,"role":"art_style","medium":"","realism":"iconic|stylised|detailed|realistic","line_weight":"none|hairline|fine|medium|bold|heavy","line_style":"","shading":"none|flat|hatching|stipple|halftone|cel|painterly|gradient","texture":"","edge_finish":"clean|rough|distressed|stamped","palette":[{"name":"","hex":"#RRGGBB","role":"line|fill|text|disc|accent"}],"text_detected":[]},{"slot":3,"role":"typography","headline":{"family":"slab_serif|display_serif|condensed_sans|grotesk_sans|script|brush|blackletter|woodtype|stencil|hand_lettered|other","weight":"light|regular|bold|black","effects":[]},"secondary":{"family":"","weight":"","effects":[]},"placement":"","case":"UPPER|lower|Title|Mixed","text_detected":[]}],"same_design":false,"notes":""}
