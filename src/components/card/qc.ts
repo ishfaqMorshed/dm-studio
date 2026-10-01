@@ -16,6 +16,132 @@
 import { isRecord, type Json } from '../../lib/types'
 import { humanizeKey, jsonToText, parseEmbeddedJson, pickNumber, pickString, recordEntries, stringList, type JsonRecord } from './json'
 
+/* ---------- style_match (qc-judge v2, judged against the Style Card only) ---------- */
+
+/** One `style_match` check as qc-judge v2 writes it. `pass` null = the judge did not report it. */
+export interface StyleMatchCheck {
+  /** palette | medium | typography | composition | subject | forbid */
+  id: string
+  /** Style Card field the check judged (`typography.headline`, `subjects`…); the editor deep link. */
+  field: string | null
+  pass: boolean | null
+  note: string | null
+}
+
+export interface StyleMatch {
+  /** Share of the reported checks that passed, 0–100; null when nothing was reported. */
+  score: number | null
+  checks: StyleMatchCheck[]
+  /** The hero the judge saw ("a chicken"), or null when not reported. */
+  subjectSeen: string | null
+  /** Letter case the judge saw (UPPER | lower | Title | Mixed), or null. */
+  caseSeen: string | null
+}
+
+const STYLE_CHECK_LABEL: Record<string, string> = {
+  palette: 'Palette',
+  medium: 'Medium',
+  typography: 'Typography',
+  composition: 'Composition',
+  subject: 'Subject',
+  forbid: 'Forbid list',
+}
+
+/** Field per check id when the judge wrote none (mirrors qc-judge STYLE_FIELDS). */
+const STYLE_CHECK_FIELD: Record<string, string> = {
+  palette: 'palette',
+  medium: 'medium',
+  typography: 'typography.headline',
+  composition: 'composition',
+  subject: 'subjects',
+  forbid: 'forbid',
+}
+
+export function styleCheckLabel(id: string): string {
+  return STYLE_CHECK_LABEL[id] ?? humanizeKey(id)
+}
+
+/**
+ * `qc_report.style_match` ({score, checks:[{id, field, pass, note}], subject_seen, case_seen}), or
+ * null when the report has none: every report written before qc-judge v2, and the fail-open
+ * `unverified` report. Render null as "not reported".
+ */
+export function parseStyleMatch(input: Json | null | undefined): StyleMatch | null {
+  const r = parseEmbeddedJson(input)
+  if (!isRecord(r)) return null
+  const sm = parseEmbeddedJson(r.style_match)
+  if (!isRecord(sm)) return null
+  const checks: StyleMatchCheck[] = []
+  if (Array.isArray(sm.checks)) {
+    for (const c of sm.checks) {
+      if (!isRecord(c) || typeof c.id !== 'string' || !c.id.trim()) continue
+      const id = c.id.trim()
+      const field = typeof c.field === 'string' && c.field.trim() ? c.field.trim() : (STYLE_CHECK_FIELD[id] ?? null)
+      const pass = typeof c.pass === 'boolean' ? c.pass : null
+      const note = typeof c.note === 'string' && c.note.trim() ? c.note.trim() : null
+      checks.push({ id, field, pass, note })
+    }
+  }
+  const score = typeof sm.score === 'number' && Number.isFinite(sm.score) ? Math.round(sm.score) : null
+  const text = (v: Json | undefined) => (typeof v === 'string' && v.trim() ? v.trim() : null)
+  return { score, checks, subjectSeen: text(sm.subject_seen), caseSeen: text(sm.case_seen) }
+}
+
+/**
+ * `/clients/:id/style?version=<style_card_id>&field=<field>`: the Style Card editor opens that
+ * version with the field focused (a locked version opens "New draft from vN" with the field focused).
+ */
+export function styleFieldLink(clientId: string, styleCardId: string | null | undefined, field: string | null | undefined): string {
+  const params = new URLSearchParams()
+  if (styleCardId) params.set('version', styleCardId)
+  if (field) params.set('field', field)
+  const q = params.toString()
+  return `/clients/${clientId}/style${q ? `?${q}` : ''}`
+}
+
+/** The SUBJECT block the render was built from (`magic_prompt_json.subject.text`), or null for a legacy prompt. */
+export function expectedSubjectOf(magicPrompt: Json | null | undefined): string | null {
+  const m = parseEmbeddedJson(magicPrompt)
+  if (!isRecord(m)) return null
+  const s = m.subject
+  if (typeof s === 'string') return s.trim() || null
+  if (isRecord(s) && typeof s.text === 'string') return s.text.trim() || null
+  return null
+}
+
+/**
+ * Short text of the Style Card value a check judged, for a chip tooltip: 'palette' → the swatches,
+ * 'typography.headline' → "family slab_serif · weight bold · effects arched". Null when the path is
+ * missing or empty.
+ */
+export function styleCardValueAt(json: Json | null | undefined, path: string | null | undefined): string | null {
+  if (!path) return null
+  let cur: Json | undefined = parseEmbeddedJson(json) ?? undefined
+  for (const key of path.split('.')) {
+    if (!isRecord(cur)) return null
+    cur = cur[key]
+  }
+  if (cur === undefined || cur === null) return null
+  if (Array.isArray(cur)) {
+    const parts = cur
+      .map((v) => {
+        if (isRecord(v)) {
+          const named = [pickString(v, ['name']), pickString(v, ['hex'])].filter(Boolean).join(' ')
+          return named || pickString(v, ['text', 'label', 'value']) || jsonToText(v)
+        }
+        return jsonToText(v)
+      })
+      .filter(Boolean)
+    return parts.length ? parts.join(', ') : null
+  }
+  if (isRecord(cur)) {
+    const parts = recordEntries(cur).map(([k, v]) => `${k} ${Array.isArray(v) ? stringList(v).join(', ') : jsonToText(v)}`.trim())
+    return parts.length ? parts.join(' · ') : null
+  }
+  const t = jsonToText(cur).trim()
+  return t || null
+}
+
 export type QcVerdict = 'pass' | 'fail' | 'warn' | 'unknown'
 
 export interface QcCheck {
@@ -294,6 +420,9 @@ export function parseQcReport(input: Json | null | undefined): QcReport {
       break
     }
   }
+
+  // Rendered by its own strip (parseStyleMatch), never as a bare key/value tree.
+  if ('style_match' in rec) used.add('style_match')
 
   for (const [k, v] of recordEntries(rec)) {
     if (used.has(k)) continue

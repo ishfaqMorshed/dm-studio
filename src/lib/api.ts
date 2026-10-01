@@ -17,6 +17,7 @@ import type {
   Generation,
   GenerationKind,
   PrintTextLine,
+  ReferenceRole,
   RejectionReason,
   StyleCard,
   StyleDraftRequest,
@@ -209,6 +210,11 @@ export interface CreateCardAsDesignerArgs {
   printText: PrintTextLine[]
   /** 1–3 refs bucket paths (bucket-relative) in slot order. */
   referencePaths: string[]
+  /**
+   * One role per entry of `referencePaths`, same order: the dialog's slot roles for the slots that
+   * were filled. Omit to let the backend stamp the first k roles of `settings.reference_roles`.
+   */
+  referenceRoles?: ReferenceRole[]
   garmentColor: string
   placement: string
   /** `YYYY-MM-DD` or null. */
@@ -220,7 +226,8 @@ export interface CreateCardAsDesignerArgs {
 
 /**
  * Board "New card": inserts a card with source = designer in stage intake.
- * WF-1 reads the references and moves it to review.
+ * WF-1 reads the references (each for its role) and moves it to review. The backend refuses a
+ * role list whose length differs from the paths or that names an unknown role.
  */
 export async function createCardAsDesigner(args: CreateCardAsDesignerArgs): Promise<Card> {
   return unwrap(
@@ -230,6 +237,7 @@ export async function createCardAsDesigner(args: CreateCardAsDesignerArgs): Prom
       p_brief: args.brief,
       p_print_text: args.printText.map((l) => ({ role: l.role, text: l.text })),
       p_reference_paths: args.referencePaths,
+      ...(args.referenceRoles !== undefined ? { p_reference_roles: args.referenceRoles } : {}),
       p_garment_color: args.garmentColor,
       p_placement: args.placement,
       ...(args.dueOn ? { p_due_on: args.dueOn } : {}),
@@ -238,6 +246,21 @@ export async function createCardAsDesigner(args: CreateCardAsDesignerArgs): Prom
     }),
     'Create card',
   )
+}
+
+/**
+ * PATCH `cards.reference_roles`: one role per `reference_paths` slot, same order (the card page's
+ * per-slot select, any staff member, before approval). WF-1 has usually read the references by
+ * then; the roles still decide which image the prompt engine labels WHAT TO MAKE / ART STYLE /
+ * LETTERING at render time.
+ */
+export async function updateCardReferenceRoles(cardId: string, roles: ReferenceRole[]): Promise<Card> {
+  const res = await supabase.from('cards').update({ reference_roles: roles }).eq('id', cardId).select('*').single()
+  if (res.error) {
+    if (isPermissionError(res.error)) throw new Error('Saving was refused: this card is read-only for your role.')
+    throw rpcError(res.error, 'Save reference roles failed')
+  }
+  return res.data
 }
 
 /* ---------- Client reference library (client_references + refs bucket) ---------- */
@@ -315,12 +338,13 @@ export async function deleteClientReference(row: Pick<ClientReference, 'id' | 'p
 }
 
 /**
- * Edits one library image: its one-line note and/or whether the profiler skips it
- * (`excluded`). Any staff member may do this (client_references_staff_update).
+ * Edits one library image: its one-line note, whether the profiler skips it (`excluded`) and/or
+ * its tags (`meta`: `{kind, garment, best_for[], outlier}`, see `referenceMetaToJson`). Any staff
+ * member may do this (client_references_staff_update). `meta` replaces the whole object.
  */
 export async function updateClientReference(
   id: string,
-  patch: { note?: string | null; excluded?: boolean },
+  patch: { note?: string | null; excluded?: boolean; meta?: Json },
 ): Promise<ClientReference> {
   return unwrap(await supabase.from('client_references').update(patch).eq('id', id).select('*').single(), 'Update reference')
 }
@@ -486,6 +510,12 @@ export interface BriefStart {
   garment_colors: string[]
   /** ISO timestamp; the anon upload grant for the three references ends here (15 min). */
   expires_at: string
+  /**
+   * `settings.reference_roles` as the grant carries it (studio_24): the anonymous form cannot read
+   * `settings`, so the slot labels come with the grant and match what `submit_brief` stamps. Null
+   * from an older `start_brief` without the key; `parseReferenceRoles` then gives the default order.
+   */
+  reference_roles: Json | null
 }
 
 /** Resolves a form token into a fresh card + upload grant. Throws when the link is invalid or expired. */
@@ -510,6 +540,7 @@ export async function startBrief(token: string): Promise<BriefStart> {
       ? d.garment_colors.filter((c): c is string => typeof c === 'string')
       : [],
     expires_at: typeof d.expires_at === 'string' ? d.expires_at : '',
+    reference_roles: Array.isArray(d.reference_roles) ? d.reference_roles : null,
   }
 }
 

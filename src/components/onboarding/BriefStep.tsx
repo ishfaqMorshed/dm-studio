@@ -4,6 +4,8 @@ import { isPermissionError, saveOnboardingBrief } from '../../lib/api'
 import {
   PALETTE_MODES,
   TEXT_CASES,
+  briefGaps,
+  briefGapsSummary,
   parseStyleBrief,
   readRules,
   rulesEqual,
@@ -86,6 +88,9 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
   const ids = {
     niche: useId(),
     audience: useId(),
+    subjects: useId(),
+    brandText: useId(),
+    typoNote: useId(),
     palette: useId(),
     textCase: useId(),
     must: useId(),
@@ -106,6 +111,8 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
 
   const current = serialize(form)
   const dirty = current !== baseline
+  // The gate Analyse is behind (and the server trigger enforces): niche, one subject, one garment colour.
+  const gaps = briefGaps(form.brief, { garment_colors: form.garment_colors })
 
   // The panel polls every 20 s: adopt a server change when there are no local edits.
   const [prevBaseline, setPrevBaseline] = useState(baseline)
@@ -170,6 +177,10 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
   }
 
   async function saveAndContinue() {
+    if (gaps.length > 0) {
+      setError(`${briefGapsSummary(gaps)}. The analysis needs all three; fill them in, then continue.`)
+      return
+    }
     if (dirty) {
       const ok = await save()
       if (!ok) return
@@ -202,6 +213,7 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
       onBack={onBack}
       onContinue={() => void saveAndContinue()}
       continueLabel={dirty ? 'Save and continue' : `Next: ${STEP_SHORT.analyse}`}
+      continueDisabledReason={gaps.length > 0 ? briefGapsSummary(gaps) : null}
       continueBusy={saving}
       footerHint={
         isLead
@@ -227,13 +239,14 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor={ids.niche} className={labelCls}>
-              Niche
+              Niche <Required />
             </label>
             <input
               id={ids.niche}
               type="text"
               value={form.brief.niche}
               disabled={disabled}
+              aria-invalid={gaps.includes('niche') ? true : undefined}
               onChange={(e) => setBrief('niche', e.target.value)}
               placeholder="e.g. trucker humour, fishing lodge merch"
               className={inputCls}
@@ -254,7 +267,64 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
             />
           </div>
         </div>
-        <p className={`${hintCls} -mt-3`}>Given to the profiler as ground truth where the images are ambiguous.</p>
+        <p className={`${hintCls} -mt-3`}>
+          Given to the profiler as ground truth where the images are ambiguous. The audience is recommended, not required.
+        </p>
+
+        <div>
+          <label htmlFor={ids.subjects} className={labelCls}>
+            Subjects the client sells designs about <Required />
+          </label>
+          <TagInput
+            id={ids.subjects}
+            value={form.brief.subjects}
+            onChange={(v) => setBrief('subjects', v)}
+            disabled={disabled}
+            placeholder="Highland cows, chickens, goats, farm humour"
+            ariaLabel="Subjects the client sells designs about"
+          />
+          <p className={hintCls}>
+            Every theme they print, not only what is in the uploaded designs. Press Enter or comma after each one.
+            {gaps.includes('at least one subject') && (
+              <span className="ml-1 text-red-700 dark:text-red-300">At least one subject is required.</span>
+            )}
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label htmlFor={ids.brandText} className={labelCls}>
+              Brand text
+            </label>
+            <TagInput
+              id={ids.brandText}
+              value={form.brief.brand_text}
+              onChange={(v) => setBrief('brand_text', v)}
+              disabled={disabled}
+              placeholder="@thehappyhourfarm, EST. 2019"
+              ariaLabel="Brand text"
+            />
+            <p className={hintCls}>
+              Text that appears on most designs: social handle, EST. line. The profiler treats it as text, never as style;
+              add it to a brief's text lines when it must be printed.
+            </p>
+          </div>
+          <div>
+            <label htmlFor={ids.typoNote} className={labelCls}>
+              Typography note
+            </label>
+            <input
+              id={ids.typoNote}
+              type="text"
+              value={form.brief.typography_note}
+              disabled={disabled}
+              onChange={(e) => setBrief('typography_note', e.target.value)}
+              placeholder="e.g. headline always a chunky slab serif, arched"
+              className={inputCls}
+            />
+            <p className={hintCls}>Optional. Anything about the lettering the images cannot say.</p>
+          </div>
+        </div>
 
         <fieldset>
           <legend className={labelCls}>Palette rule</legend>
@@ -369,7 +439,7 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
           </div>
           <div>
             <label htmlFor={ids.garment} className={labelCls}>
-              Garment colours
+              Garment colours <Required />
             </label>
             <TagInput
               id={ids.garment}
@@ -379,7 +449,12 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
               placeholder="black, white, heather"
               ariaLabel="Garment colours"
             />
-            <p className={hintCls}>Offered as choices on the brief form, plus "other". The test render uses the first one.</p>
+            <p className={hintCls}>
+              Offered as choices on the brief form, plus "other". The test render uses the first one.
+              {gaps.includes('a garment colour') && (
+                <span className="ml-1 text-red-700 dark:text-red-300">At least one garment colour is required.</span>
+              )}
+            </p>
           </div>
         </div>
 
@@ -408,6 +483,16 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
     </StepFrame>
   )
 })
+
+/** The red asterisk of a required field, read as "required" by screen readers. */
+function Required() {
+  return (
+    <span className="text-red-600 dark:text-red-400" title="Required">
+      <span aria-hidden="true">*</span>
+      <span className="sr-only"> (required)</span>
+    </span>
+  )
+}
 
 function RadioCard({
   name,

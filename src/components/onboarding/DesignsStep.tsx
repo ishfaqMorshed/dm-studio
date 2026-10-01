@@ -1,6 +1,6 @@
 import { forwardRef, useId, useRef, useState } from 'react'
 import { AlertTriangle, ImagePlus, Loader2, RefreshCw, Upload } from 'lucide-react'
-import { errorMessage, type Client, type ClientReference } from '../../lib/types'
+import { errorMessage, parseReferenceMeta, type Client, type ClientReference } from '../../lib/types'
 import { useToast } from '../../lib/useToast'
 import { LIBRARY_ACCEPT, LIBRARY_MIN_RECOMMENDED } from '../clientPanel/libraryFiles'
 import { useLibraryDrop } from '../clientPanel/useLibraryDrop'
@@ -43,6 +43,12 @@ export const DesignsStep = forwardRef<HTMLHeadingElement, Props>(function Design
   const ticked = library.refs.filter((r) => !r.excluded).length
   const overflow = ordered.tiles.filter((t) => t.state === 'over_cap').length
   const warnCount = !library.loading && total > 0 && (ticked < LIBRARY_MIN_RECOMMENDED || ticked > readCap)
+  // The test card and new cards pick their reference images from these two tags (spec 7): say so while none is set.
+  const anchored = library.refs.some((r) => {
+    if (r.excluded) return false
+    const best = parseReferenceMeta(r.meta).best_for
+    return best.includes('lettering') || best.includes('layout')
+  })
 
   async function confirmRemove() {
     if (!removing) return
@@ -75,7 +81,7 @@ export const DesignsStep = forwardRef<HTMLHeadingElement, Props>(function Design
           </span>
         )
       }
-      subtitle={`${LIBRARY_MIN_RECOMMENDED}–${readCap} of ${client.name}'s past designs. Tick the ones the analysis should read; add a one-line note where a picture is misleading (mockup, rough draft, wrong colours).`}
+      subtitle={`${LIBRARY_MIN_RECOMMENDED}–${readCap} of ${client.name}'s past designs. Tick the ones the analysis should read; tag each with its kind, garment and what it is the best example of; add a one-line note where a picture is misleading.`}
       actions={
         <>
           <input
@@ -153,7 +159,14 @@ export const DesignsStep = forwardRef<HTMLHeadingElement, Props>(function Design
         ) : (
           <ul aria-label="Reference library" className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
             {ordered.tiles.map((tile) => (
-              <DesignTile key={tile.ref.id} tile={tile} readCap={readCap} library={library} onRemove={() => setRemoving(tile.ref)} />
+              <DesignTile
+                key={tile.ref.id}
+                tile={tile}
+                readCap={readCap}
+                library={library}
+                garments={client.garment_colors}
+                onRemove={() => setRemoving(tile.ref)}
+              />
             ))}
           </ul>
         )}
@@ -177,6 +190,15 @@ export const DesignsStep = forwardRef<HTMLHeadingElement, Props>(function Design
                 Only the newest {readCap} selected images are read (Settings › max style refs). {overflow} older{' '}
                 {overflow === 1 ? 'one is' : 'ones are'} marked "Not read": untick the weakest so the ones that matter are
                 read.
+              </span>
+            </p>
+          )}
+          {ticked > 0 && !anchored && (
+            <p className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>
+                No ticked image is tagged as the best example of lettering or layout. New cards and the test render pick
+                reference images from these tags; without them they take the newest images.
               </span>
             </p>
           )}

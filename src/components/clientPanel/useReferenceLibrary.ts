@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { addClientReferences, deleteClientReference, listClientReferences, updateClientReference } from '../../lib/api'
-import { errorMessage, type ClientReference } from '../../lib/types'
+import { errorMessage, type ClientReference, type Json } from '../../lib/types'
 
 /** `client_references` is not in the realtime publication; a poll keeps a teammate's uploads visible. */
 const POLL_MS = 30_000
@@ -24,10 +24,18 @@ export interface ReferenceLibrary {
   /** Id of the image whose note / tick is being saved, if any. */
   updatingId: string | null
   /**
-   * Saves a note and/or the excluded flag. Optimistic: the row updates at once and is put
-   * back if the write fails (the error is rethrown with a readable message).
+   * Saves a note, the excluded flag and/or the tags (`meta`, the whole object: see
+   * `referenceMetaToJson`). Optimistic: the row updates at once and is put back if the write
+   * fails (the error is rethrown with a readable message).
    */
-  update: (row: ClientReference, patch: { note?: string | null; excluded?: boolean }) => Promise<ClientReference>
+  update: (row: ClientReference, patch: ReferencePatch) => Promise<ClientReference>
+}
+
+/** The columns a library image can change from the wizard and the client panel. */
+export interface ReferencePatch {
+  note?: string | null
+  excluded?: boolean
+  meta?: Json
 }
 
 /** The client's reference library (client_references rows), with upload and delete. */
@@ -132,7 +140,7 @@ export function useReferenceLibrary(clientId: string): ReferenceLibrary {
   )
 
   const update = useCallback(
-    async (row: ClientReference, patch: { note?: string | null; excluded?: boolean }): Promise<ClientReference> => {
+    async (row: ClientReference, patch: ReferencePatch): Promise<ClientReference> => {
       setUpdatingId(row.id)
       beginWrite()
       setRefs((prev) => prev.map((r) => (r.id === row.id ? { ...r, ...patch } : r)))

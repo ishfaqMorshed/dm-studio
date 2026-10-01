@@ -3,21 +3,32 @@ import { Link } from 'react-router-dom'
 import { ExternalLink, ImageOff } from 'lucide-react'
 import type { TestCard } from '../../lib/api'
 import { GENS_BUCKET } from '../../lib/supabase'
+import type { StyleCard } from '../../lib/types'
 import { useSignedUrl } from '../../lib/useSignedUrl'
 import { PlatformBadge } from '../card/PlatformBadge'
-import { VERDICT_LABEL, qcTextFound, qcVerdict } from '../card/qc'
+import { VERDICT_LABEL, expectedSubjectOf, qcTextFound, qcVerdict } from '../card/qc'
 import { VERDICT_CLASS, checkerboard, imageChip } from '../card/styles'
 import { Badge } from '../card/ui'
 import { useCardGenerations } from '../card/useCardData'
 import { formatDateTime } from '../style/format'
+import { StyleMatchStrip } from './StyleMatchStrip'
 import { readTestSubmission } from './testRenderInput'
 
 /**
  * The finished test render, large, with its QC verdict, the subject and text lines it was made
- * with, and the caller's action row. Mount with `key={card.id}`; generations arrive live
- * (realtime on `generations`).
+ * with, the judge's Style Card match (spec 4.6) and the caller's action row. Mount with
+ * `key={card.id}`; generations arrive live (realtime on `generations`).
  */
-export function TestRenderResult({ card, actions }: { card: TestCard; actions: ReactNode }) {
+export function TestRenderResult({
+  card,
+  versions,
+  actions,
+}: {
+  card: TestCard
+  /** The client's versions, to show the judged Style Card value in each chip's tooltip. */
+  versions?: readonly StyleCard[]
+  actions: ReactNode
+}) {
   const generations = useCardGenerations(card.id)
   const gen = useMemo(
     () => generations.rows.find((g) => g.id === card.current_generation_id) ?? generations.rows[0] ?? null,
@@ -27,6 +38,10 @@ export function TestRenderResult({ card, actions }: { card: TestCard; actions: R
   const verdict = qcVerdict(gen?.qc_report)
   const textFound = qcTextFound(gen?.qc_report)
   const submission = useMemo(() => readTestSubmission(card), [card])
+  // The version the render used (what approve_card was sent), else the one the card recorded at creation.
+  const styleCardId = gen?.style_card_id ?? submission.styleCardId
+  const styleCard = styleCardId ? versions?.find((v) => v.id === styleCardId)?.json ?? null : null
+  const expectedSubject = submission.subject ?? expectedSubjectOf(gen?.magic_prompt_json)
 
   return (
     <div className="space-y-3">
@@ -68,6 +83,14 @@ export function TestRenderResult({ card, actions }: { card: TestCard; actions: R
           )}
         </dd>
       </dl>
+
+      <StyleMatchStrip
+        report={gen?.qc_report}
+        clientId={card.client_id}
+        styleCardId={styleCardId}
+        expectedSubject={expectedSubject}
+        styleCard={styleCard}
+      />
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-500">
         {gen && <PlatformBadge generation={gen} />}

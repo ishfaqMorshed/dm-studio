@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
 import { AlertTriangle, ImagePlus, Loader2, Lock, RefreshCw, X } from 'lucide-react'
+import type { ReferenceRole } from '../../lib/types'
 import { ACCEPT_ATTR } from './constants'
 import { formatBytes, inspectImageFile, type ReferenceImage } from './imageFile'
+import { ROLE_COPY, slotTitle } from './referenceRoles'
 import { iconButton } from './ui'
 
 interface Props {
   /** 0-based. */
   index: number
+  /** The one job this slot's image is read for (settings.reference_roles order). */
+  role: ReferenceRole
   /** Id for the hidden file input, so the form can focus the slot on validation. */
   inputId: string
   value: ReferenceImage | null
@@ -19,17 +23,20 @@ interface Props {
 }
 
 /**
- * One of the three reference slots. Empty: a tap/drop target that opens the native picker (the
- * camera roll on phones). Filled: thumbnail, pixel size, file size and Replace / Remove.
+ * One of the three reference slots, titled with its job ("1 · What to make") and a one-line hint of
+ * what is read from it. Empty: a tap/drop target that opens the native picker (the camera roll on
+ * phones). Filled: thumbnail, pixel size, file size and Replace / Remove.
  * Validation happens here on pick; the parent only ever receives a decoded, accepted image.
  */
-export function ImageSlot({ index, inputId, value, onChange, locked, disabled, error }: Props) {
+export function ImageSlot({ index, role, inputId, value, onChange, locked, disabled, error }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const [busy, setBusy] = useState(false)
   const [pickError, setPickError] = useState<string | null>(null)
   const n = index + 1
   const messageId = `${inputId}-message`
+  const title = slotTitle(n, role)
+  const { label, hint } = ROLE_COPY[role]
 
   // Release the object URL when the image changes or the slot unmounts.
   const previewUrl = value?.previewUrl
@@ -81,10 +88,12 @@ export function ImageSlot({ index, inputId, value, onChange, locked, disabled, e
         className="sr-only"
         disabled={disabled || locked}
         onChange={onInput}
-        aria-label={value ? `Replace reference ${n}` : `Choose reference ${n}`}
+        aria-label={value ? `Replace reference ${n} (${label})` : `Choose reference ${n} (${label})`}
         aria-invalid={message ? true : undefined}
-        aria-describedby={message ? messageId : undefined}
+        aria-describedby={message ? messageId : `${inputId}-hint`}
       />
+
+      <p className="text-sm font-medium">{title}</p>
 
       {value ? (
         <div
@@ -92,7 +101,7 @@ export function ImageSlot({ index, inputId, value, onChange, locked, disabled, e
         >
           <img
             src={value.previewUrl}
-            alt={`Reference ${n}: ${value.file.name}`}
+            alt={`${title}: ${value.file.name}`}
             className="h-28 w-28 shrink-0 object-cover sm:aspect-square sm:h-auto sm:w-full"
           />
           <span className="absolute left-2 top-2 rounded-md bg-black/60 px-1.5 py-0.5 text-[11px] font-medium text-white">
@@ -118,7 +127,7 @@ export function ImageSlot({ index, inputId, value, onChange, locked, disabled, e
                   type="button"
                   onClick={() => inputRef.current?.click()}
                   disabled={disabled}
-                  aria-label={`Replace reference ${n}`}
+                  aria-label={`Replace reference ${n} (${label})`}
                   title="Replace"
                   className={iconButton}
                 >
@@ -131,7 +140,7 @@ export function ImageSlot({ index, inputId, value, onChange, locked, disabled, e
                     onChange(null)
                   }}
                   disabled={disabled}
-                  aria-label={`Remove reference ${n}`}
+                  aria-label={`Remove reference ${n} (${label})`}
                   title="Remove"
                   className={iconButton}
                 >
@@ -160,12 +169,16 @@ export function ImageSlot({ index, inputId, value, onChange, locked, disabled, e
           ) : (
             <ImagePlus className="h-6 w-6 text-neutral-400" aria-hidden />
           )}
-          <span className="text-sm font-medium">Reference {n}</span>
+          <span className="text-sm font-medium">{label}</span>
           <span className="text-xs text-neutral-500">
             {busy ? 'Checking the image…' : 'Tap to choose a photo, or drop one here'}
           </span>
         </label>
       )}
+
+      <p id={`${inputId}-hint`} className="text-xs text-neutral-500">
+        {hint}
+      </p>
 
       {value?.warning && !message && (
         <p className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">

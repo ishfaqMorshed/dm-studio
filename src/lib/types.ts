@@ -155,6 +155,72 @@ export const REJECTION_REASON_LABEL: Record<RejectionReason, string> = {
   other: 'Other',
 }
 
+/* ---------- Reference slot roles (settings.reference_roles → cards.reference_roles) ---------- */
+
+/**
+ * Each brief reference is read for ONE job: `subject` = What to make (hero, supporting elements,
+ * layout), `art_style` = Art style (technique, line, shading, texture, palette), `typography` =
+ * Lettering (font feel, placement, case, effects). The slot order lives in `settings.reference_roles`
+ * (jsonb, default this list); `submit_brief` / `create_card_as_designer` stamp it onto
+ * `cards.reference_roles` (null = legacy card, every reference read as style). Copy per role is in
+ * `components/brief/referenceRoles.ts`.
+ */
+export const REFERENCE_ROLES = ['subject', 'art_style', 'typography'] as const
+export type ReferenceRole = (typeof REFERENCE_ROLES)[number]
+
+export function isReferenceRole(v: unknown): v is ReferenceRole {
+  return typeof v === 'string' && (REFERENCE_ROLES as readonly string[]).includes(v)
+}
+
+/**
+ * `settings.reference_roles` (or `cards.reference_roles`) as a clean role list; anything that is not
+ * an array of known roles reads as the default order, so every surface relabels from the one value
+ * and never crashes on a hand-edited row.
+ */
+export function parseReferenceRoles(json: Json | null | undefined): ReferenceRole[] {
+  if (!Array.isArray(json)) return [...REFERENCE_ROLES]
+  const roles = json.filter(isReferenceRole)
+  return roles.length ? roles : [...REFERENCE_ROLES]
+}
+
+/* ---------- Library image tags (client_references.meta) ---------- */
+
+export const REFERENCE_KINDS = ['design', 'mockup', 'draft'] as const
+export type ReferenceKind = (typeof REFERENCE_KINDS)[number]
+
+/** "Best example of" tags; WF-1b renders them into REFERENCE_NOTES and the test card picks a roled trio from them. */
+export const REFERENCE_BEST_FOR = ['lettering', 'linework', 'palette', 'layout'] as const
+export type ReferenceBestFor = (typeof REFERENCE_BEST_FOR)[number]
+
+/** `client_references.meta` (jsonb `{kind, garment, best_for[], outlier}`), every key optional in the row. */
+export interface ClientReferenceMeta {
+  kind: ReferenceKind | null
+  garment: string | null
+  best_for: ReferenceBestFor[]
+  /** An off-style image: kept in the library, its sheet is excluded from agreement. */
+  outlier: boolean
+}
+
+export function parseReferenceMeta(json: Json | null | undefined): ClientReferenceMeta {
+  const m: ClientReferenceMeta = { kind: null, garment: null, best_for: [], outlier: false }
+  if (!isRecord(json)) return m
+  const kind = json.kind
+  if (typeof kind === 'string' && (REFERENCE_KINDS as readonly string[]).includes(kind)) m.kind = kind as ReferenceKind
+  if (typeof json.garment === 'string' && json.garment.trim()) m.garment = json.garment.trim()
+  if (Array.isArray(json.best_for)) {
+    m.best_for = json.best_for.filter(
+      (b): b is ReferenceBestFor => typeof b === 'string' && (REFERENCE_BEST_FOR as readonly string[]).includes(b),
+    )
+  }
+  m.outlier = json.outlier === true
+  return m
+}
+
+/** The exact object written back to `client_references.meta`. */
+export function referenceMetaToJson(m: ClientReferenceMeta): Record<string, Json> {
+  return { kind: m.kind, garment: m.garment, best_for: [...m.best_for], outlier: m.outlier }
+}
+
 /* ---------- Brief vocabulary (client form + card editor) ---------- */
 
 export const PLACEMENTS = ['front_chest', 'full_front', 'back', 'pocket', 'tote', 'mug'] as const

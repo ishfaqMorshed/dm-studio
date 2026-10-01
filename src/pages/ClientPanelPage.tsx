@@ -170,6 +170,7 @@ function ClientPanel({ clientId }: { clientId: string }) {
           <StyleCardSection
             clientId={client.id}
             clientName={client.name}
+            client={client}
             versions={panel.versions}
             currentLocked={panel.currentLocked}
             drafts={panel.drafts}

@@ -14,6 +14,7 @@ import {
   type Settings,
   type SettingsUpdate,
 } from '../../lib/types'
+import { ROLE_COPY, slotRoles } from '../brief/referenceRoles'
 import { PlatformPicker } from '../PlatformPicker'
 import { GENERATION_DEFAULTS, OPENROUTER_MODEL_DEFAULTS } from './generationDefaults'
 
@@ -640,6 +641,28 @@ export function PipelineSettings() {
                   Writes the nightly lessons from designer rejections.
                 </ModelField>
               </div>
+              <div>
+                <h4 className="text-sm font-medium">Reference slots</h4>
+                <p className="text-xs text-neutral-500">
+                  The one job each brief reference is read for, in slot order. Labels the client form and the New card
+                  dialog, is stamped onto every new card and steers the vision read and the prompt. Stored in{' '}
+                  <code className={codeCls}>settings.reference_roles</code>; swapping the order is one UPDATE on that
+                  row, no deploy.
+                </p>
+              </div>
+              <ol className="flex flex-wrap gap-2" aria-label="Reference slot order">
+                {slotRoles(settings).map((role, i) => (
+                  <li
+                    key={role}
+                    title={ROLE_COPY[role].hint}
+                    className="inline-flex items-baseline gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm dark:border-neutral-800"
+                  >
+                    <span className="tabular-nums text-neutral-500">{i + 1} ·</span>
+                    <span className="font-medium">{ROLE_COPY[role].label}</span>
+                    <code className={`${codeCls} text-xs`}>{role}</code>
+                  </li>
+                ))}
+              </ol>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">

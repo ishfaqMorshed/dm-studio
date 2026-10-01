@@ -20,7 +20,12 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    /* Shared pure modules (also consumed by the Edge Functions); mirrored by resolve.alias in vite.config.ts */
+    "paths": {
+      "@shared/style_card_rules": ["./supabase/functions/_shared/style_card_rules.ts"]
+    }
   },
-  "include": ["src"]
+  "include": ["src", "supabase/functions/_shared"]
 }

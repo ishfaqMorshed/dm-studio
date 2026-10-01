@@ -3,7 +3,7 @@
  * style profiler (WF-1b) reads together with the reference library, and that intake applies
  * to every brief for the client (text case). Pure helpers, no React.
  */
-import { isRecord, type Json } from './types'
+import { isRecord, type Client, type Json } from './types'
 
 export type PaletteMode = 'strict' | 'flexible'
 export type TextCase = 'as_typed' | 'upper' | 'title'
@@ -11,6 +11,12 @@ export type TextCase = 'as_typed' | 'upper' | 'title'
 export interface StyleBrief {
   niche: string
   audience: string
+  /** Every theme the client prints (v2): seeds `subjects` and is a hard gate for Analyse. */
+  subjects: string[]
+  /** Text on most designs (handle, EST. line); the profiler files it under `brand_text`, never as style. */
+  brand_text: string[]
+  /** Free note on the lettering (v2, optional). */
+  typography_note: string
   palette_mode: PaletteMode
   text_case: TextCase
   /** Signature moves the client insists on; folded into `signature_moves`. */
@@ -77,6 +83,9 @@ export function emptyStyleBrief(): StyleBrief {
   return {
     niche: '',
     audience: '',
+    subjects: [],
+    brand_text: [],
+    typography_note: '',
     palette_mode: 'strict',
     text_case: 'as_typed',
     must_have: [],
@@ -92,6 +101,9 @@ export function parseStyleBrief(json: Json | null | undefined): StyleBrief {
   if (!isRecord(json)) return b
   b.niche = str(json.niche)
   b.audience = str(json.audience)
+  b.subjects = strList(json.subjects)
+  b.brand_text = strList(json.brand_text)
+  b.typography_note = str(json.typography_note)
   if (isPaletteMode(json.palette_mode)) b.palette_mode = json.palette_mode
   if (isTextCase(json.text_case)) b.text_case = json.text_case
   b.must_have = strList(json.must_have)
@@ -109,6 +121,9 @@ export function styleBriefToJson(b: StyleBrief): Record<string, Json> {
   return {
     niche: clean(b.niche),
     audience: clean(b.audience),
+    subjects: cleanList(b.subjects),
+    brand_text: cleanList(b.brand_text),
+    typography_note: clean(b.typography_note),
     palette_mode: b.palette_mode,
     text_case: b.text_case,
     must_have: cleanList(b.must_have),
@@ -121,6 +136,40 @@ export function styleBriefToJson(b: StyleBrief): Record<string, Json> {
 /** True when the brief was never written (`{}` or not an object). */
 export function isBriefEmpty(json: Json | null | undefined): boolean {
   return !isRecord(json) || Object.keys(json).length === 0
+}
+
+/** The three things the profiler cannot work without, in the order the step asks for them. */
+export const BRIEF_GAP_LABELS = ['niche', 'at least one subject', 'a garment colour'] as const
+export type BriefGap = (typeof BRIEF_GAP_LABELS)[number]
+
+/**
+ * What is still missing before Analyse may run: the niche, at least one subject and one garment
+ * colour (the server trigger `style_draft_requests_require_brief` checks the same three). The
+ * audience is recommended, not required. Empty list = complete.
+ */
+export function briefGaps(b: StyleBrief, client: Pick<Client, 'garment_colors'> | null | undefined): BriefGap[] {
+  const gaps: BriefGap[] = []
+  if (!b.niche.trim()) gaps.push('niche')
+  if (cleanList(b.subjects).length === 0) gaps.push('at least one subject')
+  if (cleanList(client?.garment_colors ?? []).length === 0) gaps.push('a garment colour')
+  return gaps
+}
+
+export function isBriefComplete(b: StyleBrief, client: Pick<Client, 'garment_colors'> | null | undefined): boolean {
+  return briefGaps(b, client).length === 0
+}
+
+/** "Missing: niche, at least one subject" for the step header and the disabled Analyse button. */
+export function briefGapsSummary(gaps: readonly string[]): string {
+  return gaps.length ? `Missing: ${gaps.join(', ')}` : ''
+}
+
+/** The server trigger's message when a draft is requested without the brief (studio_21). */
+const SERVER_BRIEF_GATE_RE = /write the onboarding brief first/i
+
+/** True when an error is the server-side brief gate (so the UI can say the same thing it says before the click). */
+export function isBriefGateError(message: string): boolean {
+  return SERVER_BRIEF_GATE_RE.test(message)
 }
 
 export function rulesFromBrief(b: StyleBrief): StyleRules {

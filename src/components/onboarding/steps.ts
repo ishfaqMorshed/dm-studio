@@ -1,4 +1,5 @@
 /** The wizard's four steps, their URL ids and the one-line summaries the progress header shows. */
+import { briefGapsSummary } from '../../lib/styleBrief'
 import { formatDateTime } from '../style/format'
 
 export const STEP_IDS = ['designs', 'brief', 'analyse', 'test'] as const
@@ -33,18 +34,23 @@ export function prevStep(id: StepId): StepId | null {
   return i > 0 ? STEP_IDS[i - 1] : null
 }
 
-/** Where a fresh visit lands: the first step with nothing persisted yet. */
+/**
+ * Where a fresh visit lands: the first step with nothing persisted yet. The brief counts as
+ * incomplete while it is empty or while `briefGaps()` lists anything (Analyse is gated on it).
+ */
 export function firstIncompleteStep({
   tickedCount,
   briefEmpty,
+  briefGaps = [],
   hasDraft,
 }: {
   tickedCount: number
   briefEmpty: boolean
+  briefGaps?: readonly string[]
   hasDraft: boolean
 }): StepId {
   if (tickedCount === 0) return 'designs'
-  if (briefEmpty) return 'brief'
+  if (briefEmpty || briefGaps.length > 0) return 'brief'
   if (!hasDraft) return 'analyse'
   return 'test'
 }
@@ -66,6 +72,8 @@ export interface StepSummaryData {
   tickedCount: number
   totalCount: number
   briefEmpty: boolean
+  /** `briefGaps()` of the saved brief and client record; the step reads 'attention · Missing: …' while any remain. */
+  briefGaps?: readonly string[]
   /** briefSummary() of the saved brief. */
   briefText: string
   briefDirty: boolean
@@ -107,11 +115,18 @@ export function stepSummaries(d: StepSummaryData): StepSummary[] {
     state: d.tickedCount > 0 ? 'done' : 'todo',
   }
 
+  const gaps = d.briefGaps ?? []
   const brief: StepSummary = {
     id: 'brief',
     label: STEP_LABEL.brief,
-    summary: d.briefDirty ? 'Unsaved changes' : d.briefEmpty ? 'Not written yet' : `Saved · ${d.briefText}`,
-    state: d.briefDirty ? 'attention' : d.briefEmpty ? 'todo' : 'done',
+    summary: d.briefDirty
+      ? 'Unsaved changes'
+      : d.briefEmpty
+        ? 'Not written yet'
+        : gaps.length > 0
+          ? briefGapsSummary(gaps)
+          : `Saved · ${d.briefText}`,
+    state: d.briefDirty ? 'attention' : d.briefEmpty ? 'todo' : gaps.length > 0 ? 'attention' : 'done',
   }
 
   let analyse: StepSummary

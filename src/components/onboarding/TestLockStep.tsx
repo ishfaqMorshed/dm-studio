@@ -2,6 +2,7 @@ import { forwardRef, useCallback, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertTriangle, CheckCircle2, ExternalLink, History, Info, Loader2, Lock, RefreshCw, Sparkles } from 'lucide-react'
 import { lockStyleCard, type TestCard } from '../../lib/api'
+import { parseStyleBrief } from '../../lib/styleBrief'
 import { GENS_BUCKET } from '../../lib/supabase'
 import { errorMessage, type Client, type ClientReference, type Settings, type StyleCard } from '../../lib/types'
 import { useSignedUrl } from '../../lib/useSignedUrl'
@@ -12,16 +13,20 @@ import { VERDICT_CLASS, checkerboard } from '../card/styles'
 import { btnPrimary, btnSecondary } from '../style/classes'
 import { formatDateTime } from '../style/format'
 import { isValidHex, normalizeStyleCard, styleCardIssues } from '../style/styleCardSchema'
-import { TEST_RENDER_COST_LABEL } from './costs'
+import { ANALYSE_COST_LABEL, TEST_RENDER_COST_LABEL } from './costs'
+import { asOfProfilerOrder } from './profilerOrder'
 import { RenderProgress } from './RenderProgress'
 import { StepFrame } from './StepFrame'
 import { STEP_LABEL } from './steps'
-import { artworkLine } from './styleCardRead'
+import { artworkLine, readReferenceIds } from './styleCardRead'
+import { AMBER_RING } from './StyleCardReadout'
 import { testCardVersion } from './testRenderInput'
 import { TestRenderDialog, type TestRenderDialogMode, type TestRenderDraft } from './TestRenderDialog'
 import { TestRenderResult } from './TestRenderResult'
 import type { StyleTestCards } from './useStyleTestCards'
 import { TEST_ACTIVE_STAGES, type TestRender } from './useTestRender'
+import { lowAgreementCount, lowAgreementNote, readValidation } from './validation'
+import { ValidationChips } from './ValidationChips'
 
 interface Props {
   client: Client
@@ -31,8 +36,12 @@ interface Props {
   currentLocked: StyleCard | null
   /** Every version of the client, to name the one a running card renders with. */
   versions: StyleCard[]
-  /** Ticked images in profiler order (the render takes the newest 3). */
+  /** Ticked images in profiler order (the as-of count and the reference preview fall back to it without `refs`). */
   read: ClientReference[]
+  /** The whole library: the images a version was analysed from are reconstructed as of its timestamp, and the test render's references are previewed from it. */
+  refs?: readonly ClientReference[]
+  /** min(16, settings.max_style_refs): how many images the profiler reads. */
+  readCap?: number
   tests: StyleTestCards
   /** The render state machine (owned by the wizard shell so it keeps running across steps). */
   render: TestRender
@@ -53,7 +62,7 @@ const emptyBox = 'flex flex-col items-center gap-3 rounded-xl border-2 border-da
  * behind a dialog that names the cost, and the lock never happens twice from here.
  */
 export const TestLockStep = forwardRef<HTMLHeadingElement, Props>(function TestLockStep(
-  { client, settings, draft, currentLocked, versions, read, tests, render, isLead, onBack, refreshVersions, onLocked },
+  { client, settings, draft, currentLocked, versions, read, refs, readCap, tests, render, isLead, onBack, refreshVersions, onLocked },
   ref,
 ) {
   const toast = useToast()
@@ -75,7 +84,25 @@ export const TestLockStep = forwardRef<HTMLHeadingElement, Props>(function TestL
   )
 
   const doc = useMemo(() => (draft ? normalizeStyleCard(draft.json) : null), [draft])
-  const issues = useMemo(() => (doc ? styleCardIssues(doc) : { blocking: [], warnings: [] }), [doc])
+  // The shared rules with the saved brief and the client's garments: the blocking list gates the lock (spec 7).
+  const brief = useMemo(() => parseStyleBrief(client.style_brief), [client.style_brief])
+  const issues = useMemo(
+    () => (doc ? styleCardIssues(doc, brief, client.garment_colors) : { blocking: [], warnings: [] }),
+    [doc, brief, client.garment_colors],
+  )
+  const validation = useMemo(() => (doc ? readValidation(doc, brief, client.garment_colors) : null), [doc, brief, client.garment_colors])
+  // The chips show the module's validation (stored by the run, else computed here) plus the lines only the
+  // lock gate knows: pending fixes, fields below 60% agreement, rules that differ from the saved brief (spec 7).
+  const chips = useMemo(
+    () => (validation ? { ...validation, warnings: [...new Set([...validation.warnings, ...issues.warnings])] } : null),
+    [validation, issues.warnings],
+  )
+  const library = refs ?? read
+  // "Add more designs and analyse again": fewer than 5 images analysed, or more than 3 fields the designs disagree about.
+  // N = the run's reference_ids, else the library as it stood when the version was created (the readout's rule).
+  const analysedN = doc && draft ? readReferenceIds(doc.extra).length || asOfProfilerOrder(library, readCap ?? 16, draft.created_at).read.length : 0
+  const lowN = doc ? lowAgreementCount(doc) : 0
+  const lookNote = doc ? lowAgreementNote(doc, ['medium', 'realism', 'linework', 'shading', 'shading_method', 'texture', 'edge_finish'], analysedN) : null
 
   if (!draft) {
     return (
@@ -104,7 +131,7 @@ export const TestLockStep = forwardRef<HTMLHeadingElement, Props>(function TestL
     : !client.active
       ? 'Inactive client: test renders are refused. A lead can reactivate the client with Edit.'
       : read.length === 0
-        ? 'Tick at least one image first (the render uses the newest 3)'
+        ? 'Tick at least one image first (the render attaches up to 3 of them as references)'
         : null
   const renderDisabledReason = renderBlockedReason ?? (render.busy ? 'A test render is already running' : null)
   // The draft's single action locks and renders, so it needs both to be possible; a blocking schema
@@ -188,6 +215,22 @@ export const TestLockStep = forwardRef<HTMLHeadingElement, Props>(function TestL
       Adjust in the editor
     </Link>
   )
+  const moreDesigns =
+    doc && (analysedN < 5 || lowN > 3) ? (
+      <p className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <span>
+          {analysedN < 5
+            ? `Only ${analysedN} image${analysedN === 1 ? ' was' : 's were'} analysed for v${version.version}`
+            : `${lowN} fields of v${version.version} are below 60% agreement across the analysed designs`}
+          .{' '}
+          <Link to={`/clients/${client.id}/onboard?step=designs`} className="font-medium underline underline-offset-2">
+            Add more designs and analyse again ({ANALYSE_COST_LABEL})
+          </Link>{' '}
+          for a firmer Style Card.
+        </span>
+      </p>
+    ) : null
   const doneLink = (
     <Link to={`/clients/${client.id}`} className={btnPrimary}>
       Done
@@ -240,6 +283,8 @@ export const TestLockStep = forwardRef<HTMLHeadingElement, Props>(function TestL
           </div>
         </div>
 
+        {moreDesigns}
+
         {render.startError && (
           <p role="alert" className="flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-800 dark:bg-red-950/40 dark:text-red-200">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -261,6 +306,7 @@ export const TestLockStep = forwardRef<HTMLHeadingElement, Props>(function TestL
           <TestRenderResult
             key={ready.id}
             card={ready}
+            versions={versions}
             actions={
               <>
                 {renderAgain}
@@ -328,8 +374,18 @@ export const TestLockStep = forwardRef<HTMLHeadingElement, Props>(function TestL
                 </li>
               ))}
             </ul>
-            <p className="min-w-0 flex-1 truncate text-xs text-neutral-600 dark:text-neutral-300" title={artworkLine(doc)}>
-              {artworkLine(doc) || 'No medium, linework, shading or texture recorded.'}
+            <p
+              className="min-w-0 flex-1 truncate text-xs text-neutral-600 dark:text-neutral-300"
+              title={lookNote ? `${artworkLine(doc)} · ${lookNote}` : artworkLine(doc)}
+            >
+              {lookNote ? (
+                <span className={AMBER_RING}>
+                  {artworkLine(doc) || 'No medium, linework, shading or texture recorded.'}
+                  <span className="sr-only"> ({lookNote})</span>
+                </span>
+              ) : (
+                artworkLine(doc) || 'No medium, linework, shading or texture recorded.'
+              )}
             </p>
           </div>
         )}
@@ -356,6 +412,10 @@ export const TestLockStep = forwardRef<HTMLHeadingElement, Props>(function TestL
             </span>
           </p>
         )}
+
+        {chips && <ValidationChips validation={chips} clientId={client.id} versionId={version.id} warningsOnly />}
+
+        {moreDesigns}
 
         {active ? (
           <>
@@ -439,6 +499,10 @@ export const TestLockStep = forwardRef<HTMLHeadingElement, Props>(function TestL
           version={dialog === 'generate' ? activeVersion : version.version}
           subjects={doc?.subjects ?? []}
           read={read}
+          library={library}
+          settings={settings}
+          doc={doc}
+          warnings={dialog === 'lock_render' ? issues.warnings : []}
           mode={dialog}
           card={dialog === 'generate' ? render.card : null}
           blockedReason={dialog === 'lock_render' ? lockBlockedReason : dialog === 'render' ? renderBlockedReason : null}

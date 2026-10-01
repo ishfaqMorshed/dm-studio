@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { AlertCircle, Braces, ChevronDown, ChevronRight, Copy } from 'lucide-react'
 import { copyText } from './clipboard'
 import { useToast } from '../../lib/useToast'
@@ -12,17 +12,39 @@ interface Props {
   /** Re-pretty-prints the text from the parsed document (only when valid). */
   onFormat: () => void
   readOnly?: boolean
+  /** Bump to expand the panel and focus the text (a deep link to a key the form does not edit). */
+  expandSignal?: number
 }
 
 /**
  * Collapsed by default (SOP §5.5). Typing valid JSON updates the form live;
  * invalid JSON keeps the last good document and shows the parser's message.
  */
-export function RawJsonPanel({ text, onTextChange, error, onFormat, readOnly = false }: Props) {
+export function RawJsonPanel({ text, onTextChange, error, onFormat, readOnly = false, expandSignal = 0 }: Props) {
   const [open, setOpen] = useState(false)
   const toast = useToast()
   const areaId = useId()
   const errId = useId()
+  const area = useRef<HTMLTextAreaElement>(null)
+
+  // A new signal opens the panel (derived during render); the DOM focus follows in the effect.
+  const [seenSignal, setSeenSignal] = useState(0)
+  if (expandSignal !== seenSignal) {
+    setSeenSignal(expandSignal)
+    setOpen(true)
+  }
+
+  useEffect(() => {
+    if (!expandSignal) return
+    // The textarea is inside a `hidden` wrapper until the open state commits; focus after that paint.
+    const frame = window.requestAnimationFrame(() => {
+      const el = area.current
+      if (!el) return
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      el.focus({ preventScroll: true })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [expandSignal])
 
   async function copy() {
     try {
@@ -78,6 +100,7 @@ export function RawJsonPanel({ text, onTextChange, error, onFormat, readOnly = f
       </div>
       <div id={areaId} hidden={!open} className="border-t border-neutral-200 p-3 dark:border-neutral-800">
         <textarea
+          ref={area}
           value={text}
           readOnly={readOnly}
           onChange={(e) => onTextChange(e.target.value)}

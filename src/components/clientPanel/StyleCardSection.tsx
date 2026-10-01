@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight, CheckCircle2, ExternalLink, Loader2, PencilLine, WandSparkles } from 'lucide-react'
 import { requestStyleDraft } from '../../lib/api'
-import { ACTIVE_JOB_STATUSES, errorMessage, type StyleCard, type StyleDraftRequest } from '../../lib/types'
+import { briefGaps, parseStyleBrief } from '../../lib/styleBrief'
+import { ACTIVE_JOB_STATUSES, errorMessage, type Client, type StyleCard, type StyleDraftRequest } from '../../lib/types'
 import type { StyleDraftRequestsResult } from '../../lib/useStyleDraftRequests'
 import { useToast } from '../../lib/useToast'
 import { btnPrimary, btnSecondary } from '../style/classes'
 import { formatDateTime } from '../style/format'
-import { ACTIVE_PHRASE, STALE_MS, ageMinutes, draftDisabledReason } from './drafting'
+import { ACTIVE_PHRASE, STALE_MS, ageMinutes, draftDisabledReason, draftErrorMessage } from './drafting'
 import { LIBRARY_FALLBACK_MAX, LIBRARY_MIN_RECOMMENDED } from './libraryFiles'
 import { n8nExecutionUrl } from './links'
 import { Section } from './Section'
@@ -21,6 +22,7 @@ import { StatusPill } from './StatusPill'
 export function StyleCardSection({
   clientId,
   clientName,
+  client = null,
   versions,
   currentLocked,
   drafts,
@@ -33,6 +35,8 @@ export function StyleCardSection({
 }: {
   clientId: string
   clientName: string
+  /** The client row, for the brief gate (niche, one subject, one garment colour) on the Draft button. */
+  client?: Client | null
   /** Every version, newest first (to name the draft a request produced). */
   versions: StyleCard[]
   currentLocked: StyleCard | null
@@ -63,11 +67,13 @@ export function StyleCardSection({
 
   const active = requests.drafting ? requests.latest : null
   const stale = active !== null && now - Date.parse(active.created_at) > STALE_MS
+  const gaps = client ? briefGaps(parseStyleBrief(client.style_brief), client) : []
 
   const disabledReason = draftDisabledReason({
     requesting,
     libraryLoading,
     tickedCount,
+    briefGaps: gaps,
     active,
     stale,
     requestsLoading: requests.loading,
@@ -82,7 +88,7 @@ export function StyleCardSection({
         `Drafting a Style Card from ${tickedCount} image${tickedCount === 1 ? '' : 's'}. It appears here as a new draft version in about a minute.`,
       )
     } catch (e) {
-      toast.error(`Could not queue the draft: ${errorMessage(e)}`)
+      toast.error(`Could not queue the draft: ${draftErrorMessage(errorMessage(e), gaps)}`)
     } finally {
       setRequesting(false)
     }
@@ -172,6 +178,14 @@ export function StyleCardSection({
             (tickedCount < LIBRARY_MIN_RECOMMENDED
               ? `Reads ${tickedCount} ticked image${tickedCount === 1 ? '' : 's'} and writes draft v${nextVersion}. ${LIBRARY_MIN_RECOMMENDED} or more images give a stronger read.`
               : `Reads ${Math.min(tickedCount, readCap)} ticked images and writes draft v${nextVersion} for you to review and lock.`)}
+          {gaps.length > 0 && (
+            <>
+              {' '}
+              <Link to={`${onboardLink}?step=brief`} className="font-medium text-neutral-900 underline underline-offset-2 dark:text-neutral-100">
+                Write the brief
+              </Link>
+            </>
+          )}
         </p>
       </div>
 

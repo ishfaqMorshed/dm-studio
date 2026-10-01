@@ -2,11 +2,14 @@ import { useId, useState } from 'react'
 import { AlertTriangle, Loader2, Lock, Sparkles } from 'lucide-react'
 import type { TestCard } from '../../lib/api'
 import { parseStyleBrief, TEXT_CASE_LABEL } from '../../lib/styleBrief'
-import type { Client, ClientReference } from '../../lib/types'
+import type { Client, ClientReference, Settings } from '../../lib/types'
+import { ROLE_COPY, slotRoles } from '../brief/referenceRoles'
 import { btnPrimary, btnSecondary, hintCls, inputCls, labelCls } from '../style/classes'
 import { Modal } from '../style/Modal'
+import type { StyleCardDoc } from '../style/styleCardSchema'
 import { COST_SUFFIX, TEST_RENDER_COST_LABEL } from './costs'
 import { RefThumb } from './RefThumb'
+import { testRefsRule, testRenderReferences } from './testRenderRefs'
 import {
   buildTestLines,
   defaultTestLines,
@@ -47,6 +50,10 @@ export function TestRenderDialog({
   version,
   subjects,
   read,
+  library,
+  settings = null,
+  doc = null,
+  warnings = [],
   mode,
   card = null,
   blockedReason = null,
@@ -60,8 +67,16 @@ export function TestRenderDialog({
   version: number
   /** The version's subjects: the first prefills the subject, all of them are chips. */
   subjects: string[]
-  /** The ticked images in profiler order; the newest 3 are the render's references. */
+  /** The ticked images in profiler order; the reference preview falls back to it without `library`. */
   read: ClientReference[]
+  /** The whole library, to preview the references the backend attaches (see testRenderRefs.ts). */
+  library?: readonly ClientReference[]
+  /** For the slot order the backend stamps on the test card. */
+  settings?: Settings | null
+  /** The version the render uses, for its representative images. */
+  doc?: StyleCardDoc | null
+  /** 'lock_render' only: the lock gate's warnings, shown before the designer locks. */
+  warnings?: readonly string[]
   mode: TestRenderDialogMode
   /** 'generate' only: the review-stage card, whose recorded subject and lines are shown. */
   card?: TestCard | null
@@ -79,7 +94,7 @@ export function TestRenderDialog({
   const [sub, setSub] = useState(defaults.sub)
   const [note, setNote] = useState('')
 
-  const refs = read.slice(0, 3)
+  const refs = testRenderReferences(doc, library ?? read, slotRoles(settings))
   const garment = client.garment_colors[0] ?? 'black'
   const textCase = parseStyleBrief(client.style_brief).text_case
   const caseNote =
@@ -172,6 +187,19 @@ export function TestRenderDialog({
               {mode === 'lock_render' ? 'Cannot lock yet' : 'Cannot render yet'}
             </p>
             <p className="text-xs">{blockedReason}</p>
+          </div>
+        )}
+
+        {mode === 'lock_render' && warnings.length > 0 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
+            <p className="mb-0.5 font-medium">Worth a second look before locking</p>
+            <ul className="list-disc space-y-0.5 pl-4">
+              {warnings.map((w) => (
+                <li key={w} className="break-words">
+                  {w}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
@@ -290,10 +318,13 @@ export function TestRenderDialog({
             <div>
               <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-500">Used as references</p>
               {refs.length ? (
-                <ul className="flex gap-2" aria-label="Reference images for the test render">
-                  {refs.map((r, i) => (
-                    <li key={r.id}>
-                      <RefThumb ref_={r} number={i + 1} className="h-16 w-16" />
+                <ul className="flex gap-3" aria-label="Reference images for the test render">
+                  {refs.map((p, i) => (
+                    <li key={p.ref.id} className="w-16">
+                      <RefThumb ref_={p.ref} number={i + 1} className="h-16 w-16" />
+                      <span className="mt-0.5 block truncate text-[10px] text-neutral-500" title={ROLE_COPY[p.role].hint}>
+                        {ROLE_COPY[p.role].label}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -301,7 +332,7 @@ export function TestRenderDialog({
                 <p className="text-xs text-red-700 dark:text-red-300">No ticked images: the backend will refuse the render.</p>
               )}
               <p className={hintCls}>
-                The newest 3 ticked library images · garment {garment} · front chest · similarity tier 1 (style only, new subject).
+                {refs.length ? `${testRefsRule(refs)} ` : ''}Garment {garment} · front chest · similarity tier 1 (style only, new subject).
               </p>
             </div>
           </>

@@ -35,6 +35,7 @@ export type Database = {
           print_text: Json
           reference_analysis: Json | null
           reference_paths: string[]
+          reference_roles: string[] | null
           similarity_tier: number | null
           source: string
           stage: Database["public"]["Enums"]["card_stage"]
@@ -64,6 +65,7 @@ export type Database = {
           print_text?: Json
           reference_analysis?: Json | null
           reference_paths?: string[]
+          reference_roles?: string[] | null
           similarity_tier?: number | null
           source?: string
           stage?: Database["public"]["Enums"]["card_stage"]
@@ -93,6 +95,7 @@ export type Database = {
           print_text?: Json
           reference_analysis?: Json | null
           reference_paths?: string[]
+          reference_roles?: string[] | null
           similarity_tier?: number | null
           source?: string
           stage?: Database["public"]["Enums"]["card_stage"]
@@ -133,6 +136,7 @@ export type Database = {
           created_by: string | null
           excluded: boolean
           id: string
+          meta: Json
           note: string | null
           path: string
         }
@@ -142,6 +146,7 @@ export type Database = {
           created_by?: string | null
           excluded?: boolean
           id?: string
+          meta?: Json
           note?: string | null
           path: string
         }
@@ -151,6 +156,7 @@ export type Database = {
           created_by?: string | null
           excluded?: boolean
           id?: string
+          meta?: Json
           note?: string | null
           path?: string
         }
@@ -584,6 +590,8 @@ export type Database = {
           openrouter_models: Json
           per_card_price_usd: number
           pipeline_paused: boolean
+          qc_subject_regen: boolean
+          reference_roles: Json
           updated_at: string
           vision_model: string
         }
@@ -599,6 +607,8 @@ export type Database = {
           openrouter_models?: Json
           per_card_price_usd?: number
           pipeline_paused?: boolean
+          qc_subject_regen?: boolean
+          reference_roles?: Json
           updated_at?: string
           vision_model?: string
         }
@@ -614,6 +624,8 @@ export type Database = {
           openrouter_models?: Json
           per_card_price_usd?: number
           pipeline_paused?: boolean
+          qc_subject_regen?: boolean
+          reference_roles?: Json
           updated_at?: string
           vision_model?: string
         }
@@ -673,6 +685,7 @@ export type Database = {
           id: string
           last_error: string | null
           n8n_execution_id: string | null
+          raw: Json | null
           requested_by: string | null
           status: Database["public"]["Enums"]["job_status"]
           style_card_id: string | null
@@ -684,6 +697,7 @@ export type Database = {
           id?: string
           last_error?: string | null
           n8n_execution_id?: string | null
+          raw?: Json | null
           requested_by?: string | null
           status?: Database["public"]["Enums"]["job_status"]
           style_card_id?: string | null
@@ -695,6 +709,7 @@ export type Database = {
           id?: string
           last_error?: string | null
           n8n_execution_id?: string | null
+          raw?: Json | null
           requested_by?: string | null
           status?: Database["public"]["Enums"]["job_status"]
           style_card_id?: string | null
@@ -775,6 +790,7 @@ export type Database = {
           print_text: Json
           reference_analysis: Json | null
           reference_paths: string[]
+          reference_roles: string[] | null
           similarity_tier: number | null
           source: string
           stage: Database["public"]["Enums"]["card_stage"]
@@ -855,6 +871,7 @@ export type Database = {
           p_placement: string
           p_print_text: Json
           p_reference_paths: string[]
+          p_reference_roles?: string[]
           p_similarity_tier?: number
         }
         Returns: {
@@ -877,6 +894,7 @@ export type Database = {
           print_text: Json
           reference_analysis: Json | null
           reference_paths: string[]
+          reference_roles: string[] | null
           similarity_tier: number | null
           source: string
           stage: Database["public"]["Enums"]["card_stage"]
@@ -920,6 +938,7 @@ export type Database = {
           print_text: Json
           reference_analysis: Json | null
           reference_paths: string[]
+          reference_roles: string[] | null
           similarity_tier: number | null
           source: string
           stage: Database["public"]["Enums"]["card_stage"]
@@ -979,6 +998,7 @@ export type Database = {
           print_text: Json
           reference_analysis: Json | null
           reference_paths: string[]
+          reference_roles: string[] | null
           similarity_tier: number | null
           source: string
           stage: Database["public"]["Enums"]["card_stage"]
@@ -1106,6 +1126,7 @@ export type Database = {
           print_text: Json
           reference_analysis: Json | null
           reference_paths: string[]
+          reference_roles: string[] | null
           similarity_tier: number | null
           source: string
           stage: Database["public"]["Enums"]["card_stage"]
@@ -1240,6 +1261,7 @@ export type Database = {
           print_text: Json
           reference_analysis: Json | null
           reference_paths: string[]
+          reference_roles: string[] | null
           similarity_tier: number | null
           source: string
           stage: Database["public"]["Enums"]["card_stage"]
@@ -1308,6 +1330,7 @@ export type Database = {
           print_text: Json
           reference_analysis: Json | null
           reference_paths: string[]
+          reference_roles: string[] | null
           similarity_tier: number | null
           source: string
           stage: Database["public"]["Enums"]["card_stage"]
@@ -1349,6 +1372,7 @@ export type Database = {
           id: string
           last_error: string | null
           n8n_execution_id: string | null
+          raw: Json | null
           requested_by: string | null
           status: Database["public"]["Enums"]["job_status"]
           style_card_id: string | null

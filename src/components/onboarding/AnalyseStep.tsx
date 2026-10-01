@@ -2,17 +2,18 @@ import { forwardRef, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertTriangle, ExternalLink, Loader2, RefreshCw, WandSparkles } from 'lucide-react'
 import { requestStyleDraft } from '../../lib/api'
-import type { StyleBrief } from '../../lib/styleBrief'
+import { briefGaps, type StyleBrief } from '../../lib/styleBrief'
 import { errorMessage, type Client, type ClientReference, type StyleCard } from '../../lib/types'
 import type { StyleDraftRequestsResult } from '../../lib/useStyleDraftRequests'
 import { useToast } from '../../lib/useToast'
-import { STALE_MS, draftDisabledReason } from '../clientPanel/drafting'
+import { STALE_MS, draftDisabledReason, draftErrorMessage } from '../clientPanel/drafting'
 import { n8nExecutionUrl } from '../clientPanel/links'
 import { useNow } from '../card/useNow'
 import { btnPrimary, btnSecondary } from '../style/classes'
 import { ConfirmDialog } from '../style/ConfirmDialog'
 import { formatDateTime } from '../style/format'
 import { isEmptyStyleCardJson } from '../style/styleCardSchema'
+import { BriefPreview } from './BriefPreview'
 import { ANALYSE_COST_LABEL, COST_SUFFIX } from './costs'
 import { DraftProgress } from './DraftProgress'
 import { EvidencePanel } from './EvidencePanel'
@@ -20,6 +21,10 @@ import { asOfProfilerOrder, type ProfilerOrder } from './profilerOrder'
 import { StepFrame } from './StepFrame'
 import { STEP_SHORT } from './steps'
 import { StyleCardReadout } from './StyleCardReadout'
+import { templatesLine, useActiveTemplates } from './useActiveTemplates'
+
+/** The templates the profiler run uses, in the order the dialog lists them (Pass A sheets, then the card). */
+const PROFILER_TEMPLATES = ['style_sheet', 'style_profiler'] as const
 
 const RELOAD_DRAFT_AFTER_MS = 2_000
 
@@ -80,14 +85,19 @@ export const AnalyseStep = forwardRef<HTMLHeadingElement, Props>(function Analys
   const now = useNow(60_000)
   const [requesting, setRequesting] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const activeTemplates = useActiveTemplates(PROFILER_TEMPLATES)
+  const templates = activeTemplates.versions ? (templatesLine(PROFILER_TEMPLATES, activeTemplates.versions) ?? '') : null
 
   const readCount = ordered.read.length
   const active = requests.drafting ? requests.latest : null
   const stale = active !== null && now - Date.parse(active.created_at) > STALE_MS
+  // The saved brief (not the form in step 2): niche, one subject and one garment colour, or the server trigger refuses.
+  const gaps = briefGaps(brief, client)
   const disabledReason = draftDisabledReason({
     requesting,
     libraryLoading,
     tickedCount: readCount,
+    briefGaps: gaps,
     active,
     stale,
     requestsLoading: requests.loading,
@@ -116,9 +126,9 @@ export const AnalyseStep = forwardRef<HTMLHeadingElement, Props>(function Analys
       const row = await requestStyleDraft(client.id)
       requests.upsertLocal(row)
       onAnalysisStarted()
-      toast.success(`Analysing ${readCount} image${readCount === 1 ? '' : 's'}. Draft v${nextVersion} appears here by itself in about a minute.`)
+      toast.success(`Analysing ${readCount} image${readCount === 1 ? '' : 's'}. Draft v${nextVersion} appears here by itself in a few minutes.`)
     } catch (e) {
-      toast.error(`Could not start the analysis: ${errorMessage(e)}`)
+      toast.error(`Could not start the analysis: ${draftErrorMessage(errorMessage(e), gaps)}`)
     } finally {
       setRequesting(false)
     }
@@ -171,7 +181,7 @@ export const AnalyseStep = forwardRef<HTMLHeadingElement, Props>(function Analys
           </span>
         ) : undefined
       }
-      subtitle={`Reads the ${readCount} ticked image${readCount === 1 ? '' : 's'} (newest first) plus your brief and writes draft v${nextVersion}. ${ANALYSE_COST_LABEL} ${COST_SUFFIX}. Usually 30–40 s.`}
+      subtitle={`Reads the ${readCount} ticked image${readCount === 1 ? '' : 's'} (newest first) plus your brief and writes draft v${nextVersion}. ${ANALYSE_COST_LABEL} ${COST_SUFFIX}. Usually one to five minutes.`}
       actions={
         versions.length > 0 || requests.requests.length > 0 ? (
           <span className="flex flex-wrap items-center gap-2">
@@ -275,6 +285,8 @@ export const AnalyseStep = forwardRef<HTMLHeadingElement, Props>(function Analys
                       version={shown}
                       client={client}
                       brief={brief}
+                      refs={refs}
+                      readCap={readCap}
                       isCurrent={shown.id === currentLocked?.id}
                       analysedCount={analysedCount}
                       actions={
@@ -313,10 +325,10 @@ export const AnalyseStep = forwardRef<HTMLHeadingElement, Props>(function Analys
         onCancel={() => setConfirmOpen(false)}
         onConfirm={() => void analyse()}
       >
-        <p>
-          The profiler reads the {readCount} ticked image{readCount === 1 ? '' : 's'} and the saved brief. {ANALYSE_COST_LABEL}{' '}
-          {COST_SUFFIX}.
-        </p>
+        <p>The profiler reads the ticked images and the saved brief, in two vision passes:</p>
+        <div className="mt-2 rounded-lg border border-neutral-200 px-3 py-2 dark:border-neutral-800">
+          <BriefPreview brief={brief} client={client} read={ordered.read} templates={templates} />
+        </div>
         <p className="mt-2">A new draft v{nextVersion} is written; nothing is locked.</p>
       </ConfirmDialog>
     </StepFrame>

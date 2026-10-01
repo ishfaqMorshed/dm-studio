@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { AlertTriangle, ArrowLeft, CheckCircle2 } from 'lucide-react'
-import { briefSummary, isBriefEmpty, parseStyleBrief } from '../lib/styleBrief'
+import { briefGaps, briefSummary, isBriefEmpty, parseStyleBrief } from '../lib/styleBrief'
 import { useProfile } from '../lib/useProfile'
 import { useSettings } from '../lib/useSettings'
 import { useStyleDraftRequests } from '../lib/useStyleDraftRequests'
@@ -57,6 +57,7 @@ function Onboarding({ clientId }: { clientId: string }) {
   const tickedCount = ordered.read.length + ordered.tiles.filter((t) => t.state === 'over_cap').length
   const brief = useMemo(() => parseStyleBrief(client?.style_brief), [client?.style_brief])
   const briefEmpty = isBriefEmpty(client?.style_brief)
+  const gaps = useMemo(() => briefGaps(brief, client), [brief, client])
 
   // The version on show in steps 3 and 4.
   const draftParam = searchParams.get('draft')
@@ -80,7 +81,7 @@ function Onboarding({ clientId }: { clientId: string }) {
   const dataReady = !panel.loading && !library.loading && !requests.loading
   const step: StepId = isStepId(stepParam)
     ? stepParam
-    : firstIncompleteStep({ tickedCount, briefEmpty, hasDraft: panel.drafts.length > 0 || selectedVersion !== null })
+    : firstIncompleteStep({ tickedCount, briefEmpty, briefGaps: gaps, hasDraft: panel.drafts.length > 0 || selectedVersion !== null })
   useEffect(() => {
     if (!dataReady || isStepId(stepParam) || !client) return
     setSearchParams(
@@ -174,6 +175,7 @@ function Onboarding({ clientId }: { clientId: string }) {
     tickedCount,
     totalCount: library.refs.length,
     briefEmpty,
+    briefGaps: gaps,
     briefText: client ? briefSummary(brief, client.default_similarity_tier) : '',
     briefDirty,
     draft: selectedVersion
@@ -311,6 +313,8 @@ function Onboarding({ clientId }: { clientId: string }) {
           currentLocked={panel.currentLocked}
           versions={panel.versions}
           read={ordered.read}
+          refs={library.refs}
+          readCap={readCap}
           tests={tests}
           render={render}
           isLead={isLead}

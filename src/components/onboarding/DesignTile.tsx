@@ -1,13 +1,14 @@
 import { useEffect, useState, type KeyboardEvent } from 'react'
 import { Check, ImageOff, Loader2, Trash2 } from 'lucide-react'
 import { REFS_BUCKET } from '../../lib/supabase'
-import { errorMessage } from '../../lib/types'
+import { errorMessage, parseReferenceMeta, referenceMetaToJson, type ClientReferenceMeta } from '../../lib/types'
 import { useSignedUrl } from '../../lib/useSignedUrl'
 import { useToast } from '../../lib/useToast'
 import type { ReferenceLibrary } from '../clientPanel/useReferenceLibrary'
 import { checkerboard, imageChip, inputCls } from '../card/styles'
 import { iconBtn } from '../style/classes'
 import { formatDateTime } from '../style/format'
+import { DesignTags } from './DesignTags'
 import type { OrderedTile } from './profilerOrder'
 
 const NOTE_MAX = 140
@@ -15,18 +16,22 @@ const CHECK_FLASH_MS = 1500
 
 /**
  * One library image in the wizard: profiler number (or "Not read" / "Skipped"), a visible
- * tick that sets `client_references.excluded`, a one-line note saved on blur or Enter, and
- * Remove. Every control is labelled with the image number for screen readers.
+ * tick that sets `client_references.excluded`, a one-line note saved on blur or Enter, the
+ * tags (`meta`: kind, garment, best example of, outlier) and Remove. Every control is labelled
+ * with the image number for screen readers.
  */
 export function DesignTile({
   tile,
   readCap,
   library,
+  garments,
   onRemove,
 }: {
   tile: OrderedTile
   readCap: number
   library: ReferenceLibrary
+  /** The client's garment colours, offered in the garment select. */
+  garments: readonly string[]
   onRemove: () => void
 }) {
   const toast = useToast()
@@ -38,12 +43,21 @@ export function DesignTile({
 
   const who = number !== null ? `Image ${number}` : state === 'skipped' ? 'Skipped image' : 'Unread image'
   const ticked = !ref.excluded
+  const meta = parseReferenceMeta(ref.meta)
 
   async function toggle(checked: boolean) {
     try {
       await library.update(ref, { excluded: !checked })
     } catch (e) {
       toast.error(`Could not ${checked ? 'tick' : 'untick'} the image: ${errorMessage(e)}`)
+    }
+  }
+
+  async function saveMeta(next: ClientReferenceMeta) {
+    try {
+      await library.update(ref, { meta: referenceMetaToJson(next) })
+    } catch (e) {
+      toast.error(`Could not save the tags of ${who.toLowerCase()}: ${errorMessage(e)}`)
     }
   }
 
@@ -134,6 +148,7 @@ export function DesignTile({
       </div>
 
       <NoteInput who={who} value={ref.note ?? ''} disabled={busy} onSave={(note) => library.update(ref, { note })} />
+      <DesignTags who={who} meta={meta} garments={garments} disabled={busy} onChange={(next) => void saveMeta(next)} />
     </li>
   )
 }

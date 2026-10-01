@@ -1,7 +1,7 @@
 import { useId, useMemo, useState, type FormEvent } from 'react'
 import { AlertTriangle, Loader2, RefreshCw, Send } from 'lucide-react'
 import { submitBrief, type BriefStart } from '../../lib/api'
-import { PLACEMENTS, PLACEMENT_LABEL, errorMessage, type Placement } from '../../lib/types'
+import { PLACEMENTS, PLACEMENT_LABEL, errorMessage, parseReferenceRoles, type Placement } from '../../lib/types'
 import { useToast } from '../../lib/useToast'
 import {
   DEFAULT_GARMENT_COLORS,
@@ -13,6 +13,7 @@ import {
 import type { ReferenceImage } from './imageFile'
 import { ImageSlot } from './ImageSlot'
 import { GrantTimer } from './GrantTimer'
+import { slotRole } from './referenceRoles'
 import { capitalise, ISO_DATE, splitPrintLines, todayIso } from './text'
 import { ReferenceUploadError, uploadReference } from './uploadReference'
 import { errorClass, fieldClass, hintClass, labelClass, primaryButton } from './ui'
@@ -83,6 +84,9 @@ export function BriefForm({
 }: Props) {
   const toast = useToast()
   const ids = useId()
+  // The slot order travels with the grant (start_brief reads settings.reference_roles for the anonymous
+  // form), so the labels the client uploads against are the roles submit_brief stamps on the card.
+  const roles = useMemo(() => parseReferenceRoles(grant.reference_roles), [grant.reference_roles])
 
   const [slots, setSlots] = useState<(ReferenceImage | null)[]>(() =>
     Array.from({ length: REFERENCE_SLOT_COUNT }, () => null),
@@ -287,16 +291,17 @@ export function BriefForm({
 
       <fieldset disabled={busy || restarting} className="space-y-8">
         <section>
-          <h2 className="text-base font-semibold">Reference images</h2>
+          <h2 className="text-base font-semibold">Three references, one job each</h2>
           <p className={hintClass}>
-            Three images that show the look you want: a design you like, your logo, a product photo — anything that
-            helps. PNG, JPG or WebP, up to 15 MB each.
+            Each image is read for one thing only — the title on the slot says which. PNG, JPG or WebP, up to 15 MB
+            each.
           </p>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
             {slots.map((slot, i) => (
               <ImageSlot
                 key={i}
                 index={i}
+                role={slotRole(roles, i)}
                 inputId={`${ids}-slot-${i}`}
                 value={slot}
                 onChange={(img) => setSlot(i, img)}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, RefreshCw } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { newStyleCardVersion } from '../lib/api'
@@ -29,6 +29,7 @@ async function fetchStyleCardPage(clientId: string): Promise<{ client: Client | 
 export default function StyleCardPage() {
   const { id: clientId } = useParams<{ id: string }>()
   const [searchParams] = useSearchParams()
+  const location = useLocation()
   const toast = useToast()
 
   const [client, setClient] = useState<Client | null>(null)
@@ -100,14 +101,27 @@ export default function StyleCardPage() {
   }, [dirty])
 
   // `?version=<style_card_id>` (from the client panel / onboarding wizard) picks that version once
-  // the list is here. One shot per URL value (the designer may switch afterwards), applied during
-  // render the React-documented way rather than in an effect.
+  // the list is here. One shot per navigation (location.key), not per URL value: two "Fix in editor"
+  // links for the same version or field in a row (two renders' QC panels) each apply. Done during
+  // render the React-documented way rather than in an effect; the designer may switch afterwards.
   const requestedVersion = searchParams.get('version')
-  const [appliedVersion, setAppliedVersion] = useState<string | null>(null)
-  if (!loading && requestedVersion && appliedVersion !== requestedVersion && versions.some((v) => v.id === requestedVersion)) {
-    setAppliedVersion(requestedVersion)
+  const [appliedVersionAt, setAppliedVersionAt] = useState<string | null>(null)
+  if (!loading && requestedVersion && appliedVersionAt !== location.key && versions.some((v) => v.id === requestedVersion)) {
+    setAppliedVersionAt(location.key)
     setSelectedId(requestedVersion)
   }
+
+  // `?field=<path>` (readout chips, QC style match) focuses that value in the editor. Pending until an
+  // editor reports it handled: on a locked version the designer may first branch to a draft, and the
+  // draft's editor is the one that focuses it.
+  const requestedField = searchParams.get('field')
+  const [appliedFieldAt, setAppliedFieldAt] = useState<string | null>(null)
+  const [pendingField, setPendingField] = useState<string | null>(null)
+  if (!loading && requestedField && appliedFieldAt !== location.key) {
+    setAppliedFieldAt(location.key)
+    setPendingField(requestedField)
+  }
+  const onFocusHandled = useCallback(() => setPendingField(null), [])
 
   const currentLocked = useMemo(() => versions.find((v) => v.status === 'locked') ?? null, [versions])
   const openDraft = useMemo(() => versions.find((v) => v.status === 'draft') ?? null, [versions])
@@ -249,10 +263,14 @@ export default function StyleCardPage() {
               client={client}
               isCurrent={selected.id === currentLocked?.id}
               draftExists={openDraft !== null}
+              openDraftId={openDraft?.id ?? null}
               names={names}
               onChanged={load}
               onDirtyChange={onDirtyChange}
               onSelectVersion={onSelectVersion}
+              focusField={pendingField}
+              focusKey={location.key}
+              onFocusHandled={onFocusHandled}
             />
           ) : (
             <div className="px-6 py-16 text-center">

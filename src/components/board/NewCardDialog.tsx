@@ -10,11 +10,14 @@ import {
   type Placement,
   type PrintTextLine,
   type PrintTextRole,
+  type ReferenceRole,
 } from '../../lib/types'
 import { useClientScope } from '../../lib/useClientScope'
+import { useSettings } from '../../lib/useSettings'
 import { useToast } from '../../lib/useToast'
 import { DESCRIPTION_MAX_CHARS, OTHER_GARMENT } from '../brief/constants'
 import { inspectImageFile, type ReferenceImage } from '../brief/imageFile'
+import { rolesSentence, slotRole, slotRoles } from '../brief/referenceRoles'
 import { capitalise, ISO_DATE, todayIso } from '../brief/text'
 import { btnGhost, btnPrimary, btnSecondary, btnSmall, inlineSelectCls, inputCls, selectCls, textareaCls } from '../card/styles'
 import { Dialog, Spinner } from '../card/ui'
@@ -62,10 +65,11 @@ function invalid(base: string, isInvalid: boolean): string {
 
 /**
  * Designer-side card creation from the board. Same fields as the client brief form, but
- * 1–3 references, role-tagged text lines, avoid notes and a similarity tier. The references
+ * 1–3 references (each slot has one job, from settings.reference_roles; an empty slot leaves that
+ * job to the Style Card), role-tagged text lines, avoid notes and a similarity tier. The references
  * upload to refs/<client_id>/<card_id>/<n>.<ext> with the staff session, then
- * `create_card_as_designer` inserts the card in Intake; WF-1's vision step moves it to Review.
- * Mount only while open (state and preview URLs reset on every open).
+ * `create_card_as_designer` inserts the card in Intake with the roles of the filled slots; WF-1's
+ * vision step moves it to Review. Mount only while open (state and preview URLs reset on every open).
  */
 export function NewCardDialog({ clientId: scopedClientId, onClose }: Props) {
   const toast = useToast()
@@ -73,6 +77,8 @@ export function NewCardDialog({ clientId: scopedClientId, onClose }: Props) {
   const ids = useId()
   const formId = `${ids}-form`
   const { clients, loading: clientsLoading } = useClientScope()
+  const { settings } = useSettings()
+  const roles = useMemo(() => slotRoles(settings), [settings])
 
   const [clientId, setClientId] = useState(scopedClientId ?? '')
   const [slots, setSlots] = useState<(ReferenceImage | null)[]>(() => Array.from({ length: NEW_CARD_SLOTS }, () => null))
@@ -228,12 +234,17 @@ export function NewCardDialog({ clientId: scopedClientId, onClose }: Props) {
         )
       }
       setPhase({ kind: 'creating' })
+      // The uploads are compacted to slots 1..k; the roles follow the slots that were actually filled.
+      const referenceRoles = slots
+        .map((s, i) => (s ? slotRole(roles, i) : null))
+        .filter((r): r is ReferenceRole => r !== null)
       const card = await createCardAsDesigner({
         cardId,
         clientId,
         brief: description.trim(),
         printText: lines.map((l) => ({ role: l.role, text: l.text.trim() })).filter((l) => l.text),
         referencePaths: paths,
+        referenceRoles,
         garmentColor: garment === OTHER_GARMENT ? garmentOther.trim() : garment,
         placement,
         dueOn: dueOn || null,
@@ -344,6 +355,7 @@ export function NewCardDialog({ clientId: scopedClientId, onClose }: Props) {
                 <ReferenceSlot
                   key={i}
                   index={i}
+                  role={slotRole(roles, i)}
                   inputId={`${ids}-slot-${i}`}
                   value={slot}
                   checking={checkingSlot === i}
@@ -361,8 +373,8 @@ export function NewCardDialog({ clientId: scopedClientId, onClose }: Props) {
               </p>
             ) : (
               <p className={hintCls}>
-                One to three. PNG, JPG or WebP, up to 15 MB each. They describe this design’s subject and inspiration;
-                the client’s Style Card carries the look.
+                One to three, one job each: {rolesSentence(roles)}. An empty slot leaves that job to the client’s
+                Style Card. PNG, JPG or WebP, up to 15 MB each.
               </p>
             )}
           </div>

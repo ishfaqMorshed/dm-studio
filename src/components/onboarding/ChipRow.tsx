@@ -15,6 +15,8 @@ export interface Chip {
   matchedTitle?: string
   /** Small grey hint after the text (e.g. "not on the client record"). */
   hint?: string
+  /** Amber outline + this tooltip (e.g. "from the brief only", "seen in 2 of 9 designs"). */
+  warnTitle?: string
 }
 
 /** A labelled row of chips; "—" when empty. `missing` renders hollow amber chips after the real ones. */
@@ -42,12 +44,15 @@ export function ChipRow({
           {chips.map((c) => (
             <li
               key={c.text}
-              title={c.matchedTitle}
-              className={`inline-flex max-w-full items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${TONE[tone]}`}
+              title={[c.matchedTitle, c.warnTitle].filter(Boolean).join(' · ') || undefined}
+              className={`inline-flex max-w-full items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${TONE[tone]} ${
+                c.warnTitle ? 'ring-1 ring-amber-400 dark:ring-amber-600' : ''
+              }`}
             >
               {c.matchedTitle && <Check className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" aria-label={c.matchedTitle} />}
               <span className="truncate">{c.text}</span>
               {c.hint && <span className="text-[10px] font-normal text-neutral-500">· {c.hint}</span>}
+              {c.warnTitle && <span className="sr-only"> ({c.warnTitle})</span>}
             </li>
           ))}
           {missing.map((m) => (

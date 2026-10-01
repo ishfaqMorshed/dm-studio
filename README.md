@@ -91,6 +91,6 @@ Current build state: `docs/STATUS.md`. Workflow conventions: `docs/n8n-config-co
 ## Test accounts
 
 - Staff (lead): `studio-test@dmteam.local` (password kept out of the repo; ask the lead)
-- Client form token: `0570536095895eb6f05ed21a73a8624d` → `/brief/0570536095895eb6f05ed21a73a8624d`
+- Client form token of **Test Client (phase 1)** (`df526fbe…`, not the E2E Test Client): `0570536095895eb6f05ed21a73a8624d` → `/brief/0570536095895eb6f05ed21a73a8624d`. Every client's own form link is shown by the Edit client dialog on `/clients` (`clients.form_token`); QA of the E2E Test Client (`bef63960…`) uses that link.
 
 Delete the test user in Supabase → Authentication when no longer needed.

@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
 import { AlertTriangle, ImagePlus, Loader2, RefreshCw, X } from 'lucide-react'
+import type { ReferenceRole } from '../../lib/types'
 import { ACCEPT_ATTR } from '../brief/constants'
 import { formatBytes, type ReferenceImage } from '../brief/imageFile'
+import { ROLE_COPY, STYLE_CARD_ONLY, STYLE_CARD_ONLY_HINT, slotTitle } from '../brief/referenceRoles'
 import { btnGhost } from '../card/styles'
 
 interface Props {
   /** 0-based. */
   index: number
+  /** The one job this slot's image is read for (settings.reference_roles order). */
+  role: ReferenceRole
   /** Id of the hidden file input, so the form can focus the slot on validation. */
   inputId: string
   value: ReferenceImage | null
@@ -23,16 +27,19 @@ interface Props {
 }
 
 /**
- * One reference slot of the New card dialog. Empty: a click/drop target that opens the picker
- * (multiple files allowed, they spill into the next empty slots). Filled: thumbnail, pixel and
+ * One reference slot of the New card dialog, titled with its job ("2 · Art style"). Empty: a
+ * click/drop target that opens the picker (multiple files allowed, they spill into the next empty
+ * slots) and the note that the Style Card alone decides this part. Filled: thumbnail, pixel and
  * file size, Replace / Remove. Validation lives in the dialog (`inspectImageFile`), so the
  * dialog only ever hands this a decoded, accepted image.
  */
-export function ReferenceSlot({ index, inputId, value, checking, disabled, error, onPick, onRemove, autoFocus }: Props) {
+export function ReferenceSlot({ index, role, inputId, value, checking, disabled, error, onPick, onRemove, autoFocus }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const n = index + 1
   const messageId = `${inputId}-message`
+  const title = slotTitle(n, role)
+  const { label, hint } = ROLE_COPY[role]
 
   // Release the preview URL when the image changes or the dialog closes.
   const previewUrl = value?.previewUrl
@@ -77,16 +84,20 @@ export function ReferenceSlot({ index, inputId, value, checking, disabled, error
         disabled={disabled}
         onChange={onInput}
         data-autofocus={autoFocus ? '' : undefined}
-        aria-label={value ? `Replace reference ${n}` : `Choose reference ${n}`}
+        aria-label={value ? `Replace reference ${n} (${label})` : `Choose reference ${n} (${label})`}
         aria-invalid={error ? true : undefined}
-        aria-describedby={error ? messageId : undefined}
+        aria-describedby={error ? messageId : `${inputId}-hint`}
       />
+
+      <p className="text-sm font-medium" title={hint}>
+        {title}
+      </p>
 
       {value ? (
         <div className={`relative flex overflow-hidden rounded-xl border bg-neutral-100 dark:bg-neutral-950 sm:block ${border}`}>
           <img
             src={value.previewUrl}
-            alt={`Reference ${n}: ${value.file.name}`}
+            alt={`${title}: ${value.file.name}`}
             className="h-24 w-24 shrink-0 object-cover sm:aspect-square sm:h-auto sm:w-full"
           />
           <span className="absolute left-2 top-2 rounded-md bg-black/60 px-1.5 py-0.5 text-[11px] font-medium text-white">{n}</span>
@@ -104,7 +115,7 @@ export function ReferenceSlot({ index, inputId, value, checking, disabled, error
                 type="button"
                 onClick={() => inputRef.current?.click()}
                 disabled={disabled}
-                aria-label={`Replace reference ${n}`}
+                aria-label={`Replace reference ${n} (${label})`}
                 title="Replace"
                 className={btnGhost}
               >
@@ -114,7 +125,7 @@ export function ReferenceSlot({ index, inputId, value, checking, disabled, error
                 type="button"
                 onClick={() => onRemove(index)}
                 disabled={disabled}
-                aria-label={`Remove reference ${n}`}
+                aria-label={`Remove reference ${n} (${label})`}
                 title="Remove"
                 className={btnGhost}
               >
@@ -142,13 +153,19 @@ export function ReferenceSlot({ index, inputId, value, checking, disabled, error
           ) : (
             <ImagePlus className="h-5 w-5 text-neutral-400" aria-hidden />
           )}
-          <span className="text-sm font-medium">
-            Reference {n}
-            {n > 1 && <span className="font-normal text-neutral-500"> · optional</span>}
+          <span
+            className="rounded-md bg-neutral-100 px-1.5 py-0.5 text-[11px] font-medium text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300"
+            title={STYLE_CARD_ONLY_HINT}
+          >
+            {STYLE_CARD_ONLY}
           </span>
           <span className="text-xs text-neutral-500">{checking ? 'Checking the image…' : 'Drop an image or click to choose'}</span>
         </label>
       )}
+
+      <p id={`${inputId}-hint`} className="text-xs text-neutral-500">
+        {hint}
+      </p>
 
       {value?.warning && !error && (
         <p className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
