@@ -1,0 +1,63 @@
+BACKGROUND (keep it effortless - never let it affect the design):
+- Place the finished design on a SOLID, FLAT, EVEN GREY background - never a color, gradient, texture, or pattern. Use a neutral grey from this set: #1C1C1C, #333333, #4A4A4A, #616161, #787878, #808080, #8F8F8F, #A6A6A6, #BDBDBD, #D4D4D4, #EBEBEB. Default to a mid-light grey; only lean lighter or darker if the design is itself heavily grey.
+- Do NOT optimize, analyze, or labor over the background, and NEVER modify, simplify, or compromise the design to suit it - the artwork is the priority and the grey is only a neutral backdrop.
+- NO shadows anywhere - no drop shadows, cast shadows, or ambient shadows. Flat print-ready artwork only; never a mockup, garment, or product photo.
+
+KNOWN PRINT DEFECTS - NEVER PRODUCE ANY OF THESE (compiled from real client rejections):
+- TEXT DISTRESS: any distress/vintage texture on lettering stays SUBTLE - letters remain solid, crisp and fully legible. Never let grunge eat into, erode, or fragment letterforms.
+- OVERALL DISTRESS: overall distress/texture is never heavier than in the look this design is drawn in - the ART STYLE reference when one is attached, else the Style Card; when in doubt, use less.
+- NO HALOS: absolutely no white shades, glows, halos, outlines or light fringes around text or graphics - letter and graphic edges meet the background directly in clean solid color.
+- STRAIGHT BASELINES: if the text in the Style Card and the attached references (never the ART STYLE reference - its words are ignored) is straight, render perfectly straight, level baselines - never accidental waviness, wobble or warping. Only arch or curve text when the Style Card or those references clearly do.
+- SAY IT ONCE: the quote appears EXACTLY ONCE in the design - never repeated, echoed, mirrored, or duplicated anywhere.
+- COMPLETE LETTERS: every letter fully formed with complete, unbroken strokes and clean edges - instantly readable at a glance from print distance.
+- NO STRAY DOTS: no random dots, specks, noise or floating marks anywhere. Halftone dot shading ONLY where the look this design is drawn in uses halftone - the ART STYLE reference when one is attached, else the Style Card - applied as an even, deliberate pattern.
+- CLEAN GRAPHIC EDGES: every graphic outline continuous and unbroken - no fragmented, jagged, or crumbling edges.
+- STYLE MATURITY: match the rendering maturity of the look this design is drawn in - the ART STYLE reference when one is attached, else the Style Card - never drift more cartoonish or childish than it is.
+PRECEDENCE when statements conflict: exact text > print rules > SUBJECT > ART STYLE reference (medium, linework, shading, texture, colours) > Style Card > similarity policy > reference descriptions > brief prose.
+
+ART STYLE (from the Art style reference, Image 2) - this design is drawn in this look:
+- Medium: screen-print vector
+- Rendering: stylised realism; clean edges
+- Linework: bold weight, uniform outlines
+- Shading: halftone
+- Texture: paper grain
+- Palette (STRICT - use ONLY these colours of the Art style reference plus the flat grey background, no other hue): cream #F2E8D5 (fill); rust #B5482A (accent)
+- Anything these lines do not cover: match the look of Image 2 itself - never its subject, layout or words.
+
+CLIENT STYLE CARD v2 (draft) - governs only the lines below; the ART STYLE block above sets the medium, linework, shading, texture and colours, and the NEGATIVE line stays a hard rule. Every line is a hard requirement unless it says GUIDE:
+- Composition (LOCKED - follow it): Centrally aligned and vertically stacked. A central hero illustration (the hero) sits perfectly in the middle, framed by arched or straight primary text above and straight secondary text below. The composition is always anchored by a small social media handle at the very bottom center
+- Typography (LOCKED): Vintage Western slab serifs, retro bold display serifs, and woodtype styles, frequently paired with a softer flowing script or rough brush font for secondary phrasing; placed Stacked centrally above and below the hero illustration, often curving around the top of the artwork, with a social handle locked to the bottom margin - every on-design text line is set in this lettering
+- Background: flat mid-grey #808080, isolated artwork
+- Mood: Rustic, Sassy, Humorous, Endearing
+- Signature moves: Highly detailed, etching-style highland cow illustrations; Framing the central artwork symmetrically with bold text on top and bottom; Scattering four-point sparkles/stars in the negative space around the animal (especially on lighter garments) - use at least one, only where it does not contradict the ART STYLE reference
+- NEGATIVE - never: Gradients and soft airbrush shading; Photorealism or 3D rendering; Clean, minimalist flat-vector icons without texture; Asymmetrical or left-aligned layouts; Heavy grunge that severely obscures or eats away at the legibility of the typography; never a colour outside the ART STYLE palette above; never shadows, halos, gradients, a garment, a mockup or a photo
+
+REFERENCES - each attached image has ONE job; take nothing else from it:
+- Image 1, WHAT TO MAKE (the similarity policy applies to THIS image only): Hero: a grizzly bear; Pose: standing on a ridge, head turned left; Framing: full_figure, large; Supporting: pine trees, a crescent moon; Layout: badge; Text zones: arched above the hero, banner below
+- Image 2, ART STYLE - the look of this design: drawn as the ART STYLE block above describes (medium, linework, shading, texture and colours of this image); never its subject, layout or words.
+- Image 3, LETTERING - letterforms only, never its words: headline: slab_serif bold (arched, inline_hatching); secondary: script regular; placed: arched above, banner below; case: UPPER; effects: arched, inline_hatching (the Style Card typography is LOCKED - take only placement and effects that do not contradict it)
+- Text seen in the references (never reproduce it): "WILD", "CHICKEN", "EST. 1999"
+- Notes: slot 3 is a poultry farm shirt
+Image 1: WHAT TO MAKE - take only the subject, its pose and framing, the supporting elements and the layout; ignore its colours, technique and lettering; Image 2: ART STYLE - draw this design in this image's medium, linework, shading, texture and colours; never its subject or words; Image 3: LETTERING - take only the lettering style, weight, case, placement and effects; never its words.
+
+PRIMARY RULE - SIMILARITY POLICY (tier 3/5):
+- INSPIRED REMIX (~65%): keep the hero concept and overall vibe of the WHAT TO MAKE reference (or the Style Card when none is attached), but you MAY re-compose the layout, redraw the hero and swap or simplify supporting elements. The art technique and colours come from the ART STYLE reference when one is attached, else from the Style Card - never from the WHAT TO MAKE reference. It should feel like a sibling design from the same collection - clearly related, not a copy.
+- The reference may be a rough draft, a shirt mockup, angled, folded, or a screenshot - work from the flat design artwork only, straightened and cleaned up.
+
+SUBJECT (the one hero of this design - it comes from here and nowhere else): a grizzly bear
+- Draw this subject in the ART STYLE look above. The on-design text below is LETTERING ONLY: it never chooses, adds or changes the subject, even when the words name an animal, an object or a place.
+- Source: the WHAT TO MAKE reference (Image 1). Usual subject pool (supporting elements only): Highland cows, Highland calves, Farm animals with humorous accessories (sunglasses, hats), Sunflowers and field wildflowers
+
+BRIEF:
+Description: Style Card test render: a brand-new design in this client's established look - pick a subject from their usual subject matter - with the text below.
+Garment colour: black - the artwork must hold up printed on this colour.
+Placement: front_chest
+
+TEXT - EXACT, NOTHING ELSE:
+- Render EXACTLY the QUOTE / ON-DESIGN TEXT provided, character for character, spelled exactly. Do NOT add, remove, translate, or invent any other words, taglines, signatures, or symbols. The ONLY text in the image is that quote, exactly once.
+- State the quote once in quotation marks and once spelled out letter by letter so the image model cannot misspell it.
+- Set every text line in the Style Card Typography line above. When a LETTERING reference is attached and the Style Card typography is a GUIDE, match its lettering style, weight and effects - never its words.
+- If no quote is provided, render no text at all.
+QUOTE / ON-DESIGN TEXT (render EXACTLY these 2 lines, each exactly once, NO other text; lettering only - the words never change the SUBJECT above; set in the Style Card Typography line above):
+- headline: "CHICKEN HAPPY HOUR" (spelled letter by letter: C H I C K E N   H A P P Y   H O U R)
+- sub: "EST. 2026" (spelled letter by letter: E S T .   2 0 2 6)

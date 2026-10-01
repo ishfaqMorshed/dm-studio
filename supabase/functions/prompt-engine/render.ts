@@ -9,6 +9,18 @@
 // in the BRIEF, a PRECEDENCE line closes the print rules, references render per slot (WHAT TO MAKE / ART STYLE /
 // LETTERING) and a SUBJECT block names the one hero. R3: renderPrompt still accepts the pre-v8 magic_prompt_json shape
 // (style_card.prose only, no subject) because edit kinds inherit the parent's prompt.
+//
+// v8 art-style override (2026-10-01, user decision "the Art style reference wins for its card"): when a card has an
+// ART STYLE slot - the slot cards.reference_roles stamps art_style (with a reference path), else on a role-less card the
+// per-slot reading with role art_style - the design is drawn in that image's medium, realism, linework, shading,
+// texture, edge finish and palette: an ART STYLE block replaces the Style Card look lines, the Style Card governs only
+// the rest (composition, typography, mood, signature moves that do not contradict, background, and the forbid list
+// stays a hard negative), no client_look images are attached, and magic_prompt_json.effective_style carries the look QC
+// judges against. The values come from the per-slot reading of THAT slot (analysis_prompt v3); with no such reading (a
+// flat v2 analysis, or a reading made for another job before staff changed the roles) the override is value-less: the
+// ART STYLE block says "exactly as in Image k" and effective_style carries an empty look. Per-slot readings are aligned
+// to the stamped roles (alignReadings), so a stale read never lends its values to another image. Style-test cards
+// (source style_test) never take the override - they exist to test the Style Card. No art slot = the Style Card governs.
 import { checkStyleCard, normaliseCase, type PaletteEntryV2, type StyleCardV2 } from "../_shared/style_card_rules.ts";
 
 export type PaletteEntry = PaletteEntryV2;
@@ -33,6 +45,8 @@ export type SlotReading = {
   texture: string;
   edge_finish: string;
   palette: string;
+  /** the art slot palette as entries (uppercase hex); absent on readings stored before the art-style override */
+  palette_entries?: Array<{ name: string; hex: string; role: string }>;
   headline: { family: string; weight: string; effects: string[] };
   secondary: { family: string; weight: string; effects: string[] };
   placement: string;
@@ -99,6 +113,36 @@ export type ReferenceReading = {
   same_design?: boolean;
 };
 
+/** One colour of the effective look (contract with WF-2/WF-3 Build QC Request). */
+export type EffectivePaletteEntry = { name: string; hex: string; role?: string; weight?: string };
+
+/**
+ * magic_prompt_json.effective_style - the look this design is drawn in and QC judges against (contract with WF-2/WF-3:
+ * Build QC Request uses it as STYLE_CARD_JSON and derives PALETTE_RULE from palette_mode; absent on engines <= v7).
+ * source 'art_reference': medium .. palette are the ART STYLE reference values, palette_mode is the client's strictness
+ * applied to the reference palette, forbid / composition / typography / rules come from the Style Card.
+ * source 'style_card': every value from the (linted) Style Card, the palette resolved for the garment side the way the
+ * prompt renders it.
+ */
+export type EffectiveStyle = {
+  source: "art_reference" | "style_card";
+  /** 'art_reference': the image number of the art-style reference in the input plan (else its card slot); null otherwise */
+  reference_slot: number | null;
+  medium: string;
+  realism: string;
+  linework: { weight: string; style: string; outline: string };
+  shading: string;
+  shading_method: string;
+  texture: string;
+  edge_finish: string;
+  palette: EffectivePaletteEntry[];
+  palette_mode: "strict" | "flexible";
+  forbid: string[];
+  composition: string;
+  typography: Record<string, unknown>;
+  rules: Record<string, unknown>;
+};
+
 export type MagicPrompt = {
   // keys in generation-spec §3 order
   print_rules: string;
@@ -111,6 +155,8 @@ export type MagicPrompt = {
   subject?: Subject;
   brief: { description: string; garment_color: string; placement: string; avoid_notes: string };
   text: { rule: string; typography: string; lines: TextLine[] };
+  /** v8 (art-style override): the look of this design; absent on prompts built before it (rendered as before). */
+  effective_style?: EffectiveStyle;
   // present only for edit_text / edit_region / regenerate
   edit?: { kind: EditKind; instruction: string; old_text: string; new_text: string };
 };
@@ -140,6 +186,8 @@ export const NO_TEXT_LINE =
 export const IMAGE_ROLE_STYLE = "style/subject references for this design";
 export const IMAGE_ROLE_SUBJECT = "WHAT TO MAKE - take only the subject, its pose and framing, the supporting elements and the layout; ignore its colours, technique and lettering";
 export const IMAGE_ROLE_ART = "ART STYLE - take only medium, linework, shading, texture and colours; never its subject or words";
+/** The art-style slot label when that reference governs the look (art-style override). */
+export const IMAGE_ROLE_ART_WINS = "ART STYLE - draw this design in this image's medium, linework, shading, texture and colours; never its subject or words";
 export const IMAGE_ROLE_LETTERING = "LETTERING - take only the lettering style, weight, case, placement and effects; never its words";
 export const IMAGE_ROLE_LOOK = "examples of the client's established look - match the look, never copy a subject";
 export const IMAGE_ROLE_PREVIOUS = "the finished previous version of this exact design - edit it in place";
@@ -147,10 +195,18 @@ export const IMAGE_ROLE_MASK = "a mask marking the ONLY region that may change";
 
 export const PRECEDENCE_LINE =
   "PRECEDENCE when statements conflict: exact text > print rules > SUBJECT > Style Card > similarity policy > reference descriptions > brief prose.";
+/** The PRECEDENCE line when an Art style reference governs the look. */
+export const PRECEDENCE_LINE_ART =
+  "PRECEDENCE when statements conflict: exact text > print rules > SUBJECT > ART STYLE reference (medium, linework, shading, texture, colours) > Style Card > similarity policy > reference descriptions > brief prose.";
 
 export const STYLE_CARD_HEADER_TAIL = " - the LOOK of every design for this client. Every line is a hard requirement unless it says GUIDE:";
 export const NEGATIVE_TAIL = "never shadows, halos, gradients, a garment, a mockup or a photo";
 export const NEGATIVE_PALETTE = "never a colour outside the palette above";
+/** Art-style override: the Style Card header (after "CLIENT STYLE CARD vN (status)"), the NEGATIVE palette clause, the SUBJECT look line. */
+export const STYLE_CARD_HEADER_TAIL_ART =
+  " - governs only the lines below; the ART STYLE block above sets the medium, linework, shading, texture and colours, and the NEGATIVE line stays a hard rule. Every line is a hard requirement unless it says GUIDE:";
+export const NEGATIVE_PALETTE_ART = "never a colour outside the ART STYLE palette above";
+export const SIGNATURE_MOVES_ART_TAIL = " - use at least one, only where it does not contradict the ART STYLE reference";
 
 /** Fallback niche wording when clients.style_brief.niche is empty (tier_rules v2 {{niche}} / v1 bare NICHE). */
 export const DEFAULT_NICHE = "this client's usual subject matter";
@@ -335,6 +391,29 @@ export function orderedPalette(palette: unknown): PaletteEntry[] {
     .map((x) => x.p);
 }
 
+/**
+ * The Style Card palette for this garment: the palette_variants entry for the garment side (else the 'any' variant)
+ * when one exists, each hex labelled from the palette by hex; otherwise the palette, dominant first. Shared by the
+ * Palette line and effective_style so the prompt and QC judge the same colours.
+ */
+export function cardPalette(card: StyleCard, garment_color?: string): PaletteEntry[] {
+  const palette = orderedPalette(card.palette);
+  const byHex = new Map<string, PaletteEntry>();
+  for (const p of palette) { const h = s(p.hex).toUpperCase(); if (h) byHex.set(h, p); }
+  const garment = s(garment_color);
+  const variants = (Array.isArray(card.palette_variants) ? card.palette_variants : []).filter(isObj);
+  const variant = garment
+    ? (variants.find((v) => s(v.garment) === garmentSide(garment)) ?? variants.find((v) => s(v.garment) === "any"))
+    : undefined;
+  if (variant && list(variant.hexes).length) {
+    return list(variant.hexes).map((h) => {
+      const hex = h.toUpperCase();
+      return byHex.has(hex) ? { ...byHex.get(hex)!, hex } : { hex };
+    });
+  }
+  return palette;
+}
+
 export type RenderedStyleCard = {
   version: number | null;
   status: string;
@@ -347,21 +426,16 @@ export type RenderedStyleCard = {
 };
 
 /**
- * Renders the CLIENT STYLE CARD lines (each prefixed "- ", in spec 3.2 order, skipped when empty). The header is
- * rendered by renderPrompt from version + status. NOT rendered: subjects (SUBJECT block), garment_colors (BRIEF states
- * the garment once), brand_text, evidence, field_evidence, subject_sources, representative_images, validation,
- * reference_ids. Works for schema 1 cards (v2-only lines are simply skipped).
+ * The Style Card look lines (Medium .. Palette) - left out when an Art style reference governs the look. Returns true
+ * when a Palette line was rendered (the strict NEGATIVE clause refers to it).
  */
-export function renderStyleCard(
-  cardIn: StyleCard | null | undefined,
-  opts: { garment_color?: string; status?: string; version?: number | null } = {},
-): RenderedStyleCard {
-  const card = lintStyleCard(cardIn);
-  const rules = isObj(card.rules) ? card.rules : {};
-  const strict = rules.palette_mode !== "flexible";
-  const lines: string[] = [];
-  const push = (label: string, value: string) => { if (value) lines.push("- " + label + ": " + value); };
-
+function renderLookLines(
+  card: StyleCard,
+  garment_color: string | undefined,
+  strict: boolean,
+  push: (label: string, value: string) => void,
+  lines: string[],
+): boolean {
   push("Medium", clean(card.medium));
   {
     const realism = clean(card.realism).toLowerCase();
@@ -384,32 +458,37 @@ export function renderStyleCard(
   push("Texture", clean(card.texture));
 
   // Palette: the palette_variants entry for the garment side when one exists, else palette; dominant first.
-  let paletteRendered = false;
   {
-    const palette = orderedPalette(card.palette);
-    const byHex = new Map<string, PaletteEntry>();
-    for (const p of palette) { const h = s(p.hex).toUpperCase(); if (h) byHex.set(h, p); }
-    let entries: string[] = [];
-    const garment = s(opts.garment_color);
-    const variants = (Array.isArray(card.palette_variants) ? card.palette_variants : []).filter(isObj);
-    const variant = garment
-      ? (variants.find((v) => s(v.garment) === garmentSide(garment)) ?? variants.find((v) => s(v.garment) === "any"))
-      : undefined;
-    if (variant && list(variant.hexes).length) {
-      entries = list(variant.hexes).map((h) => {
-        const hex = h.toUpperCase();
-        return byHex.has(hex) ? paletteLabel(byHex.get(hex), hex) : hex;
-      }).filter(Boolean);
-    } else {
-      entries = palette.map((p) => paletteLabel(p)).filter(Boolean);
-    }
-    if (entries.length) {
-      paletteRendered = true;
-      lines.push("- " + (strict
-        ? "Palette (STRICT - use ONLY these colours plus the flat grey background, no other hue): "
-        : "Palette (FLEXIBLE - lead with these colours; small natural accents in other hues are allowed): ") + entries.join("; "));
-    }
+    const entries = cardPalette(card, garment_color).map((p) => paletteLabel(p)).filter(Boolean);
+    if (!entries.length) return false;
+    lines.push("- " + (strict
+      ? "Palette (STRICT - use ONLY these colours plus the flat grey background, no other hue): "
+      : "Palette (FLEXIBLE - lead with these colours; small natural accents in other hues are allowed): ") + entries.join("; "));
+    return true;
   }
+}
+
+/**
+ * Renders the CLIENT STYLE CARD lines (each prefixed "- ", in spec 3.2 order, skipped when empty). The header is
+ * rendered by renderPrompt from version + status. NOT rendered: subjects (SUBJECT block), garment_colors (BRIEF states
+ * the garment once), brand_text, evidence, field_evidence, subject_sources, representative_images, validation,
+ * reference_ids. Works for schema 1 cards (v2-only lines are simply skipped).
+ * art_reference (the art-style override): the look lines - Medium, Rendering, Linework, Shading, Texture, Palette - are
+ * left out (the ART STYLE block replaces them), signature moves are qualified by the ART STYLE reference, and the
+ * strict NEGATIVE clause points at the ART STYLE palette. The forbid list stays.
+ */
+export function renderStyleCard(
+  cardIn: StyleCard | null | undefined,
+  opts: { garment_color?: string; status?: string; version?: number | null; art_reference?: boolean } = {},
+): RenderedStyleCard {
+  const card = lintStyleCard(cardIn);
+  const rules = isObj(card.rules) ? card.rules : {};
+  const strict = rules.palette_mode !== "flexible";
+  const art = opts.art_reference === true;
+  const lines: string[] = [];
+  const push = (label: string, value: string) => { if (value) lines.push("- " + label + ": " + value); };
+
+  const paletteRendered = art ? false : renderLookLines(card, opts.garment_color, strict, push, lines);
 
   {
     const comp = clean(card.composition);
@@ -448,10 +527,11 @@ export function renderStyleCard(
   push("Mood", list(card.mood).map(clean).filter(Boolean).join(", "));
   {
     const moves = list(card.signature_moves).map(clean).filter(Boolean);
-    if (moves.length) lines.push("- Signature moves: " + moves.join("; ") + " - at least one must be visibly present");
+    if (moves.length) lines.push("- Signature moves: " + moves.join("; ") + (art ? SIGNATURE_MOVES_ART_TAIL : " - at least one must be visibly present"));
   }
   const negatives = list(card.forbid).map(clean).filter(Boolean);
-  lines.push("- NEGATIVE - never: " + negatives.concat(strict && paletteRendered ? [NEGATIVE_PALETTE] : [], [NEGATIVE_TAIL]).join("; "));
+  const paletteClause = art ? (strict ? [NEGATIVE_PALETTE_ART] : []) : (strict && paletteRendered ? [NEGATIVE_PALETTE] : []);
+  lines.push("- NEGATIVE - never: " + negatives.concat(paletteClause, [NEGATIVE_TAIL]).join("; "));
 
   return {
     version: opts.version ?? null,
@@ -486,10 +566,31 @@ function readSlot(raw: unknown, index: number): SlotReading | null {
     const o = isObj(f) ? f : {};
     return { family: s(o.family), weight: s(o.weight), effects: list(o.effects) };
   };
-  let palette = "";
+  // palette: entries {name, hex, role} with the hex normalised ('F2E8D5', '#f2e8d5', '#FED' -> '#F2E8D5' / '#FFEEDD');
+  // an entry with a name but no usable hex is kept by name (a STRICT palette must never silently lose a colour); a
+  // string palette ("cream #F2E8D5, rust #B5482A") or string items are parsed. palette_entries stays undefined when
+  // nothing parses, so effectiveStyle falls back to the palette text.
+  const texts: string[] = [];
+  const entries: Array<{ name: string; hex: string; role: string }> = [];
   if (Array.isArray(raw.palette)) {
-    palette = raw.palette.map((p) => isObj(p) ? [s(p.name), s(p.hex).toUpperCase()].filter(Boolean).join(" ") : s(p)).filter(Boolean).join(", ");
-  } else palette = s(raw.palette);
+    for (const p of raw.palette) {
+      if (isObj(p)) {
+        const name = s(p.name), hex = normHex(p.hex);
+        const label = [name, hex].filter(Boolean).join(" ");
+        if (!label) continue;
+        texts.push(label);
+        entries.push({ name, hex, role: s(p.role).toLowerCase() });
+      } else if (s(p)) {
+        texts.push(s(p));
+        for (const e of paletteFromText(p)) entries.push({ name: s(e.name), hex: s(e.hex), role: "" });
+      }
+    }
+  } else if (s(raw.palette)) {
+    texts.push(s(raw.palette));
+    for (const e of paletteFromText(raw.palette)) entries.push({ name: s(e.name), hex: s(e.hex), role: "" });
+  }
+  const palette = texts.join(", ");
+  const palette_entries = entries.length ? entries : undefined;
   const slotN = Number(raw.slot);
   return {
     slot: Number.isFinite(slotN) && slotN >= 1 ? Math.round(slotN) : index + 1,
@@ -506,6 +607,7 @@ function readSlot(raw: unknown, index: number): SlotReading | null {
     texture: s(raw.texture),
     edge_finish: s(raw.edge_finish),
     palette,
+    palette_entries,
     headline: face(raw.headline),
     secondary: face(raw.secondary),
     placement: s(raw.placement),
@@ -547,11 +649,17 @@ export function readReference(a: ReferenceAnalysis | null | undefined): Omit<Ref
   return out;
 }
 
-/** Per-image role labels for the prompt, from the ordered input plan (one label per roled slot; spans otherwise). */
-export function imageRoleLabels(plan: InputPath[]): string[] {
+/**
+ * Per-image role labels for the prompt, from the ordered input plan (one label per roled slot; spans otherwise).
+ * opts.art_image (1-based plan position, art-style override): that image is labelled IMAGE_ROLE_ART_WINS - also on a
+ * role-less plan whose per-slot reading names an art_style slot.
+ */
+export function imageRoleLabels(plan: InputPath[], opts: { art_image?: number | null } = {}): string[] {
   const out: string[] = [];
   const span = (from: number, to: number) => (from === to ? "Image " + from : "Image " + from + "-" + to);
-  const slotLabel = (p: InputPath): string | null => {
+  const artAt = Number(opts.art_image) >= 1 ? Math.round(Number(opts.art_image)) - 1 : -1;
+  const slotLabel = (p: InputPath, k: number): string | null => {
+    if (k === artAt) return IMAGE_ROLE_ART_WINS;
     if (p.role === "subject_reference" || p.slot_role === "subject") return IMAGE_ROLE_SUBJECT;
     if (p.role === "typography_reference" || p.slot_role === "typography") return IMAGE_ROLE_LETTERING;
     if (p.slot_role === "art_style") return IMAGE_ROLE_ART;
@@ -559,17 +667,209 @@ export function imageRoleLabels(plan: InputPath[]): string[] {
   };
   let i = 0;
   while (i < plan.length) {
-    const own = slotLabel(plan[i]);
+    const own = slotLabel(plan[i], i);
     if (own) { out.push("Image " + (i + 1) + ": " + own); i++; continue; }
     const role = plan[i].role;
     let j = i;
-    while (j + 1 < plan.length && plan[j + 1].role === role && !slotLabel(plan[j + 1])) j++;
+    while (j + 1 < plan.length && plan[j + 1].role === role && !slotLabel(plan[j + 1], j + 1)) j++;
     const label = role === "style_reference" ? IMAGE_ROLE_STYLE
       : role === "client_look" ? IMAGE_ROLE_LOOK
       : role === "previous_version" ? IMAGE_ROLE_PREVIOUS
       : IMAGE_ROLE_MASK;
     out.push(span(i + 1, j + 1) + ": " + label);
     i = j + 1;
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Art-style override (user decision 2026-10-01: the Art style reference wins for its card)
+
+/** A style-test card (create_style_test_card: cards.source / client_submission.source 'style_test') never takes the override. */
+export function isStyleTestCard(source: unknown, client_submission?: unknown): boolean {
+  if (s(source).toLowerCase() === "style_test") return true;
+  return isObj(client_submission) && s(client_submission.source).toLowerCase() === "style_test";
+}
+
+/** True when the reading carries at least one look value (false = a value-less art override: "match Image k itself"). */
+export function hasLook(r: SlotReading | null | undefined): boolean {
+  if (!r) return false;
+  return [r.medium, r.realism, r.line_weight, r.line_style, r.shading, r.texture, r.edge_finish, r.palette].some((v) => s(v) !== "") ||
+    (Array.isArray(r.palette_entries) && r.palette_entries.length > 0);
+}
+
+/** cards.reference_roles normalised (lower case), or null when the card carries no known role (legacy, role-less card). */
+export function stampedRoles(reference_roles: unknown): string[] | null {
+  if (!Array.isArray(reference_roles)) return null;
+  const roles = reference_roles.map((r) => s(r).toLowerCase());
+  return roles.some((r) => (SLOT_ROLES as string[]).includes(r)) ? roles : null;
+}
+
+/** An empty reading of one slot (a stamped slot whose reading was made for another job, or that has none). */
+export function emptyReading(slot: number, role: string): SlotReading {
+  return readSlot({ slot, role }, slot - 1) as SlotReading;
+}
+
+/**
+ * Per-slot readings aligned to the stamped roles. Staff may change a slot's role after the vision read and saving roles
+ * does not re-run WF-1, so the stamped role (cards.reference_roles, what the input plan labels) decides each slot's job:
+ * a reading keeps its values only when it was read for that job, or carries no known role (legacy safety - it then
+ * takes the stamped role); a reading made for another job is replaced by an empty reading of the stamped role, so a
+ * stale read never lends its values to another image. No stamped roles -> the readings as read.
+ */
+export function alignReadings(refs: SlotReading[] | null | undefined, reference_roles: unknown): SlotReading[] | undefined {
+  if (!Array.isArray(refs)) return undefined;
+  const roles = stampedRoles(reference_roles);
+  if (!roles) return refs;
+  const known = (role: string) => (SLOT_ROLES as string[]).includes(role);
+  return refs.map((r) => {
+    const stamped = roles[r.slot - 1] ?? "";
+    if (!known(stamped) || r.role === stamped) return r;
+    if (!known(r.role)) return { ...r, role: stamped };
+    return emptyReading(r.slot, stamped);
+  });
+}
+
+/**
+ * The ART STYLE reference of a card, or null when the Style Card governs the look (user decision 2026-10-01):
+ * - stamped roles (cards.reference_roles): the slot stamped 'art_style' - it must hold a reference path when
+ *   reference_paths is given. Its values come from the per-slot reading of THAT slot when it was read as art_style (or
+ *   without a known role); otherwise - a flat analysis_prompt v2 analysis (it describes IMAGE 1 only, live card
+ *   72354a02), no reading of that slot, or a reading made for another job before staff changed the roles - the override
+ *   still applies, value-less: an empty art_style reading, rendered as "match Image k itself" (hasLook false), with an
+ *   empty look in effective_style.
+ * - no stamped roles: the per-slot reading with role 'art_style' (values when it has them, else value-less).
+ * Style-test cards are filtered by the caller (resolveArtReference).
+ */
+export function findArtReference(references: SlotReading[] | null | undefined, reference_roles?: unknown, reference_paths?: unknown): SlotReading | null {
+  const hasPath = (slot: number) => !Array.isArray(reference_paths) || s(reference_paths[slot - 1]) !== "";
+  const roles = stampedRoles(reference_roles);
+  if (roles) {
+    const k = roles.indexOf("art_style");
+    if (k < 0 || !hasPath(k + 1)) return null;
+    const at = (alignReadings(references, roles) ?? []).find((r) => r.slot === k + 1);
+    return at && at.role === "art_style" ? at : emptyReading(k + 1, "art_style");
+  }
+  const hit = (Array.isArray(references) ? references : []).find((r) => r.role === "art_style");
+  return hit && hasPath(hit.slot) ? hit : null;
+}
+
+/** The card-level decision index.ts and buildMagicPrompt share: style-test cards never, else findArtReference. */
+export function resolveArtReference(opts: {
+  source?: unknown;
+  client_submission?: unknown;
+  reference_analysis?: ReferenceAnalysis | null;
+  reference_roles?: unknown;
+  reference_paths?: unknown;
+}): SlotReading | null {
+  if (isStyleTestCard(opts.source, opts.client_submission)) return null;
+  return findArtReference(readReference(opts.reference_analysis).references, opts.reference_roles, opts.reference_paths);
+}
+
+/** client_look library images are attached at tier >= 3 unless an Art style reference governs the look (nothing competes). */
+export function attachesClientLook(tier: number, art: SlotReading | null): boolean {
+  return clampTier(tier) >= 3 && !art;
+}
+
+/**
+ * 1-based plan position of the art-style image: the plan entry roled art_style, else (role-less plan, legacy cards read
+ * with v3) the card reference at the reading's slot. null when it is not attached (edit kinds attach the previous version).
+ */
+export function artImageNumber(plan: InputPath[], art: SlotReading | null): number | null {
+  if (!art) return null;
+  const k = plan.findIndex((p) => p.slot_role === "art_style");
+  if (k >= 0) return k + 1;
+  const i = art.slot - 1;
+  const p = plan[i];
+  if (p && p.bucket === "refs" && p.role === "style_reference" && !p.slot_role) return i + 1;
+  return null;
+}
+
+/**
+ * magic_prompt_json.effective_style (see the EffectiveStyle contract). art null -> the Style Card look, pruned the way
+ * WF-2 prunes STYLE_CARD_JSON (palette resolved for the garment side as the Palette line renders it).
+ */
+export function effectiveStyle(opts: {
+  card: StyleCard | null | undefined;
+  garment_color?: string;
+  art: SlotReading | null;
+  reference_slot?: number | null;
+}): EffectiveStyle {
+  const card = lintStyleCard(opts.card);
+  const rules = isObj(card.rules) ? { ...card.rules } : {};
+  const palette_mode: "strict" | "flexible" = rules.palette_mode === "flexible" ? "flexible" : "strict";
+  const forbid = list(card.forbid).map(clean).filter(Boolean);
+  const composition = s(card.composition);
+  const typography = isObj(card.typography) ? JSON.parse(JSON.stringify(card.typography)) as Record<string, unknown> : {};
+  const entry = (p: PaletteEntry): EffectivePaletteEntry => {
+    const e: EffectivePaletteEntry = { name: clean(p.name), hex: s(p.hex).toUpperCase() };
+    if (clean(p.role)) e.role = clean(p.role).toLowerCase();
+    if (clean(p.weight)) e.weight = clean(p.weight).toLowerCase();
+    return e;
+  };
+  const art = opts.art;
+  if (art) {
+    return {
+      source: "art_reference",
+      reference_slot: opts.reference_slot ?? art.slot,
+      medium: s(art.medium),
+      realism: s(art.realism),
+      linework: { weight: s(art.line_weight), style: s(art.line_style), outline: "" },
+      shading: s(art.shading),
+      shading_method: s(art.shading),
+      texture: s(art.texture),
+      edge_finish: s(art.edge_finish),
+      palette: (art.palette_entries ?? paletteFromText(art.palette)).map((p) => entry(p)).filter((p) => p.hex || p.name),
+      palette_mode,
+      forbid,
+      composition,
+      typography,
+      rules,
+    };
+  }
+  const lw = isObj(card.linework) ? card.linework : {};
+  return {
+    source: "style_card",
+    reference_slot: null,
+    medium: s(card.medium),
+    realism: s(card.realism),
+    linework: { weight: s(lw.weight), style: s(lw.style), outline: s(lw.outline) },
+    shading: s(card.shading),
+    shading_method: s(card.shading_method),
+    texture: s(card.texture),
+    edge_finish: s(card.edge_finish),
+    palette: cardPalette(card, opts.garment_color).map((p) => entry(p)).filter((p) => p.hex),
+    palette_mode,
+    forbid,
+    composition,
+    typography,
+    rules,
+  };
+}
+
+/**
+ * "#F2E8D5", "f2e8d5", "#fed" -> "#F2E8D5" / "#FFEEDD"; anything else -> "". A bare 6-character token needs a digit
+ * ("F2E8D5" yes, the word "facade" no).
+ */
+export function normHex(v: unknown): string {
+  const t = s(v);
+  let m = t.match(/^#?([0-9a-f]{6})$/i);
+  if (m && (t.startsWith("#") || /\d/.test(m[1]))) return "#" + m[1].toUpperCase();
+  m = t.match(/^#([0-9a-f]{3})$/i);
+  if (m) return "#" + Array.from(m[1]).map((c) => c + c).join("").toUpperCase();
+  return "";
+}
+
+/**
+ * "cream #F2E8D5, rust b5482a; #FED" (a string palette, or a reading stored before palette_entries existed) -> entries,
+ * hex normalised (normHex). Parts without a hex are skipped.
+ */
+function paletteFromText(text: unknown): PaletteEntry[] {
+  const out: PaletteEntry[] = [];
+  for (const part of s(text).split(/,|;/)) {
+    const m = part.match(/^(.*?)\s*(#[0-9a-f]{6}\b|#[0-9a-f]{3}\b|\b(?=[0-9a-f]*\d)[0-9a-f]{6}\b)/i);
+    const hex = m ? normHex(m[2]) : "";
+    if (m && hex) out.push({ name: m[1].replace(/[\s:(\-–]+$/g, "").trim(), hex });
   }
   return out;
 }
@@ -682,9 +982,18 @@ export type BuildInput = {
   style_card_version: number | null;
   style_card_status: string;
   tier: number;
-  /** ordered attachment plan (card references with their slot roles, then client_look images) */
+  /** ordered attachment plan (card references with their slot roles, then client_look images - none when an Art
+   *  style reference governs; index.ts decides that with attachesClientLook) */
   plan: InputPath[];
   reference_analysis: ReferenceAnalysis | null | undefined;
+  /** cards.reference_roles: the stamped job of each slot (decides the art slot and aligns the per-slot readings);
+   *  null/absent on role-less cards */
+  reference_roles?: unknown;
+  /** cards.reference_paths: a stamped art_style slot needs a reference path (absent = not checked) */
+  reference_paths?: unknown;
+  /** cards.source and cards.client_submission: a style-test card never takes the art-style override */
+  card_source?: unknown;
+  client_submission?: unknown;
   print_text: TextLine[];
   /** brief_snapshot.subject / client_submission.subject when given */
   explicit_subject?: unknown;
@@ -698,30 +1007,60 @@ export type BuildInput = {
   exemplars: string[];
 };
 
-export function buildMagicPrompt(input: BuildInput): MagicPrompt {
-  const tier = clampTier(input.tier);
-  const fixed = lintStyleCard(input.style_card);
-  const sc = renderStyleCard(fixed, { garment_color: input.garment_color, status: input.style_card_status, version: input.style_card_version });
-  const printText = (Array.isArray(input.print_text) ? input.print_text : [])
-    .map((l) => ({ role: s(l?.role) || "text", text: s(l?.text) }))
-    .filter((l) => l.text);
+/**
+ * The reference reading a fresh build (and a regenerate, from the card's current analysis) renders: readReference, the
+ * per-slot readings aligned to the stamped roles (alignReadings), the art slot's reading added when that slot has none
+ * (so the REFERENCES block never says "Not attached: ART STYLE" next to an attached art image), reference text that IS
+ * the requested print text dropped, and the per-image labels.
+ */
+export function cardReading(opts: {
+  reference_analysis: ReferenceAnalysis | null | undefined;
+  reference_roles?: unknown;
+  print_text: TextLine[];
+  plan: InputPath[];
+  art: SlotReading | null;
+  art_image: number | null;
+}): ReferenceReading {
   // Reference text that IS the requested print text (clients often send a mockup of the design they want) must not be
   // listed under "never reproduce it" - that contradicts the exact-text block. Match ignoring case, spacing, punctuation.
   const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
-  const wanted = new Set(printText.map((l) => norm(l.text)).filter(Boolean));
-  const reading = readReference(input.reference_analysis);
+  const wanted = new Set((opts.print_text ?? []).map((l) => norm(s(l?.text))).filter(Boolean));
+  const reading = readReference(opts.reference_analysis);
   reading.text_detected = reading.text_detected.filter((t) => !wanted.has(norm(t)));
-  for (const ref of reading.references ?? []) ref.text_detected = ref.text_detected.filter((t) => !wanted.has(norm(t)));
+  if (reading.references) {
+    const refs = alignReadings(reading.references, opts.reference_roles) ?? [];
+    const art = opts.art;
+    if (art && !refs.some((r) => r.slot === art.slot)) refs.push(art);
+    refs.sort((a, b) => a.slot - b.slot);
+    reading.references = refs.map((ref) => ({ ...ref, text_detected: ref.text_detected.filter((t) => !wanted.has(norm(t))) }));
+  }
+  return { ...reading, image_roles: imageRoleLabels(opts.plan, { art_image: opts.art_image }) };
+}
+
+export function buildMagicPrompt(input: BuildInput): MagicPrompt {
+  const tier = clampTier(input.tier);
+  const fixed = lintStyleCard(input.style_card);
+  const art = resolveArtReference({
+    source: input.card_source, client_submission: input.client_submission,
+    reference_analysis: input.reference_analysis, reference_roles: input.reference_roles, reference_paths: input.reference_paths,
+  });
+  const artImage = artImageNumber(input.plan, art);
+  const sc = renderStyleCard(fixed, { garment_color: input.garment_color, status: input.style_card_status, version: input.style_card_version, art_reference: !!art });
+  const printText = (Array.isArray(input.print_text) ? input.print_text : [])
+    .map((l) => ({ role: s(l?.role) || "text", text: s(l?.text) }))
+    .filter((l) => l.text);
+  const reading = cardReading({ reference_analysis: input.reference_analysis, reference_roles: input.reference_roles, print_text: printText, plan: input.plan, art, art_image: artImage });
   return {
     print_rules: s(input.print_rules),
     style_card: { version: input.style_card_version, status: sc.status, lines: sc.lines, negatives: sc.negatives, prose: sc.prose, rules: sc.rules },
     lessons: list(input.lessons),
     exemplars: list(input.exemplars),
-    reference_reading: { ...reading, image_roles: imageRoleLabels(input.plan) },
+    reference_reading: reading,
     similarity_tier: { tier, rule: pickTierRule(input.tier_rules_body, tier, { niche: input.niche }) },
     subject: resolveSubject({ explicit: input.explicit_subject, tier, references: reading.references, card_subjects: fixed.subjects }),
     brief: { description: s(input.description), garment_color: s(input.garment_color), placement: s(input.placement), avoid_notes: s(input.avoid_notes) },
     text: { rule: s(input.text_rules_body), typography: styleCardTypography(fixed, input.plan), lines: printText },
+    effective_style: effectiveStyle({ card: fixed, garment_color: input.garment_color, art, reference_slot: artImage }),
   };
 }
 
@@ -734,7 +1073,7 @@ function slotFace(f: { family: string; weight: string; effects: string[] }): str
   return core + (f.effects.length ? " (" + f.effects.join(", ") + ")" : "");
 }
 
-function renderSlotReferences(r: ReferenceReading, tier: number, typographyLocked: boolean): string {
+function renderSlotReferences(r: ReferenceReading, tier: number, typographyLocked: boolean, artGoverns: boolean): string {
   const refs = r.references ?? [];
   const lines = ["REFERENCES - each attached image has ONE job; take nothing else from it:"];
   const kv = (pairs: Array<[string, string]>) => pairs.filter(([, v]) => v).map(([k, v]) => k + ": " + v).join("; ");
@@ -754,6 +1093,9 @@ function renderSlotReferences(r: ReferenceReading, tier: number, typographyLocke
       lines.push("- Image " + n + ", WHAT TO MAKE " + (tier <= 2
         ? "(concept only - a NEW composition is required): "
         : "(the similarity policy applies to THIS image only): ") + (body || "no reading"));
+    } else if (ref.role === "art_style" && artGoverns) {
+      present.add("art_style");
+      lines.push("- Image " + n + ", ART STYLE - the look of this design: drawn as the ART STYLE block above describes (medium, linework, shading, texture and colours of this image); never its subject, layout or words.");
     } else if (ref.role === "art_style") {
       present.add("art_style");
       const body = kv([
@@ -789,16 +1131,25 @@ function renderSlotReferences(r: ReferenceReading, tier: number, typographyLocke
   return lines.join("\n");
 }
 
-function renderFlatReference(r: ReferenceReading, tier: number, isEdit: boolean): string {
+/**
+ * The legacy flat block (a flat analysis_prompt v2 reading, or edit mode). artGoverns (art-style override): the flat
+ * 'Art style' and 'Reference palette' lines are left out - the ART STYLE block carries the look, and the flat keys
+ * describe IMAGE 1, not the art image. artImage 1 (not in edit mode): IMAGE 1 IS the art image, so the flat subject /
+ * composition / typography lines describe the art image's subject too and are left out ("never its subject").
+ */
+function renderFlatReference(r: ReferenceReading, tier: number, isEdit: boolean, artGoverns = false, artImage: number | null = null): string {
   const lines = [isEdit
     ? "PREVIOUS VERSION DESCRIPTION (this is the image being edited - use it to name elements precisely; keep everything not mentioned in the edit request identical):"
     : "REFERENCE DESIGN DESCRIPTION (apply the similarity policy to decide how closely to copy it):"];
   const full = isEdit || tier >= 4;
-  if (r.art_style) lines.push("Art style: " + r.art_style);
-  if (r.palette) {
+  const describesArtImage = artGoverns && !isEdit && artImage === 1;
+  if (r.art_style && !artGoverns) lines.push("Art style: " + r.art_style);
+  if (r.palette && !artGoverns) {
     lines.push((full ? "Reference palette (governs this re-creation, inside the Style Card family): " : "Reference palette (mood only - the Style Card palette governs): ") + r.palette);
   }
-  if (full) {
+  if (describesArtImage) {
+    // nothing from the flat description: it reads the ART STYLE image, whose subject, layout and words are never taken
+  } else if (full) {
     if (r.subject_structure) lines.push("Subject structure: " + r.subject_structure);
     if (r.composition) lines.push("Composition: " + r.composition);
     if (r.typography_transcription) lines.push("Typography in the reference (style only - the on-design text is defined below): " + r.typography_transcription);
@@ -811,6 +1162,57 @@ function renderFlatReference(r: ReferenceReading, tier: number, isEdit: boolean)
   return lines.join("\n");
 }
 
+/**
+ * ART STYLE block (art-style override): the reference look, one line per key in Style Card order, then the palette rule -
+ * the client's strictness (rules.palette_mode) applied to the reference colours. image = the plan position of the
+ * art-style image (null in edit mode, where only the previous version is attached).
+ */
+export function renderArtStyleBlock(es: EffectiveStyle, image: number | null, flexible: boolean, edit = false): string {
+  const where = image ? "Image " + image : "";
+  const lines = ["ART STYLE (from the Art style reference" + (where ? ", " + where : "") + ") - this design is drawn in this look:"];
+  const push = (label: string, value: string) => { if (value) lines.push("- " + label + ": " + value); };
+  const lw0 = isObj(es.linework) ? es.linework : { weight: "", style: "", outline: "" };
+  const valued = [es.medium, es.realism, es.edge_finish, lw0.weight, lw0.style, lw0.outline, es.shading, es.shading_method, es.texture].some((v) => clean(v) !== "");
+  const source = where || (edit ? "the previous version (drawn in the Art style reference look)" : "the Art style reference");
+  if (!valued) {
+    // value-less override (no per-slot reading of the art image): the image itself is the look
+    lines.push("- Medium, rendering, linework, shading, texture and edges: exactly as in " + source + (where ? " - never its subject, layout or words." : ""));
+  }
+  push("Medium", clean(es.medium));
+  {
+    const realism = clean(es.realism).toLowerCase();
+    const edges = clean(es.edge_finish).toLowerCase();
+    push("Rendering", [realism ? realism + " realism" : "", edges ? edges + " edges" : ""].filter(Boolean).join("; "));
+  }
+  {
+    const lw = isObj(es.linework) ? es.linework : { weight: "", style: "", outline: "" };
+    const weight = clean(lw.weight).toLowerCase();
+    const style = clean(lw.style);
+    const outline = clean(lw.outline).toLowerCase();
+    const head = [weight ? weight + " weight" : "", style].filter(Boolean).join(", ");
+    push("Linework", [head, outline && outline !== "none" ? outline + " outline" : ""].filter(Boolean).join("; "));
+  }
+  {
+    const method = clean(es.shading_method).toLowerCase();
+    const shading = clean(es.shading);
+    push("Shading", method && shading && method !== shading.toLowerCase() ? method + " - " + shading : (shading || method));
+  }
+  push("Texture", clean(es.texture));
+  {
+    const entries = (Array.isArray(es.palette) ? es.palette : []).map((p) => paletteLabel(p as PaletteEntry)).filter(Boolean);
+    const whose = where ? "the colours of " + where : edit ? "the colours of the previous version" : "the colours of the Art style reference";
+    if (entries.length) {
+      lines.push("- " + (flexible
+        ? "Palette (FLEXIBLE - lead with these colours of the Art style reference; small natural accents in other hues are allowed): "
+        : "Palette (STRICT - use ONLY these colours of the Art style reference plus the flat grey background, no other hue): ") + entries.join("; "));
+    } else {
+      lines.push("- Palette (" + (flexible ? "FLEXIBLE - lead with " + whose : "STRICT - use ONLY " + whose + " plus the flat grey background, no other hue") + ")");
+    }
+  }
+  if (where && valued) lines.push("- Anything these lines do not cover: match the look of " + where + " itself - never its subject, layout or words.");
+  return lines.join("\n");
+}
+
 // ---------------------------------------------------------------------------
 // The deterministic renderer
 
@@ -820,15 +1222,21 @@ export function renderPrompt(magic: MagicPrompt): string {
   const tier = clampTier(magic.similarity_tier?.tier);
   const scRules = magic.style_card.rules ?? {};
   const typographyLocked = scRules.lock_typography !== false;
+  // art-style override: only a v8 prompt that carries effective_style 'art_reference' (and Style Card lines) takes it
+  const es = magic.effective_style;
+  const artGoverns = es?.source === "art_reference" && Array.isArray(magic.style_card.lines) && magic.style_card.lines.length > 0;
 
   // 1 print rules + PRECEDENCE (exactly once, rendered here so pre-v8 prompts get it too)
-  blocks.push([s(magic.print_rules), PRECEDENCE_LINE].filter(Boolean).join("\n"));
+  blocks.push([s(magic.print_rules), artGoverns ? PRECEDENCE_LINE_ART : PRECEDENCE_LINE].filter(Boolean).join("\n"));
+
+  // 2a ART STYLE (art-style override): the reference look replaces the Style Card look lines
+  if (artGoverns && es) blocks.push(renderArtStyleBlock(es, isEdit ? null : es.reference_slot, es.palette_mode === "flexible", isEdit));
 
   // 2 style card: header with version + row status, then one line per key (or the pre-v8 prose, R3)
   {
     const v = magic.style_card.version;
     const status = s(magic.style_card.status) || "locked";
-    const head = "CLIENT STYLE CARD" + (v ? " v" + v : "") + " (" + status + ")" + STYLE_CARD_HEADER_TAIL;
+    const head = "CLIENT STYLE CARD" + (v ? " v" + v : "") + " (" + status + ")" + (artGoverns ? STYLE_CARD_HEADER_TAIL_ART : STYLE_CARD_HEADER_TAIL);
     const lines = [head];
     if (Array.isArray(magic.style_card.lines) && magic.style_card.lines.length) {
       for (const l of magic.style_card.lines) if (s(l)) lines.push(s(l));
@@ -861,7 +1269,7 @@ export function renderPrompt(magic: MagicPrompt): string {
   {
     const r = magic.reference_reading;
     const perSlot = !isEdit && Array.isArray(r.references) && r.references.length > 0;
-    blocks.push(perSlot ? renderSlotReferences(r, tier, typographyLocked) : renderFlatReference(r, tier, isEdit));
+    blocks.push(perSlot ? renderSlotReferences(r, tier, typographyLocked, artGoverns) : renderFlatReference(r, tier, isEdit, artGoverns, es?.reference_slot ?? null));
   }
 
   // 6 similarity tier
@@ -881,7 +1289,7 @@ export function renderPrompt(magic: MagicPrompt): string {
     const pool = list(subject.pool);
     const lines = [
       "SUBJECT (the one hero of this design - it comes from here and nowhere else): " + s(subject.text),
-      "- Draw this subject in the Style Card look. The on-design text below is LETTERING ONLY: it never chooses, adds or changes the subject, even when the words name an animal, an object or a place.",
+      "- Draw this subject in the " + (artGoverns ? "ART STYLE look above" : "Style Card look") + ". The on-design text below is LETTERING ONLY: it never chooses, adds or changes the subject, even when the words name an animal, an object or a place.",
       "- Source: " + source + (pool.length ? ". Usual subject pool (supporting elements only): " + pool.join(", ") : ""),
     ];
     blocks.push(lines.join("\n"));

@@ -1,6 +1,6 @@
 // qc-judge v2 tests. Run: npm run test:functions (Node shim, spec 3.4)   or   deno test supabase/functions/qc-judge/
 // No jsr imports on purpose (local assert helpers, like render_test.ts) so the file runs under node --experimental-strip-types.
-import { buildStyleMatch, normaliseQc, subjectCorrection } from './qc.ts';
+import { buildStyleMatch, fromArtReference, normaliseQc, pickStyleJson, subjectCorrection, UNREAD_MEDIUM_NOTE, UNREAD_PALETTE_NOTE, unreadArtLook } from './qc.ts';
 import { CHICKEN_FORBID, FIXTURES } from './qc_fixtures.ts';
 
 function assert(cond: unknown, msg?: string): void {
@@ -214,4 +214,80 @@ Deno.test('v2 cropped / text too small inside "style" → fail on core checks, r
   assertEquals(r.needs_regen, true);
   assertStringIncludes(r.qc_report.corrective_instruction!, 'Keep the artwork inside the frame');
   assertEquals(r.qc_report.min_text_height_frac, 0.02);
+});
+
+// ---------------------------------------------------------------------------
+// art-style override (2026-10-01): the style JSON is prompt-engine v8's effective_style
+
+// effective_style as prompt-engine v8 writes it for a card whose Art style reference governs the look
+const artLook = {
+  source: 'art_reference', reference_slot: 2,
+  medium: 'screen-print vector', realism: 'stylised', linework: { weight: 'bold', style: 'uniform outlines', outline: '' },
+  shading: 'halftone', shading_method: 'halftone', texture: 'paper grain', edge_finish: 'clean',
+  palette: [{ name: 'cream', hex: '#F2E8D5', role: 'fill' }, { name: 'rust', hex: '#B5482A', role: 'accent' }],
+  palette_mode: 'strict', forbid: chickenCard.forbid.filter((f) => !/social media handle/.test(f)), composition: 'centred badge',
+  typography: {}, rules: chickenCard.rules,
+};
+const artCtx = { ...chickenCtx, style_card: artLook };
+
+Deno.test('art reference: palette / medium notes and the palette check name say "the Art style reference"; judging unchanged', () => {
+  const r = normaliseQc(FIXTURES.v2PaletteOnly, artCtx);
+  assertEquals(r.qc_report.verdict, 'warn', 'palette only stays a warn');
+  assertEquals(r.needs_regen, false);
+  const pal = r.qc_report.checks.find((c) => c.id === 'style_palette');
+  assertEquals(pal?.name, 'Palette matches Art style reference');
+  assertEquals(pal?.pass, false);
+  assertEquals(styleCheck(r, 'palette')?.note, 'off-palette: teal #2F8F8F (small)', 'off-palette colours named as before');
+  // no off-palette list -> the generic note names the Art style reference and its hexes
+  const bare = normaliseQc('{"text_found":"CHICKEN HAPPY HOUR EST. 2026","text_matches":true,"text_once":true,"extra_text":false,"text_legible":true,"no_halos":true,"background_ok":true,"no_shadows":true,"flat_artwork":true,"edges_clean":true,"issues":[],"pass":true,"style":{"palette_ok":false,"medium_ok":false}}', artCtx);
+  assertEquals(styleCheck(bare, 'palette')?.note, 'palette drifts from the Art style reference');
+  assertEquals(styleCheck(bare, 'medium')?.note, 'not drawn in the Art style reference medium, linework or shading');
+  assert(bare.qc_report.style_violations.includes('palette drifts from the Art style reference'), JSON.stringify(bare.qc_report.style_violations));
+  // the same verdict against the Style Card keeps the Style Card wording (no regression)
+  const card = normaliseQc('{"text_found":"CHICKEN HAPPY HOUR EST. 2026","text_matches":true,"text_once":true,"extra_text":false,"text_legible":true,"no_halos":true,"background_ok":true,"no_shadows":true,"flat_artwork":true,"edges_clean":true,"issues":[],"pass":true,"style":{"palette_ok":false,"medium_ok":false}}', chickenCtx);
+  assertEquals(styleCheck(card, 'palette')?.note, 'palette drifts from the Style Card');
+  assertEquals(styleCheck(card, 'medium')?.note, 'not drawn in the card medium, linework or shading method');
+  assertEquals(card.qc_report.checks.find((c) => c.id === 'style_palette')?.name, 'Palette matches Style Card');
+  // the v1 compat path (no "style" key): palette_ok false without a violation names the reference and its hexes
+  const v1 = normaliseQc('{"text_found":"CHICKEN HAPPY HOUR EST. 2026","text_matches":true,"text_once":true,"extra_text":false,"text_legible":true,"no_halos":true,"background_ok":true,"no_shadows":true,"flat_artwork":true,"edges_clean":true,"issues":[],"pass":true,"palette_ok":false}', artCtx);
+  assert(v1.qc_report.style_violations.includes('palette drifts from the Art style reference (#F2E8D5, #B5482A)'), JSON.stringify(v1.qc_report.style_violations));
+  // unverified (malformed) keeps the reference wording in the palette check name
+  assertEquals(normaliseQc(FIXTURES.malformed, artCtx).qc_report.checks.find((c) => c.id === 'style_palette')?.name, 'Palette matches Art style reference');
+  // forbid numbering follows the JSON received (the effective forbid list)
+  const hit = normaliseQc(FIXTURES.v2ForbidHit, artCtx);
+  assert(hit.qc_report.style_violations.includes('forbidden element present: ' + artLook.forbid[4]), JSON.stringify(hit.qc_report.style_violations));
+  assertEquals(fromArtReference(artLook), true);
+  assertEquals(fromArtReference({ ...artLook, source: 'style_card' }), false);
+  assertEquals(fromArtReference(chickenCard), false);
+});
+
+Deno.test('style JSON: the caller style_card, else magic_prompt_json.effective_style, else the style_card_snapshot', () => {
+  const snapshot = { palette: [{ hex: '#111111' }] };
+  assertEquals(pickStyleJson({ medium: 'x' }, { effective_style: artLook }, snapshot), { medium: 'x' }, 'caller wins');
+  assertEquals(pickStyleJson(undefined, { effective_style: artLook }, snapshot), artLook, 'engine v8 effective_style');
+  assertEquals(pickStyleJson(null, { subject: { text: 'a cow' } }, snapshot), snapshot, 'engine <= v7: snapshot');
+  assertEquals(pickStyleJson(undefined, null, snapshot), snapshot, 'no magic prompt');
+  assertEquals(pickStyleJson(undefined, { effective_style: 'nope' }, snapshot), snapshot, 'a malformed effective_style is ignored');
+});
+
+Deno.test('art reference with no reading of the art image (value-less look): palette and medium not judged, the rest unchanged', () => {
+  // prompt-engine v8 on a card whose stamped Art style slot has no per-slot reading: empty look, palette []
+  const unread = { ...artLook, medium: '', realism: '', linework: { weight: '', style: '', outline: '' }, shading: '', shading_method: '', texture: '', edge_finish: '', palette: [] };
+  assertEquals(unreadArtLook(unread), { palette: true, medium: true });
+  assertEquals(unreadArtLook(artLook), { palette: false, medium: false }, 'a read art look is judged');
+  assertEquals(unreadArtLook({ ...chickenCard, palette: [] }), { palette: false, medium: false }, 'a Style Card JSON is never unread');
+  assertEquals(unreadArtLook({ ...artLook, palette: [] }), { palette: true, medium: false }, 'palette only');
+  const verdict = '{"text_found":"CHICKEN HAPPY HOUR EST. 2026","text_matches":true,"text_once":true,"extra_text":false,"text_legible":true,"no_halos":true,"background_ok":true,"no_shadows":true,"flat_artwork":true,"edges_clean":true,"issues":[],"pass":true,"palette_ok":false,"style":{"palette_ok":false,"medium_ok":false,"typography_ok":true,"composition_ok":true,"forbid_hits":[]}}';
+  const r = normaliseQc(verdict, { ...chickenCtx, style_card: unread });
+  assertEquals(styleCheck(r, 'palette'), { id: 'palette', field: styleCheck(r, 'palette')!.field, pass: null, note: UNREAD_PALETTE_NOTE });
+  assertEquals(styleCheck(r, 'medium')?.pass, null);
+  assertEquals(styleCheck(r, 'medium')?.note, UNREAD_MEDIUM_NOTE);
+  const pal = r.qc_report.checks.find((c) => c.id === 'style_palette');
+  assertEquals([pal?.name, pal?.pass, pal?.note], ['Palette matches Art style reference', null, UNREAD_PALETTE_NOTE]);
+  assert(!r.qc_report.style_violations.some((s) => /palette/i.test(s)), 'no palette violation invented: ' + JSON.stringify(r.qc_report.style_violations));
+  assertEquals(r.qc_report.verdict, 'pass', 'nothing judged against an empty look -> pass');
+  assertEquals(r.qc_report.style_match?.score, 100, 'unjudged checks leave the score');
+  // the same verdict against a read art look still fails palette / medium (no regression)
+  const read = normaliseQc(verdict, artCtx);
+  assertEquals([styleCheck(read, 'palette')?.pass, styleCheck(read, 'medium')?.pass, read.qc_report.verdict], [false, false, 'warn']);
 });

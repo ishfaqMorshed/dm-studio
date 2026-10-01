@@ -12,6 +12,11 @@
 // v2 (2026-09-30): style_match {score, checks[{id, field, pass, note}]} judged against the Style Card only; verdict 'warn'
 // for style-only findings (core checks decide 'fail'); the wrong hero regenerates once when settings.qc_subject_regen is on
 // and an expected subject exists; the forbid regex matcher is gone (the judge reports forbid_hits by number).
+// v2.1 (2026-10-01, art-style override): the style JSON may be prompt-engine v8's magic_prompt_json.effective_style. When it
+// carries source 'art_reference' the look was set by the card's Art style reference, so the palette / medium notes and
+// the palette check name say "the Art style reference" instead of "the Style Card". Judging is unchanged, except that a
+// value-less art look (no per-slot reading of the art image: palette [] / empty medium .. edge_finish) leaves the palette
+// and medium checks not judged (pass null) - QC sees only the generated image, there is nothing to compare against.
 
 export type QcCheck = { id: string; name: string; pass: boolean | null; note: string };
 export type StyleCheck = { id: string; field: string; pass: boolean | null; note: string };
@@ -48,6 +53,48 @@ export type QcContext = {
 type Verdict = Record<string, unknown>;
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+
+/** True when the style JSON is an effective_style whose look comes from the Art style reference. */
+export function fromArtReference(card: unknown): boolean {
+  return isObj(card) && card.source === 'art_reference';
+}
+
+/**
+ * What an art-reference style JSON leaves unread: prompt-engine v8 sends a value-less look (empty medium .. edge_finish,
+ * palette []) when the card's Art style slot has no per-slot reading - the prompt then says "exactly as in Image k".
+ * QC sees only the generated image, so there is nothing to judge palette / medium against: those checks are not judged
+ * (pass null) instead of failing against an empty list. A Style Card JSON is never "unread".
+ */
+export function unreadArtLook(card: unknown): { palette: boolean; medium: boolean } {
+  if (!fromArtReference(card)) return { palette: false, medium: false };
+  const c = card as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  const lw = isObj(c.linework) ? c.linework : {};
+  const palette = !(Array.isArray(c.palette) && c.palette.length > 0);
+  const medium = [c.medium, c.realism, c.shading, c.shading_method, c.texture, c.edge_finish, lw.weight, lw.style].every((v) => str(v) === '');
+  return { palette, medium };
+}
+export const UNREAD_PALETTE_NOTE = 'not judged - no colours were read from the Art style reference';
+export const UNREAD_MEDIUM_NOTE = 'not judged - the Art style reference look was not read';
+
+/** Wording of the look the style JSON describes (notes and the palette check name). */
+function lookWords(card: unknown): { name: string; the: string; medium: string } {
+  return fromArtReference(card)
+    ? { name: 'Art style reference', the: 'the Art style reference', medium: 'not drawn in the Art style reference medium, linework or shading' }
+    : { name: 'Style Card', the: 'the Style Card', medium: 'not drawn in the card medium, linework or shading method' };
+}
+
+/**
+ * The style JSON qc-judge judges against: the caller's style_card, else prompt-engine v8's
+ * magic_prompt_json.effective_style (the look the prompt asked for - the Art style reference look on an art-reference
+ * card), else the generation's style_card_snapshot (engines <= v7).
+ */
+export function pickStyleJson(bodyStyleCard: unknown, magic: unknown, snapshot: unknown): unknown {
+  if (bodyStyleCard !== undefined && bodyStyleCard !== null) return bodyStyleCard;
+  const es = isObj(magic) ? magic.effective_style : undefined;
+  if (isObj(es)) return es;
+  return snapshot;
+}
 
 // ---- the 9 checks, verbatim ids from the engine's verdict schema -------------------------------------------------
 // `mode` mirrors Parse QC scoring: 'strictTrue' counts only === true, 'notFalse' counts anything but === false,
@@ -183,6 +230,8 @@ export function subjectCorrection(expectedSubject: string, subjectSeen: string):
 // ---- style_match (qc_prompt v2 "style" key, judged against the Style Card only) ---------------------------------------
 export function buildStyleMatch(v: Verdict, card: Record<string, unknown> | null, expectedSubject: string): StyleMatch {
   const style = isObj(v.style) ? v.style : {};
+  const look = lookWords(card);
+  const unread = unreadArtLook(card);
   const rules = card && isObj(card.rules) ? card.rules : {};
   const forbid = card ? toStrList(card.forbid) : [];
   const checks: StyleCheck[] = [];
@@ -190,7 +239,8 @@ export function buildStyleMatch(v: Verdict, card: Record<string, unknown> | null
   const push = (id: string, pass: boolean | null, note: string) => checks.push({ id, field: STYLE_FIELDS[id], pass, note: pass === null && !note ? nr : note });
 
   // palette: palette_ok, plus off_palette_colours with a LARGE area in flexible mode
-  {
+  if (unread.palette) push('palette', null, UNREAD_PALETTE_NOTE);
+  else {
     const ok = toBool(style.palette_ok);
     const off = (Array.isArray(style.off_palette_colours) ? style.off_palette_colours : []).filter(isObj);
     const large = off.filter((o) => /large/i.test(String(o.area ?? '')));
@@ -199,11 +249,12 @@ export function buildStyleMatch(v: Verdict, card: Record<string, unknown> | null
     let pass: boolean | null;
     if (ok === undefined) pass = flexible && large.length ? false : (off.length ? true : null);
     else pass = ok && !(flexible && large.length);
-    push('palette', pass, pass === false ? (offNote || 'palette drifts from the Style Card') : offNote);
+    push('palette', pass, pass === false ? (offNote || 'palette drifts from ' + look.the) : offNote);
   }
-  {
+  if (unread.medium) push('medium', null, UNREAD_MEDIUM_NOTE);
+  else {
     const ok = toBool(style.medium_ok);
-    push('medium', ok === undefined ? null : ok, ok === false ? 'not drawn in the card medium, linework or shading method' : '');
+    push('medium', ok === undefined ? null : ok, ok === false ? look.medium : '');
   }
   {
     const ok = toBool(style.typography_ok);
@@ -242,6 +293,7 @@ export function normaliseQc(raw: unknown, ctx: QcContext = {}): { qc_report: QcR
   const attempt = attemptN && attemptN >= 1 ? Math.floor(attemptN) : 1;
   const card = isObj(ctx.style_card) ? ctx.style_card : null;
   const palette = card && Array.isArray(card.palette) ? (card.palette as unknown[]) : [];
+  const look = lookWords(card);
   const expectedSubject = typeof ctx.expected_subject === 'string' ? ctx.expected_subject.trim() : '';
   const subjectRegenOn = ctx.qc_subject_regen === undefined || ctx.qc_subject_regen === null ? true : toBool(ctx.qc_subject_regen) !== false;
 
@@ -253,7 +305,7 @@ export function normaliseQc(raw: unknown, ctx: QcContext = {}): { qc_report: QcR
   if (!verdict || !hasVerdictKeys) {
     const parse_error = error ?? 'QC verdict has none of the expected keys';
     const checks: QcCheck[] = CORE_CHECKS.map((c) => ({ id: c.id, name: c.name, pass: null, note: 'unverified - ' + parse_error }));
-    checks.push({ id: 'style_palette', name: 'Palette matches Style Card', pass: null, note: 'unverified' });
+    checks.push({ id: 'style_palette', name: 'Palette matches ' + look.name, pass: null, note: 'unverified' });
     if (expected.length) checks.push({ id: 'text_height', name: 'Text large enough to print', pass: null, note: 'unverified' });
     const report: QcReport = {
       version: 2, verdict: 'unverified', checks, score: null, style_match: null, needs_regen: false, corrective_instruction: null,
@@ -293,15 +345,16 @@ export function normaliseQc(raw: unknown, ctx: QcContext = {}): { qc_report: QcR
   // -- Style Card: style_match (v2) + the compat palette check + the rules-violated list (designer flags)
   const style_match = buildStyleMatch(v, card, expectedSubject);
   const style_violations = toStrList(v.style_violations);
-  const paletteOk = toBool(style.palette_ok ?? v.palette_ok);
-  const paletteViolation = style_violations.find((s) => /palette|colou?r|hex/i.test(s));
+  const paletteUnread = unreadArtLook(card).palette;
+  const paletteOk = paletteUnread ? undefined : toBool(style.palette_ok ?? v.palette_ok);
+  const paletteViolation = paletteUnread ? undefined : style_violations.find((s) => /palette|colou?r|hex/i.test(s));
   const paletteCheck = style_match.checks.find((c) => c.id === 'palette');
   const palettePass = paletteOk !== false && !paletteViolation && paletteCheck?.pass !== false;
-  if (!palettePass && !paletteViolation) style_violations.push(paletteCheck?.note && paletteCheck.pass === false ? paletteCheck.note : 'palette drifts from the Style Card' + (palette.length ? ' (' + palette.map(hexOf).filter(Boolean).join(', ') + ')' : ''));
+  if (!palettePass && !paletteViolation) style_violations.push(paletteCheck?.note && paletteCheck.pass === false ? paletteCheck.note : 'palette drifts from ' + look.the + (palette.length ? ' (' + palette.map(hexOf).filter(Boolean).join(', ') + ')' : ''));
   checks.push({
-    id: 'style_palette', name: 'Palette matches Style Card',
-    pass: palettePass,
-    note: palettePass ? (paletteOk === undefined && paletteCheck?.pass === null ? (palette.length ? 'not reported' : 'no palette on Style Card') : '') : (paletteViolation ?? style_violations[style_violations.length - 1]),
+    id: 'style_palette', name: 'Palette matches ' + look.name,
+    pass: paletteUnread ? null : palettePass,
+    note: paletteUnread ? UNREAD_PALETTE_NOTE : palettePass ? (paletteOk === undefined && paletteCheck?.pass === null ? (palette.length ? 'not reported' : 'no palette on ' + look.name) : '') : (paletteViolation ?? style_violations[style_violations.length - 1]),
   });
   // forbid hits the judge numbered (the v1 regex matcher over issues is gone)
   const forbidCheck = style_match.checks.find((c) => c.id === 'forbid');

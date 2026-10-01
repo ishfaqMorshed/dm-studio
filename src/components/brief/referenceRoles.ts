@@ -23,13 +23,31 @@ export const ROLE_COPY: Record<ReferenceRole, RoleCopy> = {
   },
   art_style: {
     label: 'Art style',
-    hint: 'A design drawn the way you want yours drawn: technique, line, shading, texture, colours. Its subject and words are ignored.',
+    hint: 'This image decides how your design is drawn: technique, lines, shading, texture and colours. It overrides your brand’s usual look for this design; its subject and words are ignored.',
   },
   typography: {
     label: 'Lettering',
     hint: 'A design whose lettering you like: font feel, placement, case, effects such as outline, arch or banner. Its subject, colours and words are ignored.',
   },
 }
+
+/**
+ * 2026-10-01 decision - the Art style reference wins for its card (docs/stylecard-v2-spec.md): a card with
+ * a filled Art style slot is drawn in that image's medium, realism, linework, shading, texture, edges and
+ * palette (prompt-engine v8 `magic_prompt_json.effective_style.source = 'art_reference'`, which QC judges
+ * against); the Style Card fills only what the image does not show and its never-do list still applies.
+ * Onboarding test renders (`cards.source = 'style_test'`) are the exception: they exist to test the Style
+ * Card, so it always governs there.
+ */
+export const ART_STYLE_OVERRIDE_CAPTION = 'Drawn in this image’s style (overrides the Style Card look for this card)'
+
+/** Appended to the Art style hint in the Settings read-out tooltip: what the Style Card still decides, and the one exception. */
+export const ART_STYLE_OVERRIDE_RULE =
+  'The Style Card fills in what the image does not show (composition, mood, lettering when no Lettering image is attached) and its never-do list still applies. Onboarding test renders always use the Style Card.'
+
+/** Art style hint on an onboarding test render, where the Style Card always decides the look. */
+export const STYLE_TEST_ART_STYLE_HINT =
+  'Shows how the Style Card look is drawn. A test render always follows the Style Card, so this image does not override it.'
 
 /** What an empty slot means on the designer dialog and the card page: the Style Card decides that part. */
 export const STYLE_CARD_ONLY = 'Style Card only'
@@ -70,6 +88,26 @@ export function cardSlotRoles(
 export function hasStampedRoles(card: Pick<Card, 'reference_paths' | 'reference_roles'>): boolean {
   const roles = card.reference_roles
   return Array.isArray(roles) && roles.length > 0 && roles.length === (card.reference_paths?.length ?? 0)
+}
+
+/**
+ * True when a card's slot is drawn in its own image's style instead of the Style Card look (the
+ * 2026-10-01 rule): the slot's role is Art style - the stamped role, or for an unstamped card the role
+ * the per-slot vision read gave it (`reference_analysis.references[i].role`) - and the card is not an
+ * onboarding test render.
+ */
+export function overridesStyleCard(
+  card: Pick<Card, 'source' | 'reference_paths' | 'reference_roles'>,
+  role: ReferenceRole,
+  readAs: ReferenceRole | null,
+): boolean {
+  if (card.source === 'style_test') return false
+  return hasStampedRoles(card) ? role === 'art_style' : readAs === 'art_style'
+}
+
+/** A slot's one-line hint; on a test render the Art style slot does not override the Style Card. */
+export function roleHint(role: ReferenceRole, source?: string | null): string {
+  return role === 'art_style' && source === 'style_test' ? STYLE_TEST_ART_STYLE_HINT : ROLE_COPY[role].hint
 }
 
 /** "1 · What to make" */

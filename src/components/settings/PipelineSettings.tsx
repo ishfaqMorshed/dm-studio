@@ -14,7 +14,7 @@ import {
   type Settings,
   type SettingsUpdate,
 } from '../../lib/types'
-import { ROLE_COPY, slotRoles } from '../brief/referenceRoles'
+import { ART_STYLE_OVERRIDE_CAPTION, ART_STYLE_OVERRIDE_RULE, ROLE_COPY, slotRoles } from '../brief/referenceRoles'
 import { PlatformPicker } from '../PlatformPicker'
 import { GENERATION_DEFAULTS, OPENROUTER_MODEL_DEFAULTS } from './generationDefaults'
 
@@ -654,12 +654,17 @@ export function PipelineSettings() {
                 {slotRoles(settings).map((role, i) => (
                   <li
                     key={role}
-                    title={ROLE_COPY[role].hint}
-                    className="inline-flex items-baseline gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm dark:border-neutral-800"
+                    title={role === 'art_style' ? `${ROLE_COPY[role].hint} ${ART_STYLE_OVERRIDE_RULE}` : ROLE_COPY[role].hint}
+                    className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm dark:border-neutral-800"
                   >
-                    <span className="tabular-nums text-neutral-500">{i + 1} ·</span>
-                    <span className="font-medium">{ROLE_COPY[role].label}</span>
-                    <code className={`${codeCls} text-xs`}>{role}</code>
+                    <span className="flex items-baseline gap-1.5">
+                      <span className="tabular-nums text-neutral-500">{i + 1} ·</span>
+                      <span className="font-medium">{ROLE_COPY[role].label}</span>
+                      <code className={`${codeCls} text-xs`}>{role}</code>
+                    </span>
+                    {role === 'art_style' && (
+                      <span className="mt-0.5 block text-xs text-neutral-500">{ART_STYLE_OVERRIDE_CAPTION}</span>
+                    )}
                   </li>
                 ))}
               </ol>

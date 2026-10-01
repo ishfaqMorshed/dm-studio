@@ -9,13 +9,25 @@
 // roled input plan from cards.reference_roles; client_look prefers the card's representative_images and skips excluded
 // library images; {{niche}} / bare NICHE filled from clients.style_brief.niche; exemplars deduplicated and <= 160 chars;
 // a 422 guard on unresolved template tokens. Request/response contract unchanged (fields only added).
+//
+// v8 art-style override (2026-10-01): a card with an ART STYLE slot (the slot cards.reference_roles stamps art_style, or
+// on a role-less card the per-slot reading with role art_style) is drawn in that reference's look (render.ts
+// resolveArtReference; values from that slot's per-slot reading, else value-less "exactly as in Image k"): no client_look
+// images are attached, the ART STYLE block replaces the Style Card look lines, and magic_prompt_json.effective_style
+// (also in the response) is what WF-2/WF-3 QC judges against. Style-test cards (cards.source style_test) never take it.
+// regenerate re-derives it - and the reference reading - from the card; edit_text and edit_region keep the look of the
+// parent they edit (its effective_style).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import {
   applyEdit,
+  artImageNumber,
+  attachesClientLook,
   buildMagicPrompt,
+  cardReading,
   clampTier,
   DEFAULT_NICHE,
   EditError,
+  effectiveStyle,
   findUnresolvedToken,
   imageRoleLabels,
   type InputPath,
@@ -24,8 +36,10 @@ import {
   pickAspect,
   pickEditRule,
   pickTierRule,
+  type ReferenceAnalysis,
   renderPrompt,
   renderStyleCard,
+  resolveArtReference,
   resolveSubject,
   type SlotRole,
   type StyleCard,
@@ -91,7 +105,7 @@ type Card = {
   id: string; client_id: string; brief_text: string | null; print_text: TextLine[] | null; reference_paths: string[] | null;
   reference_roles: string[] | null; reference_analysis: Record<string, unknown> | null; garment_color: string | null;
   placement: string | null; avoid_notes: string | null; similarity_tier: number | null; brief_snapshot: Record<string, unknown> | null;
-  client_submission: Record<string, unknown> | null;
+  client_submission: Record<string, unknown> | null; source: string | null;
 };
 type Client = {
   id: string; name: string; default_similarity_tier: number | null; model_override: string | null;
@@ -179,7 +193,7 @@ async function handle(req: Request): Promise<Response> {
   if (!gen) return json(404, { error: "generation not found: " + generationId });
 
   const [card, settings, templates] = await Promise.all([
-    pg<Card[]>(ctx, "/cards?id=eq." + gen.card_id + "&select=id,client_id,brief_text,print_text,reference_paths,reference_roles,reference_analysis,garment_color,placement,avoid_notes,similarity_tier,brief_snapshot,client_submission").then(one),
+    pg<Card[]>(ctx, "/cards?id=eq." + gen.card_id + "&select=id,client_id,brief_text,print_text,reference_paths,reference_roles,reference_analysis,garment_color,placement,avoid_notes,similarity_tier,brief_snapshot,client_submission,source").then(one),
     pg<Settings[]>(ctx, "/settings?id=eq.1&select=generation_model,generation_resolution,vision_model,ai_platform,openrouter_models").then(one),
     pg<Template[]>(ctx, "/prompt_templates?active=eq.true&select=slug,version,body&order=version.desc"),
   ]);
@@ -232,6 +246,13 @@ async function handle(req: Request): Promise<Response> {
   const brief = (client.style_brief ?? {}) as Record<string, unknown>;
   const niche = String(brief.niche ?? "").trim() || DEFAULT_NICHE;
 
+  // --- art-style override: the card's analysed ART STYLE reference (null = the Style Card governs the look) ---
+  const art = resolveArtReference({
+    source: card.source, client_submission: card.client_submission,
+    reference_analysis: card.reference_analysis as ReferenceAnalysis | null, reference_roles: card.reference_roles,
+    reference_paths: card.reference_paths,
+  });
+
   // --- input plan ---
   const kind = gen.kind;
   const isEditKind = kind === "edit_text" || kind === "edit_region";
@@ -250,7 +271,8 @@ async function handle(req: Request): Promise<Response> {
       if (r.slot_role) entry.slot_role = r.slot_role as SlotRole;
       plan.push(entry);
     });
-    if (tier >= 3) {
+    // client_look only when nothing competes with an Art style reference (tier >= 3 and no art reference)
+    if (attachesClientLook(tier, art)) {
       const taken = new Set(plan.map((p) => p.path));
       for (const path of await clientLook(ctx, card.client_id, fixedCard, taken)) plan.push({ bucket: "refs", path, role: "client_look" });
     }
@@ -260,7 +282,13 @@ async function handle(req: Request): Promise<Response> {
   let magic: MagicPrompt;
   const base = kind === "generate" ? null : (gen.magic_prompt_json ?? parent?.magic_prompt_json ?? null);
   const baseSource = kind === "generate" ? "fresh" : gen.magic_prompt_json ? "own" : parent?.magic_prompt_json ? "parent" : "fresh";
-  const sc = renderStyleCard(fixedCard, { garment_color: garmentColor, status: styleCardStatus, version: styleCard.version });
+  const artImage = artImageNumber(plan, art);
+  // edit_text / edit_region keep the look of the image they edit: the parent's effective_style when it carries the art
+  // reference look (a parent built before the override, or without an art reference, was drawn in the Style Card look);
+  // generate and regenerate work from the references, so they take the card's decision.
+  const inherited = isEditKind && base?.effective_style?.source === "art_reference" ? base.effective_style : null;
+  const artLook = isEditKind ? !!inherited : !!art;
+  const sc = renderStyleCard(fixedCard, { garment_color: garmentColor, status: styleCardStatus, version: styleCard.version, art_reference: artLook });
 
   if (base) {
     magic = applyEdit(base, kind as "edit_text" | "edit_region" | "regenerate", {
@@ -272,12 +300,29 @@ async function handle(req: Request): Promise<Response> {
     // A regenerate works from the references (not the previous image), so it never inherits the TARGETED EDIT rule a
     // parent edit_text / edit_region carried - it gets the card's similarity-tier rule back.
     if (kind === "regenerate") magic.similarity_tier = { tier, rule: pickTierRule(tpl.tier_rules.body, tier, { niche }) };
-    magic.reference_reading.image_roles = imageRoleLabels(plan);
+    // A regenerate re-reads the card's CURRENT analysis (a parent built before the card was re-read with per-slot
+    // readings, or before staff changed the roles, would otherwise describe IMAGE 1 next to an ART STYLE block derived
+    // from the card); edit kinds keep the parent's reading of the image they edit. Both get fresh per-image labels.
+    if (kind === "regenerate" && card.reference_analysis && Object.keys(card.reference_analysis).length) {
+      magic.reference_reading = cardReading({
+        reference_analysis: card.reference_analysis as ReferenceAnalysis, reference_roles: card.reference_roles,
+        print_text: magic.text.lines, plan, art, art_image: artImage,
+      });
+    } else {
+      magic.reference_reading.image_roles = imageRoleLabels(plan, { art_image: artImage });
+    }
     // The inherited Style Card block and the typography pointer are re-rendered from the same (linted) card so an edit
     // of a pre-v8 generation never carries '..', 'Locked:' or 'as_typed' forward; the SUBJECT is added when absent (R3).
     magic.style_card = { version: styleCard.version, status: sc.status, lines: sc.lines, negatives: sc.negatives, prose: sc.prose, rules: sc.rules };
     magic.text.typography = styleCardTypography(fixedCard, plan);
-    if (!magic.subject) {
+    // effective_style: an edit keeps the parent's art reference look (QC judges the edit against it); otherwise it is
+    // re-derived (regenerate: the card's decision; an edit of a Style Card look: the current Style Card values)
+    magic.effective_style = inherited
+      ? JSON.parse(JSON.stringify(inherited))
+      : effectiveStyle({ card: fixedCard, garment_color: garmentColor, art: isEditKind ? null : art, reference_slot: artImage });
+    // the SUBJECT is added when absent (R3); a regenerate also re-resolves one that came from a reference slot, so it
+    // follows the re-read card (a WHAT TO MAKE read made before staff changed the roles is no longer used)
+    if (!magic.subject || (kind === "regenerate" && magic.subject.source === "reference")) {
       magic.subject = resolveSubject({ explicit: explicitSubject, tier, references: magic.reference_reading.references, card_subjects: fixedCard.subjects });
     }
   } else {
@@ -307,6 +352,10 @@ async function handle(req: Request): Promise<Response> {
       tier,
       plan,
       reference_analysis: card.reference_analysis,
+      reference_roles: card.reference_roles,
+      reference_paths: card.reference_paths,
+      card_source: card.source,
+      client_submission: card.client_submission,
       print_text: printText,
       explicit_subject: explicitSubject,
       niche,
@@ -383,6 +432,7 @@ async function handle(req: Request): Promise<Response> {
     style_card_version: styleCard.version,
     style_card_status: styleCardStatus,
     subject: magic.subject ?? null,
+    effective_style: magic.effective_style ?? null,
     templates: Object.fromEntries(Object.values(tpl).map((t) => [t.slug, t.version])),
   });
 }

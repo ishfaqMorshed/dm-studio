@@ -1,12 +1,20 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, ImageOff, Tags } from 'lucide-react'
+import { AlertTriangle, ImageOff, Paintbrush, Tags } from 'lucide-react'
 import { updateCardReferenceRoles } from '../../lib/api'
 import { REFS_BUCKET } from '../../lib/supabase'
 import { useSettings } from '../../lib/useSettings'
 import { useSignedUrl } from '../../lib/useSignedUrl'
 import { useToast } from '../../lib/useToast'
 import { errorMessage, isRecord, isReferenceRole, REFERENCE_ROLES, type Json, type ReferenceRole } from '../../lib/types'
-import { ROLE_COPY, cardSlotRoles, hasStampedRoles, slotTitle } from '../brief/referenceRoles'
+import {
+  ART_STYLE_OVERRIDE_CAPTION,
+  ROLE_COPY,
+  cardSlotRoles,
+  hasStampedRoles,
+  overridesStyleCard,
+  roleHint,
+  slotTitle,
+} from '../brief/referenceRoles'
 import { btnSecondary } from '../style/classes'
 import { JsonTree } from './JsonTree'
 import { parseEmbeddedJson, recordEntries } from './json'
@@ -19,8 +27,11 @@ const PER_REF_KEYS = ['references', 'refs', 'images', 'reference_analysis', 'per
 /** Bookkeeping keys of a per-slot read (WF-1 v3 `references[i]`) that the caption already shows. */
 const SLOT_META_KEYS = new Set(['slot', 'role', 'image'])
 
-/** What the render does with an unstamped (legacy) card: prompt-engine reads every reference as a style reference. */
-const LEGACY_HINT = 'Not stamped: the render reads every reference of this card as art style until roles are saved.'
+/**
+ * What the render does with an unstamped (legacy) card: prompt-engine reads every reference as a general
+ * style/subject reference and, with no Art style slot, the Style Card keeps the look.
+ */
+const LEGACY_HINT = 'Not stamped: the render reads every reference of this card as a general style and subject reference until roles are saved.'
 
 interface SplitAnalysis {
   /** One entry per reference slot when the read is per image. */
@@ -81,6 +92,7 @@ function ReferenceSlot({
   index,
   role,
   legacy,
+  card,
   analysis,
   editable,
   saving,
@@ -91,6 +103,8 @@ function ReferenceSlot({
   role: ReferenceRole
   /** The card has no stamped roles: captioned as a style reference, no per-slot select (Apply roles first). */
   legacy: boolean
+  /** For the 2026-10-01 rule: an Art style slot overrides the Style Card look, except on a test render. */
+  card: Pick<CardRow, 'source' | 'reference_paths' | 'reference_roles'>
   analysis: Json | undefined
   /** Staff may change the role before approval. */
   editable: boolean
@@ -102,6 +116,8 @@ function ReferenceSlot({
   const title = legacy ? `${n} · Style reference` : slotTitle(n, role)
   const { body, readAs } = slotRead(analysis)
   const hasAnalysis = body !== undefined && body !== null
+  const hint = roleHint(role, card.source)
+  const override = overridesStyleCard(card, role, readAs)
   return (
     <li className="min-w-0 space-y-2">
       <a
@@ -139,7 +155,7 @@ function ReferenceSlot({
               if (isReferenceRole(next) && next !== role) onRole(next)
             }}
             className={`${inlineSelectCls} min-w-0 flex-1 !px-2 !py-1 !text-xs`}
-            title={ROLE_COPY[role].hint}
+            title={hint}
           >
             {REFERENCE_ROLES.map((r) => (
               <option key={r} value={r}>
@@ -150,8 +166,14 @@ function ReferenceSlot({
           {saving && <Spinner className="h-3.5 w-3.5" />}
         </label>
       ) : (
-        <p className="text-xs font-medium text-neutral-600 dark:text-neutral-400" title={ROLE_COPY[role].hint}>
+        <p className="text-xs font-medium text-neutral-600 dark:text-neutral-400" title={hint}>
           {title}
+        </p>
+      )}
+      {override && (
+        <p className="flex items-start gap-1 text-[11px] text-neutral-600 dark:text-neutral-400">
+          <Paintbrush className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+          {ART_STYLE_OVERRIDE_CAPTION}
         </p>
       )}
       {!legacy && readAs && readAs !== role && (
@@ -172,10 +194,11 @@ function ReferenceSlot({
 /**
  * The card's reference images, each captioned with its job (What to make / Art style / Lettering)
  * and, when the vision pass read them per slot (`reference_analysis.references[i]`), what it found
- * in that image. The roles come from `cards.reference_roles`. A legacy card (null column) is
- * captioned "Style reference", because that is how the render reads it, with one "Apply roles"
- * button that stamps the studio order from Settings. Staff can change a slot's role until the card
- * is approved.
+ * in that image. The roles come from `cards.reference_roles`. A filled Art style slot carries the
+ * one-line "drawn in this image's style" caption (2026-10-01 rule; never on a style_test card). A
+ * legacy card (null column) is captioned "Style reference", because that is how the render reads it,
+ * with one "Apply roles" button that stamps the studio order from Settings. Staff can change a slot's
+ * role until the card is approved.
  */
 export function ReferencesPanel({
   card,
@@ -260,6 +283,7 @@ export function ReferencesPanel({
                 index={i}
                 role={roles[i]}
                 legacy={!stamped}
+                card={card}
                 analysis={analysis.perRef[i]}
                 editable={editable}
                 saving={savingSlot === i}
@@ -271,7 +295,7 @@ export function ReferencesPanel({
             <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
               <p className="min-w-0 flex-1">
                 Roles were not stamped on this card (created before slot roles): the render reads all {paths.length} reference
-                {paths.length === 1 ? '' : 's'} as art style until roles are saved.
+                {paths.length === 1 ? '' : 's'} as general style and subject references until roles are saved.
               </p>
               {editable && (
                 <button

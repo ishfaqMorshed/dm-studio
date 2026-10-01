@@ -211,3 +211,10 @@ Live runs on the E2E client (3 parses, ~$0.03 in total, 4.6–7.4 s each; the cl
 Found and fixed during the build: an apostrophe in a top-level comment of `wf8-brief-parse.sdk.js` made the SDK parser turn `\n` escapes inside Code-node strings into real line breaks (the node would have crashed live; `check.js` still said valid) — the tool test now audits every jsCode against plain evaluation; a stale-result bug (a second fill could re-apply the previous result); Undo now keeps edits made after the fill; a no-change fill no longer dirties the form; Undo stays visible while a later parse runs.
 
 Open (user, n8n UI): bind WF-6 as the Error workflow of WF-8; confirm the Kie node "Kie Parse Brief" uses credential "GPT Image 2 [DM-Kie]" (only matters when the platform is Kie or Auto).
+
+---
+
+## E2E-020 · references · major · The Art style reference (slot 2) was ignored
+- **Evidence (live card 72354a02, Chicken Happy Hour, 2026-10-01):** roles were stamped [subject, art_style, typography], but the live intake (analysis_prompt v2) described Image 1 only ("the description strictly follows Image 1's artwork"); the deployed prompt-engine labelled Images 1-3 together as "style/subject references" and added 3 library "client look" images (6 images); the tier-3 rule said keep "the reference's" art technique and palette; the Style Card said "use ONLY these colours".
+- **User decision:** the Art style reference wins for its card (Style Card fills the rest; never-do list stays hard; no client-look images when it is attached; QC judges palette/medium against it; onboarding test renders always use the Style Card).
+- **Fix (built, NOT deployed - ships with Style Card v2):** prompt-engine v8 ART STYLE block + label + precedence + effective_style contract; qc-judge v2.1 wording + style JSON pick; WF-2/WF-3 Build QC Request use effective_style; templates tier_rules v2 / qc_prompt v2 / analysis_prompt v3 / defects v2 (studio_26, studio_27, inactive rows edited in place); UI copy on the form, card page and Settings. Tests 96/96, golden `art_reference.expected.txt`. Card 72354a02 gets a value-less override (match Image 2 itself) until it is re-read by WF-1 v3.

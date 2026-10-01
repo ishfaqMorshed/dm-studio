@@ -12,16 +12,17 @@ The operator (user, or a session with the n8n write tools) runs the steps below 
 |---|---|---|---|---|---|---|
 | WF-1b Style Draft | `CsohPMosybjBoP8s` | `5ae44133-6c67-4196-a5a6-236f152bf49d` (updated 07:05:28Z) | `before/wf1b-style-draft.live-CsohPMosybjBoP8s.sdk.js` = `git show 2c90fc2:n8n/wf1b-style-draft.sdk.js` | `n8n/wf1b-style-draft.sdk.js` | `wf1b.ops.json` (65 ops; `wf1b.ops.split8.jsonl` = the same 65 in 9 lines of <= 8) | `wf1b.sticky.ops.json` -> live `Sticky Note 8350ba26` |
 | WF-1 Intake | `CrpmkqYiaWBtvto6` | `e5d2cb76-d4e6-4da9-9727-cfc15de759a2` (07:05:25Z) | `before/wf1-intake.sdk.js` = HEAD | `n8n/wf1-intake.sdk.js` | `wf1.ops.json` (22 ops) | `wf1.sticky.ops.json` -> `Sticky Note ae342437` |
-| WF-2 Generate | `KVLDYPaWZZZtOoir` | `53073bc3-253c-4fcf-af39-202e9db63330` (07:05:29Z) | `before/wf2-generate.sdk.js` = HEAD | `n8n/wf2-generate.sdk.js` | `wf2.ops.json` (3 ops) | `wf2.sticky.ops.json` -> `Sticky Note e40f5e01` |
-| WF-3 Edit | `V83NWHjzDdyiqtNP` | `1fbb0856-b853-4458-b181-03d5a7bc0fcd` (07:05:31Z) | `before/wf3-edit.sdk.js` = HEAD | `n8n/wf3-edit.sdk.js` | `wf3.ops.json` (2 ops) | `wf3.sticky.ops.json` -> `Sticky Note b3ad825a` |
+| WF-2 Generate | `KVLDYPaWZZZtOoir` | `53073bc3-253c-4fcf-af39-202e9db63330` (07:05:29Z) | `before/wf2-generate.sdk.js` = HEAD | `n8n/wf2-generate.sdk.js` | `wf2.ops.json` (4 ops) | `wf2.sticky.ops.json` -> `Sticky Note e40f5e01` |
+| WF-3 Edit | `V83NWHjzDdyiqtNP` | `1fbb0856-b853-4458-b181-03d5a7bc0fcd` (07:05:31Z) | `before/wf3-edit.sdk.js` = HEAD | `n8n/wf3-edit.sdk.js` | `wf3.ops.json` (3 ops) | `wf3.sticky.ops.json` -> `Sticky Note b3ad825a` |
 
 Op counts (diff-ops order: addNode/setNodeSettings -> updateNodeParameters -> removeConnection -> removeNode -> addConnection):
 
 - `wf1b.ops.json`: 65 = addNode 14, setNodeSettings 10, updateNodeParameters 10, removeConnection 2, removeNode 1, addConnection 28.
   Adds Get Templates, Build Sheet Request, Parse Sheets, Sheet Platform?, Describe Designs (Kie credential `Gemini 3.1 Pro [DM-Kie]` 0l2nHQUQNnsCAfTR carried in the op), Kie Sheet Down?, OpenRouter Describe Designs, Check Style Card, Card OK?, Build Repair Request, Repair Style Card, Parse Repair, Check Repaired Card, Repaired Card OK?. Updates Fail Message, List Library (select adds `meta`, order `created_at.desc,id.desc`), Build Style Request (v3 tokens), Profile Style + OpenRouter Profile Style (timeout 240000), Parse Style Card, New Style Card Version, Extract Style Card Id, Draft -> done / Draft -> failed (now PATCH `style_draft_requests` with `raw`). Removes Get Template.
 - `wf1.ops.json`: 22 = addNode 2 (Card -> review (no Style Card), Draft Requested?), setNodeSettings 1, updateNodeParameters 6 (Get Vision Model, Get Templates, Build Analysis Request, Analyze References, OpenRouter Analyze, Parse Analysis), removeConnection 1, removeNode 8 (the fallback profiler: Build Style Request, Style Platform?, Profile Style, OpenRouter Profile Style, Kie Style Down?, Parse Style Card, Style Draft OK?, New Style Card Version), addConnection 4.
-- `wf2.ops.json`: 3 = updateNodeParameters 3 (Get Generation, Build QC Request, Build Corrective Prompt).
-- `wf3.ops.json`: 2 = updateNodeParameters 2 (Get Generation, Build QC Request).
+- `wf2.ops.json`: 4 = updateNodeParameters 4 (Get Generation, Build QC Request, QC Judge, Build Corrective Prompt).
+- `wf3.ops.json`: 3 = updateNodeParameters 3 (Get Generation, Build QC Request, QC Judge).
+- Art style override (2026-10-01, regenerated after the WF-2/3 change): `Build QC Request` (both) uses `magic_prompt_json.effective_style` from prompt-engine v8 when present - `STYLE_CARD_JSON` = that look pruned to the same keys plus its `source` (`art_reference` = the analysed Art style reference of the card wins: its medium, linework, shading, texture, edge finish and palette; `style_card` = the Style Card values as the engine pruned them), `PALETTE_RULE` from its `palette_mode` (the client strictness applied to that palette), `FORBID_LIST` from its `forbid` (same text-demand filter) - and outputs it as `style_card`; `QC Judge` (both) adds `style_card` to the qc-judge body (JSON.stringify drops it when absent, so without effective_style the body is the old four keys and qc-judge keeps its `style_card_snapshot` default). Without `effective_style` (prompt-engine up to v7) the Style Card path is unchanged, byte for byte. Sticky ops regenerated for the new canvas text. Regenerated again 2026-10-01 (same 4 / 3 ops): `PALETTE_RULE` is "always true - no colours were read from the Art style reference, so colours are not judged" when an `art_reference` look has no palette (prompt-engine v8 sends that value-less look for a stamped Art style slot with no per-slot reading, e.g. card 72354a02); sticky text says so.
 
 Sanity (run today, repeat any time - every file is a JSON array, every addConnection / update / settings op names a node of the AFTER file, every removeNode names a node that is gone):
 
@@ -35,7 +36,7 @@ const names=new Set(after.nodes.map(n=>n.name));const c={};for(const x of ops)c[
 const bad=ops.filter(x=>x.type==="addConnection"&&(!names.has(x.source)||!names.has(x.target)));
 console.log(o,ops.length,JSON.stringify(c),"bad addConnection:",bad.length)' n8n/ops/$k.ops.json n8n/$f.sdk.js; done
 ```
-Result 2026-09-30: `wf1b 65 ... bad addConnection: 0`, `wf1 22 ... 0`, `wf2 3 ... 0`, `wf3 2 ... 0`.
+Result 2026-09-30: `wf1b 65 ... bad addConnection: 0`, `wf1 22 ... 0`, `wf2 3 ... 0`, `wf3 2 ... 0`. Result 2026-10-01 after the art style override: `wf2 4 ... 0`, `wf3 3 ... 0` (again after the value-less palette rule; every update op's parameters equal the AFTER node's).
 
 Duplicates: `wf1b-from-live-CsohPMosybjBoP8s.ops.json` and `wf1b-from-base-baCsaUp7HdrrSf2i.ops.json` (+ `.split8.jsonl`) are byte-identical to `wf1b.ops.json` (checked with `cmp`); the former `wf1-intake.ops.json`, `wf2-generate.ops.json` and `wf3-edit.ops.json` copies were removed on 2026-10-01 after the WF-2/3 forbid-filter change (the canonical `wf2.ops.json` / `wf3.ops.json` carry it). The runbooks (`wf1-intake.runbook.md`, `docs/runbook-wf1b-style-card-v2.md`, `docs/runbook-wf2-wf3-qc-v2.md`) hold the per-node detail and failure tables. Apply ONE set, once.
 
@@ -100,7 +101,7 @@ In-place update is preferred over swapping in the unpublished copy `baCsaUp7Hdrr
 
 ## 4. Step B - WF-1 (`CrpmkqYiaWBtvto6`) + analysis_prompt v3, and the prompt-engine v8 templates
 
-prompt-engine v8 must already be deployed (section 2) - tier_rules v2 carries `{{niche}}`, which only v8 fills.
+prompt-engine v8 must already be deployed (section 2) - tier_rules v2 carries `{{niche}}`, which only v8 fills. The in-place rewrites of the still-inactive rows must be applied first: `20261001_studio_26_art_style_wins.sql` (tier_rules v2, qc_prompt v2, analysis_prompt v3; applied 2026-10-01) and `20261001_studio_27_defects_art_style.sql` (defects v2: distress, halftone and maturity measured against the ART STYLE reference when one is attached; NOT applied yet). Check: `select md5(body) from public.prompt_templates where slug = 'defects' and version = 2;` must no longer be `ba9965e7d7cbb8d4f5860a7fdb1a684f` (the studio_21 body).
 
 1. `update_workflow('CrpmkqYiaWBtvto6', operations = <wf1.ops.json>)` (one call; or `node n8n/tools/diff-ops.js n8n/ops/before/wf1-intake.sdk.js n8n/wf1-intake.sdk.js --split 8` for batches, in order).
 2. `update_workflow('CrpmkqYiaWBtvto6', operations = <wf1.sticky.ops.json>)` (target `Sticky Note ae342437`).
@@ -159,6 +160,7 @@ qc-judge v2 deployed first (section 2); otherwise `style_match` stays null and t
      -- style_match non-null (spec 2.3 acceptance); dbl_period / niche_leak / as_typed all false (prompt-engine v8 + v2 templates)
      ```
      In the execution, `Build QC Request` output has `expected_subject`, `template_version` 2, and its text contains `EXPECTED SUBJECT: "`, `FORBID: 1. `, the pruned one-line card JSON, no `{{`, no `Add two keys to your JSON` (the v1 paragraph), no `@` / `handle`.
+     Art style override (prompt-engine v8): on a card whose Art style slot holds an analysed reference, `Build QC Request` output has `style_card.source` = `art_reference`, its card JSON line starts with `{"source":"art_reference"` and carries the reference medium and palette (not the Style Card hexes), the `palette_ok` sentence matches the client `palette_mode`, and the `QC Judge` request body carries the same `style_card`; on a card with an empty Art style slot `source` is `style_card`; a `style_test` card is always `style_card`.
    - WF-3: Edit text on that generation -> the same checks on its `Build QC Request`; when a corrective pass runs, `Build Corrective Prompt` output starts with `CRITICAL CORRECTIONS` exactly once and has no `..`.
 
 ## 6. Rollback (per step; templates and workflow in the same step, reverse order of section 2's rule does not matter here because both go back together)

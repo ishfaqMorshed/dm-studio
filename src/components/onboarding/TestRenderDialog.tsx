@@ -3,7 +3,7 @@ import { AlertTriangle, Loader2, Lock, Sparkles } from 'lucide-react'
 import type { TestCard } from '../../lib/api'
 import { parseStyleBrief, TEXT_CASE_LABEL } from '../../lib/styleBrief'
 import type { Client, ClientReference, Settings } from '../../lib/types'
-import { ROLE_COPY, slotRoles } from '../brief/referenceRoles'
+import { ROLE_COPY, roleHint, slotRoles } from '../brief/referenceRoles'
 import { btnPrimary, btnSecondary, hintCls, inputCls, labelCls } from '../style/classes'
 import { Modal } from '../style/Modal'
 import type { StyleCardDoc } from '../style/styleCardSchema'
@@ -322,7 +322,7 @@ export function TestRenderDialog({
                   {refs.map((p, i) => (
                     <li key={p.ref.id} className="w-16">
                       <RefThumb ref_={p.ref} number={i + 1} className="h-16 w-16" />
-                      <span className="mt-0.5 block truncate text-[10px] text-neutral-500" title={ROLE_COPY[p.role].hint}>
+                      <span className="mt-0.5 block truncate text-[10px] text-neutral-500" title={roleHint(p.role, 'style_test')}>
                         {ROLE_COPY[p.role].label}
                       </span>
                     </li>

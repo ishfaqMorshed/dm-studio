@@ -4,7 +4,9 @@
 // n8n globals ($, $input) against the VERBATIM seeded templates: qc_prompt v1 + corrective_suffix v1 from
 // ../../supabase/migrations/20260924_prompt_templates_v1.sql, and qc_prompt v2 read through ./template-from-migrations.js from the
 // migration that inserts it (20260930_studio_21_style_card_v2.sql, jsonb_populate_record form, $qc$ tag); the copy embedded below
-// (v1 body + the spec 1.4 tail) is only the fallback and a check fails when the migration body drifts from it. Usage: node test-wf2-prompts.js
+// (v1 body + the spec 1.4 tail) is only the fallback and a check fails when the migration body drifts from it. It also covers the prompt-engine v8
+// magic_prompt_json.effective_style contract (art_reference strict / flexible, style_card, absent) and the QC Judge style_card pass-through.
+// Usage: node test-wf2-prompts.js
 const fs = require('fs');
 const path = require('path');
 const { parseWorkflowCodeToBuilder } = require('@n8n/workflow-sdk');
@@ -146,6 +148,105 @@ check(qc3Card.expected_subject === 'Highland cow' && promptOf(qc3Card).includes(
 const getGenUrl = (nodes) => String((nodes.find((n) => n.name === 'Get Generation') || { parameters: {} }).parameters.url || '');
 const embedsSubmission = (url) => /cards!generations_card_id_fkey\([^)]*\bclient_submission\b[^)]*\)/.test(url);
 check(embedsSubmission(getGenUrl(wf2Nodes)) && embedsSubmission(getGenUrl(wf3Nodes)), 'WF-2 and WF-3 Get Generation embed cards(client_submission), so the fallback can fire in both lanes');
+
+// ---- Build QC Request with prompt-engine v8 magic_prompt_json.effective_style (WF-2 + WF-3) ------------------------------------
+// User decision 2026-10-01: the Art style reference wins for its card. effective_style.source art_reference carries the reference look
+// (medium, linework, shading, texture, edge finish, palette) with palette_mode = the client strictness applied to that palette; source
+// style_card carries the Style Card values. When present it IS what QC judges against (STYLE_CARD_JSON + its source, PALETTE_RULE from its
+// palette_mode, FORBID_LIST from its forbid) and it is also sent to qc-judge as style_card; absent (engine <= v7) = the Style Card path.
+const refLook = {
+  source: 'art_reference', reference_slot: 2, medium: 'watercolour illustration', realism: 'painterly', linework: { weight: 'fine', style: 'loose ink', outline: 'none' }, shading: 'wet washes', shading_method: 'watercolour', texture: 'paper grain', edge_finish: 'soft bleed',
+  palette: [{ name: 'sage', hex: '#9CAF88', role: 'fill', weight: 'dominant' }, { name: 'ochre', hex: '#C8963E', role: 'accent', weight: 'accent' }], palette_mode: 'strict',
+  forbid: ['gradients', 'photorealism', 'Omitting the bottom center social media handle'], composition: 'the hero centred under an arched headline', typography: { vibe: 'western slab', placement: 'arched above the hero', case: 'UPPER' },
+  rules: { palette_mode: 'strict', text_case: 'UPPER', lock_typography: true, lock_composition: false }
+};
+const peES = (look) => ({ magic_prompt_json: { ...peV8.magic_prompt_json, effective_style: look } });
+const ES_KEYS = ['source'].concat(PRUNED_KEYS);
+const esJson = (text) => jsonLine(text, '{"source":');
+
+// (1) art_reference, strict client: the reference look replaces the Style Card everywhere QC reads a look
+const qcRef = qcRun(genWithText, peES(refLook), templatesV2);
+const pRef = promptOf(qcRef), refJson = esJson(pRef);
+check(JSON.stringify(Object.keys(refJson)) === JSON.stringify(ES_KEYS), 'QC v2 + effective_style art_reference: STYLE_CARD_JSON = source + the same pruned keys (' + ES_KEYS.join(', ') + '); reference_slot / palette_mode / evidence not sent');
+check(refJson.source === 'art_reference' && refJson.medium === 'watercolour illustration' && refJson.shading_method === 'watercolour' && refJson.texture === 'paper grain' && refJson.edge_finish === 'soft bleed' && JSON.stringify(refJson.linework) === JSON.stringify(refLook.linework), 'QC v2 + art_reference: medium, linework, shading method, texture and edge finish come from the Art style reference');
+check(JSON.stringify(refJson.palette) === JSON.stringify(refLook.palette) && !pRef.includes('#EAE6D9') && !pRef.includes('screen-print'), 'QC v2 + art_reference: palette = the reference palette as-is (no Style Card palette_variants entry on a black garment, no Style Card hex or medium anywhere in the text)');
+check(pRef.includes('"palette_ok":true|false (' + STRICT + ')') && refJson.rules.palette_mode === 'strict', 'QC v2 + art_reference strict: PALETTE_RULE = the strict sentence, rules.palette_mode strict');
+check(pRef.includes('FORBID: 1. gradients; 2. photorealism\n') && !/handle|@/i.test(pRef), 'QC v2 + art_reference: FORBID_LIST from effective_style.forbid (the client never-do list), numbered, text demands dropped');
+check(pRef.includes('EXPECTED SUBJECT: "Highland cow"') && !pRef.includes('Add two keys to your JSON') && !/\{\{[A-Z_]+\}\}/.test(pRef), 'QC v2 + art_reference: subject block kept, no fallback paragraph, no unrendered tokens');
+check(qcRef.style_card && JSON.stringify(Object.keys(qcRef.style_card)) === JSON.stringify(ES_KEYS.concat(['forbid'])) && qcRef.style_card.source === 'art_reference' && JSON.stringify(qcRef.style_card.forbid) === JSON.stringify(['gradients', 'photorealism']) && JSON.stringify(qcRef.style_card.palette) === JSON.stringify(refLook.palette), 'QC + art_reference: output style_card for qc-judge = the same pruned look + source + the filtered forbid (numbering matches FORBID_LIST)');
+
+// (2) art_reference, flexible client: the client strictness applied to the reference palette
+const refFlex = { ...refLook, palette_mode: 'flexible', rules: { ...refLook.rules, palette_mode: 'flexible' } };
+const pRefFlex = promptOf(qcRun(genWithText, peES(refFlex), templatesV2));
+check(pRefFlex.includes('"palette_ok":true|false (' + FLEXIBLE + ')') && esJson(pRefFlex).rules.palette_mode === 'flexible' && JSON.stringify(esJson(pRefFlex).palette) === JSON.stringify(refLook.palette), 'QC v2 + art_reference flexible: PALETTE_RULE = the flexible sentence, still judged against the reference palette');
+// effective_style.palette_mode is the authority: it wins over its own rules and over the Style Card snapshot
+const pModeWins = promptOf(qcRun({ ...genWithText, style_card_snapshot: noVariants }, peES({ ...refLook, palette_mode: 'flexible' }), templatesV2));
+check(pModeWins.includes('"palette_ok":true|false (' + FLEXIBLE + ')') && esJson(pModeWins).rules.palette_mode === 'flexible', 'QC + effective_style: palette_mode flexible wins over rules.palette_mode strict (rules in the JSON follow it)');
+const pStrictOverFlexCard = promptOf(qcRun({ ...genWithText, style_card_snapshot: noVariants }, peES(refLook), templatesV2));
+check(pStrictOverFlexCard.includes('"palette_ok":true|false (' + STRICT + ')') && !pStrictOverFlexCard.includes(FLEXIBLE), 'QC + effective_style strict: strict sentence even when the Style Card snapshot is flexible');
+const noMode = { ...refLook, rules: { ...refLook.rules, palette_mode: 'flexible' } }; delete noMode.palette_mode;
+check(promptOf(qcRun(genWithText, peES(noMode), templatesV2)).includes('"palette_ok":true|false (' + FLEXIBLE + ')'), 'QC + effective_style without palette_mode: rules.palette_mode of the effective style decides');
+const noForbid = { ...refLook }; delete noForbid.forbid;
+check(promptOf(qcRun(genWithText, peES(noForbid), templatesV2)).includes('FORBID: 1. gradients; 2. drop shadows; 3. photorealism\n'), 'QC + effective_style without a forbid array: the Style Card forbid list stays the hard negative');
+
+// (3) source style_card: the engine-pruned Style Card values are used as sent (the engine already chose the garment-side palette)
+const cardLook = { source: 'style_card', reference_slot: null, medium: 'screen-print', realism: 'stylised', linework: styleCard.linework, shading: 'flat fills', shading_method: 'flat', texture: 'none', edge_finish: 'clean', palette: [{ name: 'cream', hex: '#EAE6D9' }, { name: 'rust', hex: '#BA4B36' }], palette_mode: 'strict', forbid: styleCard.forbid, composition: styleCard.composition, typography: styleCard.typography, rules: styleCard.rules };
+const qcCardLook = qcRun(genWithText, peES(cardLook), templatesV2);
+const pCardLook = promptOf(qcCardLook);
+check(esJson(pCardLook).source === 'style_card' && esJson(pCardLook).medium === 'screen-print' && JSON.stringify(esJson(pCardLook).palette) === JSON.stringify(cardLook.palette) && pCardLook.includes('"palette_ok":true|false (' + STRICT + ')'), 'QC v2 + effective_style style_card: the Style Card values as the engine sent them, source style_card, strict sentence');
+check(pCardLook.includes('FORBID: 1. gradients; 2. drop shadows; 3. photorealism\n') && !/handle|@/i.test(pCardLook) && qcCardLook.style_card && qcCardLook.style_card.source === 'style_card', 'QC v2 + effective_style style_card: same FORBID list as today, style_card sent to qc-judge with source style_card');
+
+// (4) absent / malformed -> exactly the old Style Card path, nothing extra for qc-judge
+check(!('style_card' in qcV2) && !promptOf(qcV2).includes('"source"') && !('style_card' in qcV1), 'QC without effective_style (engine <= v7): no style_card output (qc-judge keeps its style_card_snapshot default), no source key in the card JSON');
+const pBad = qcRun(genWithText, peES('art_reference'), templatesV2), pBadArr = qcRun(genWithText, peES([refLook]), templatesV2);
+check(promptOf(pBad) === p2 && promptOf(pBadArr) === p2 && !('style_card' in pBad) && !('style_card' in pBadArr), 'QC with a non-object effective_style (string / array): ignored, byte-identical to the Style Card path');
+
+// (5) qc_prompt v1 (fallback paragraph) with effective_style: the appended JSON is the effective look + forbid
+const pRefV1 = promptOf(qcRun(genWithText, peES(refFlex), templatesV1));
+const flexHead = fallbackHead.replace(STRICT, FLEXIBLE);
+const v1RefJson = JSON.parse(pRefV1.slice(pRefV1.indexOf(flexHead) + flexHead.length).split('\n')[0]);
+check(pRefV1.includes(flexHead) && v1RefJson.source === 'art_reference' && JSON.stringify(v1RefJson.palette) === JSON.stringify(refLook.palette) && JSON.stringify(v1RefJson.forbid) === JSON.stringify(['gradients', 'photorealism']) && !/handle|@/i.test(pRefV1), 'QC v1 template + art_reference flexible: fallback paragraph with the flexible sentence, JSON = the reference look + filtered forbid');
+
+// (6) WF-3 edit lane: the same behaviour, the edit_text swap untouched
+const qc3Ref = qc3Run(editGen, { magic_prompt_json: { effective_style: refLook } }, templatesV2);
+const p3Ref = promptOf(qc3Ref);
+check(qc3Ref.expected_text === 'FAMILY FOREVER\nEST 2019' && JSON.stringify(esJson(p3Ref)) === JSON.stringify(refJson) && p3Ref.includes('FORBID: 1. gradients; 2. photorealism\n') && p3Ref.includes('"palette_ok":true|false (' + STRICT + ')'), 'WF-3 QC + art_reference: same card JSON / FORBID / PALETTE_RULE as WF-2, edit_text swap kept');
+check(JSON.stringify(qc3Ref.style_card) === JSON.stringify(qcRef.style_card) && !('style_card' in qc3), 'WF-3 QC: style_card for qc-judge only with effective_style, identical to WF-2');
+const p3Flex = promptOf(qc3Run(editGen, { magic_prompt_json: { effective_style: refFlex } }, templatesV2));
+check(p3Flex.includes('"palette_ok":true|false (' + FLEXIBLE + ')'), 'WF-3 QC + art_reference flexible: flexible sentence');
+
+// (6b) art_reference with nothing read from the art image (prompt-engine v8 value-less look: a stamped Art style slot with no per-slot
+// reading - the prompt says "exactly as in Image k"): QC sees only the generated image, so palette_ok is always true (colours not
+// judged) instead of the strict sentence against an empty list; the look still goes to qc-judge (which marks palette / medium not judged)
+const UNREAD = 'always true - no colours were read from the Art style reference, so colours are not judged';
+const refUnread = { ...refLook, medium: '', realism: '', linework: { weight: '', style: '', outline: '' }, shading: '', shading_method: '', texture: '', edge_finish: '', palette: [] };
+const qcUnread = qcRun(genWithText, peES(refUnread), templatesV2), pUnread = promptOf(qcUnread);
+check(pUnread.includes('"palette_ok":true|false (' + UNREAD + ')') && !pUnread.includes(STRICT) && JSON.stringify(esJson(pUnread).palette) === '[]' && qcUnread.style_card && qcUnread.style_card.source === 'art_reference' && JSON.stringify(qcUnread.style_card.palette) === '[]', 'QC v2 + art_reference with no palette read: PALETTE_RULE = always true (colours not judged), never the strict sentence against an empty list; style_card still sent');
+check(promptOf(qcRun(genWithText, peES({ ...refUnread, palette_mode: 'flexible' }), templatesV2)).includes('"palette_ok":true|false (' + UNREAD + ')'), 'QC v2 + art_reference flexible with no palette read: always true too');
+const refNoPalOnly = { ...refLook, palette: undefined };
+check(promptOf(qcRun(genWithText, peES(refNoPalOnly), templatesV2)).includes('"palette_ok":true|false (' + UNREAD + ')'), 'QC v2 + art_reference whose palette is missing (not an array): always true');
+check(promptOf(qcRun(genWithText, peES({ ...cardLook, palette: [] }), templatesV2)).includes('"palette_ok":true|false (' + STRICT + ')'), 'QC v2 + effective_style style_card with an empty palette: the strict sentence as before (only an art reference look can be unread)');
+check(promptOf(qcRun(genWithText, peES(refUnread), templatesV1)).includes(fallbackHead.replace(STRICT, UNREAD)), 'QC v1 template + art_reference with no palette read: the fallback paragraph carries the always-true sentence');
+check(promptOf(qc3Run(editGen, { magic_prompt_json: { effective_style: refUnread } }, templatesV2)).includes('"palette_ok":true|false (' + UNREAD + ')'), 'WF-3 QC + art_reference with no palette read: same always-true sentence');
+
+// (7) shared lines identical in WF-2 and WF-3 (one look rule for both lanes)
+const sharedLines = (code) => code.split('\n').filter((l) => /^(const sc = |\/\/ the look QC judges|const side = |const forbid = |const look = |const paletteRule = |const vars = |if \(!\/STYLE_CARD_JSON|return )/.test(l));
+const shared2 = sharedLines(qcCode), shared3 = sharedLines(qc3Code);
+check(shared2.length === 9 && JSON.stringify(shared2) === JSON.stringify(shared3), 'WF-2 and WF-3 Build QC Request: the 9 look / token / return lines are byte-identical');
+check(qcCode.split('\n').length <= 20 && qc3Code.split('\n').length <= 20, 'WF-2 and WF-3 Build QC Request stay within 20 lines (' + qcCode.split('\n').length + ' / ' + qc3Code.split('\n').length + ')');
+
+// (8) QC Judge body: style_card passes through only when Build QC Request produced it
+const judgeBody = (nodes, qcOut, extra) => {
+  const expr = String((nodes.find((n) => n.name === 'QC Judge') || { parameters: {} }).parameters.jsonBody || '');
+  const m = expr.match(/^=\{\{([\s\S]*)\}\}$/); if (!m) throw new Error('QC Judge jsonBody is not a single expression');
+  const data = Object.assign({ 'Build QC Request': [qcOut], Config: [{ generationId: 'g' }], 'Edit Context': [{ generationId: 'g' }], 'Build Create Task': [{ attempt: 1 }], 'Build Edit Task': [{ attempt: 1 }] }, extra || {});
+  const $ = (name) => { if (!(name in data)) throw new Error('unmocked node ' + name); return { first: () => ({ json: data[name][0] }) }; };
+  return JSON.parse(new Function('$', '$json', 'return (' + m[1] + ');')($, { choices: [{ message: { content: '{"pass":true}' } }] }));
+};
+const jb2 = judgeBody(wf2Nodes, qcRef), jb2Old = judgeBody(wf2Nodes, qcV2), jb3 = judgeBody(wf3Nodes, qc3Ref), jb3Old = judgeBody(wf3Nodes, qc3);
+check(JSON.stringify(jb2.style_card) === JSON.stringify(qcRef.style_card) && jb2.qc_raw === '{"pass":true}' && JSON.stringify(jb2.exact_text_lines) === JSON.stringify(['FAMILY FIRST', 'EST 2019']) && jb2.attempt === 1, 'WF-2 QC Judge body: style_card = Build QC Request style_card (source art_reference) next to the unchanged fields');
+check(!('style_card' in jb2Old) && JSON.stringify(Object.keys(jb2Old)) === JSON.stringify(['generation_id', 'qc_raw', 'exact_text_lines', 'attempt']), 'WF-2 QC Judge body without effective_style: the old four keys only');
+check(JSON.stringify(jb3.style_card) === JSON.stringify(qc3Ref.style_card) && !('style_card' in jb3Old) && JSON.stringify(Object.keys(jb3Old)) === JSON.stringify(['generation_id', 'qc_raw', 'exact_text_lines', 'attempt']), 'WF-3 QC Judge body: style_card only with effective_style, else the old four keys');
 
 // ---- Build Corrective Prompt ----------------------------------------------------------------------------------------------------
 const corrCode = jsCode('Build Corrective Prompt');

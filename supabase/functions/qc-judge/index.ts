@@ -5,12 +5,13 @@
 // returns true. verify_jwt is off; the apikey is the project's publishable key (public), never a service-role key.
 // POST {generation_id, qc_raw, exact_text_lines?: string[], style_card?: object, expected_subject?: string, attempt?: number}
 //   qc_raw = the Gemini response text, the whole chat-completions response object, or the parsed verdict object.
-//   exact_text_lines defaults to the card's print_text lines when omitted; style_card defaults to the generation's
-//   style_card_snapshot; expected_subject defaults to magic_prompt_json.subject.text (prompt-engine v8), else
+//   exact_text_lines defaults to the card's print_text lines when omitted; style_card defaults to prompt-engine v8's
+//   magic_prompt_json.effective_style (the look the prompt asked for - the Art style reference look on an art-reference
+//   card), else the generation's style_card_snapshot; expected_subject defaults to magic_prompt_json.subject.text (prompt-engine v8), else
 //   brief_snapshot.subject, else cards.client_submission.subject; attempt defaults to generations.attempt.
 //   settings.qc_subject_regen (studio_21, default true) decides whether a wrong hero regenerates once.
 
-import { normaliseQc, normaliseTextLines } from './qc.ts';
+import { normaliseQc, normaliseTextLines, pickStyleJson } from './qc.ts';
 export { normaliseQc } from './qc.ts';
 
 const SB_URL = (Deno.env.get('SUPABASE_URL') ?? 'https://voatrqhfsdfjomyajovi.supabase.co').replace(/\/$/, '');
@@ -34,7 +35,7 @@ async function secretOk(secret: string): Promise<boolean> {
 
 type GenRow = {
   id: string; attempt: number | null; style_card_snapshot: unknown;
-  magic_prompt_json: { subject?: { text?: unknown } } | null;
+  magic_prompt_json: { subject?: { text?: unknown }; effective_style?: unknown } | null;
   brief_snapshot: { subject?: unknown } | null;
   cards: { print_text: unknown; client_submission: { subject?: unknown } | null } | null;
 };
@@ -90,7 +91,7 @@ export async function handler(req: Request): Promise<Response> {
     const exact_text_lines = body.exact_text_lines !== undefined && body.exact_text_lines !== null
       ? normaliseTextLines(body.exact_text_lines)
       : normaliseTextLines(gen.cards?.print_text);
-    const style_card = body.style_card !== undefined && body.style_card !== null ? body.style_card : gen.style_card_snapshot;
+    const style_card = pickStyleJson(body.style_card, gen.magic_prompt_json, gen.style_card_snapshot);
     const expected_subject = str(body.expected_subject) || str(gen.magic_prompt_json?.subject?.text) || str(gen.brief_snapshot?.subject) || str(gen.cards?.client_submission?.subject);
     const bodyAttempt = Number(body.attempt);
     const attempt = Number.isFinite(bodyAttempt) && bodyAttempt >= 1 ? Math.floor(bodyAttempt) : (gen.attempt ?? 1);
