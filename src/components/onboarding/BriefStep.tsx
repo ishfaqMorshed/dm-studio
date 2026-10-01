@@ -1,17 +1,24 @@
 import { forwardRef, useEffect, useId, useMemo, useState, type FormEvent } from 'react'
-import { AlertTriangle, Loader2, Save } from 'lucide-react'
+import { AlertTriangle, Loader2, Save, Sparkles } from 'lucide-react'
 import { isPermissionError, saveOnboardingBrief } from '../../lib/api'
 import {
+  BRIEF_FILL_LABEL,
   PALETTE_MODES,
   TEXT_CASES,
+  applyParsedBrief,
   briefGaps,
   briefGapsSummary,
   parseStyleBrief,
   readRules,
+  recordBriefFill,
   rulesEqual,
   rulesFromBrief,
   rulesSummary,
   styleBriefToJson,
+  undoBriefFill,
+  type BriefFillKey,
+  type BriefFillRecord,
+  type BriefForm,
   type PaletteMode,
   type StyleBrief,
   type TextCase,
@@ -22,15 +29,20 @@ import { SIMILARITY_TIERS, SIMILARITY_TIER_HINT } from '../clientPanel/tiers'
 import { btnPrimary, hintCls, inputCls, labelCls } from '../style/classes'
 import { normalizeStyleCard } from '../style/styleCardSchema'
 import { TagInput } from '../style/TagInput'
+import { BriefFillPanel } from './BriefFillPanel'
 import { StepFrame } from './StepFrame'
 import { STEP_SHORT } from './steps'
+import { useBriefParse } from './useBriefParse'
 
-interface BriefForm {
-  brief: StyleBrief
-  tier: number
-  garment_colors: string[]
-  notes: string
+/** "Fill from text" since the last save (or Undo): what the panel says and what Undo fill puts back. */
+interface FillState {
+  /** Every unsaved fill merged (`recordBriefFill`); null when none changed anything (nothing to undo). */
+  undo: BriefFillRecord | null
+  /** How many controls the latest fill changed (0 = the text matched the form): the panel's message. */
+  lastCount: number
 }
+
+const NO_MARKS: ReadonlySet<BriefFillKey> = new Set()
 
 function formFromClient(client: Client): BriefForm {
   return {
@@ -116,10 +128,63 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
 
   // The panel polls every 20 s: adopt a server change when there are no local edits.
   const [prevBaseline, setPrevBaseline] = useState(baseline)
+  let adopting = false
   if (baseline !== prevBaseline) {
     const hadLocalEdits = current !== prevBaseline
     setPrevBaseline(baseline)
-    if (!hadLocalEdits) setForm(serverForm)
+    if (!hadLocalEdits) {
+      setForm(serverForm)
+      adopting = true
+    }
+  }
+
+  // "Fill from text": a finished parse fills the FORM once (keyed by its request id), never the
+  // client. Each changed control keeps its "filled from text" mark until the designer edits it, the
+  // brief is saved or the fill is undone. Fills since the last save merge into one Undo record; a fill
+  // that changes nothing keeps the earlier one's Undo.
+  const parse = useBriefParse(client.id)
+  const [appliedId, setAppliedId] = useState<string | null>(null)
+  const [fill, setFill] = useState<FillState | null>(null)
+  const [marked, setMarked] = useState<ReadonlySet<BriefFillKey>>(NO_MARKS)
+  const parsedRequest = parse.phase === 'done' && parse.result ? parse.request : null
+  if (!adopting && parsedRequest && parse.result && parsedRequest.id !== appliedId) {
+    const { next, changedKeys } = applyParsedBrief(form, parse.result, parsedRequest.text)
+    setAppliedId(parsedRequest.id)
+    // A fill that changes no field leaves the form alone: storing only the pasted text would make the
+    // form dirty with nothing visible to check, and its Undo would remove nothing the designer can see.
+    if (changedKeys.length > 0) {
+      setForm(next)
+      setFill({ undo: recordBriefFill(fill?.undo ?? null, form, next, changedKeys), lastCount: changedKeys.length })
+      setMarked(new Set([...marked, ...changedKeys]))
+    } else {
+      setFill({ undo: fill?.undo ?? null, lastCount: 0 })
+    }
+  }
+
+  const isMarked = (key: BriefFillKey) => marked.has(key)
+  /** The designer changed a control: its "filled from text" mark goes (Undo still compares values). */
+  const unmark = (key: BriefFillKey) =>
+    setMarked((m) => {
+      if (!m.has(key)) return m
+      const n = new Set(m)
+      n.delete(key)
+      return n
+    })
+
+  function undoFill() {
+    const undo = fill?.undo
+    if (!undo) return
+    const { next, kept } = undoBriefFill(form, undo)
+    setForm(next)
+    setFill(null)
+    setMarked(NO_MARKS)
+    parse.reset()
+    if (kept.length > 0) {
+      toast.toast(
+        `Fill undone. Kept your later edits to ${kept.map((k) => BRIEF_FILL_LABEL[k]).join(', ')}.`,
+        'info',
+      )
+    }
   }
 
   useEffect(() => {
@@ -128,8 +193,14 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
   useEffect(() => () => onDirtyChange(false), [onDirtyChange])
 
   const disabled = saving
-  const setBrief = <K extends keyof StyleBrief>(key: K, value: StyleBrief[K]) =>
+  const setBrief = <K extends keyof StyleBrief & BriefFillKey>(key: K, value: StyleBrief[K]) => {
+    unmark(key)
     setForm((f) => ({ ...f, brief: { ...f.brief, [key]: value } }))
+  }
+  const setField = <K extends 'tier' | 'garment_colors' | 'notes'>(key: K, value: BriefForm[K]) => {
+    unmark(key)
+    setForm((f) => ({ ...f, [key]: value }))
+  }
 
   // The draft on show was analysed with other rules than the saved brief: say so.
   const savedRules = rulesFromBrief(serverForm.brief)
@@ -142,6 +213,8 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
     setError(null)
     try {
       const sent = form
+      const fillAtSave = fill
+      const marksAtSave = marked
       const saved = await saveOnboardingBrief(client.id, {
         style_brief: styleBriefToJson(sent.brief),
         default_similarity_tier: sent.tier,
@@ -158,6 +231,10 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
         toast.error(msg)
         return false
       }
+      // The fill is part of the saved brief now: nothing left to undo and no marks (unless another
+      // fill landed while the save was in flight; that one is not saved yet and keeps both).
+      setFill((f) => (f === fillAtSave ? null : f))
+      setMarked((m) => (m === marksAtSave ? NO_MARKS : m))
       toast.success(`Brief saved. The next analysis and every new brief for ${client.name} use it.`)
       return true
     } catch (e) {
@@ -221,6 +298,13 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
           : 'Saving writes the four onboarding fields of the client record; the analysis reads them on its next run.'
       }
     >
+      <BriefFillPanel
+        parse={parse}
+        disabled={saving}
+        filledCount={fill ? fill.lastCount : null}
+        undoFills={fill?.undo ? fill.undo.fills : 0}
+        onUndo={fill?.undo ? undoFill : null}
+      />
 
       {staleDraft && draftRules && (
         <p
@@ -240,6 +324,7 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
           <div>
             <label htmlFor={ids.niche} className={labelCls}>
               Niche <Required />
+              <FilledMark show={isMarked('niche')} />
             </label>
             <input
               id={ids.niche}
@@ -255,6 +340,7 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
           <div>
             <label htmlFor={ids.audience} className={labelCls}>
               Audience
+              <FilledMark show={isMarked('audience')} />
             </label>
             <input
               id={ids.audience}
@@ -274,6 +360,7 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
         <div>
           <label htmlFor={ids.subjects} className={labelCls}>
             Subjects the client sells designs about <Required />
+            <FilledMark show={isMarked('subjects')} />
           </label>
           <TagInput
             id={ids.subjects}
@@ -295,6 +382,7 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
           <div>
             <label htmlFor={ids.brandText} className={labelCls}>
               Brand text
+              <FilledMark show={isMarked('brand_text')} />
             </label>
             <TagInput
               id={ids.brandText}
@@ -312,6 +400,7 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
           <div>
             <label htmlFor={ids.typoNote} className={labelCls}>
               Typography note
+              <FilledMark show={isMarked('typography_note')} />
             </label>
             <input
               id={ids.typoNote}
@@ -327,7 +416,10 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
         </div>
 
         <fieldset>
-          <legend className={labelCls}>Palette rule</legend>
+          <legend className={labelCls}>
+            Palette rule
+            <FilledMark show={isMarked('palette_mode')} />
+          </legend>
           <div className="grid gap-2 sm:grid-cols-2">
             {PALETTE_MODES.map((m) => (
               <RadioCard
@@ -345,7 +437,10 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
         </fieldset>
 
         <fieldset>
-          <legend className={labelCls}>Text case</legend>
+          <legend className={labelCls}>
+            Text case
+            <FilledMark show={isMarked('text_case')} />
+          </legend>
           <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Text case">
             {TEXT_CASES.map((c) => (
               <RadioPill
@@ -372,6 +467,7 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
         <div>
           <label htmlFor={ids.must} className={labelCls}>
             Must-have signature moves
+            <FilledMark show={isMarked('must_have')} />
           </label>
           <TagInput
             id={ids.must}
@@ -387,6 +483,7 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
         <div>
           <label htmlFor={ids.avoid} className={labelCls}>
             Never do
+            <FilledMark show={isMarked('avoid')} />
           </label>
           <TagInput
             id={ids.avoid}
@@ -404,6 +501,7 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
             legend="Typography lock"
             name={ids.typo}
             locked={form.brief.lock_typography}
+            marked={isMarked('lock_typography')}
             disabled={disabled}
             onChange={(v) => setBrief('lock_typography', v)}
           />
@@ -411,6 +509,7 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
             legend="Composition lock"
             name={ids.comp}
             locked={form.brief.lock_composition}
+            marked={isMarked('lock_composition')}
             disabled={disabled}
             onChange={(v) => setBrief('lock_composition', v)}
           />
@@ -421,12 +520,13 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
           <div>
             <label htmlFor={ids.tier} className={labelCls}>
               Default similarity tier
+              <FilledMark show={isMarked('tier')} />
             </label>
             <select
               id={ids.tier}
               value={form.tier}
               disabled={disabled}
-              onChange={(e) => setForm((f) => ({ ...f, tier: Number(e.target.value) }))}
+              onChange={(e) => setField('tier', Number(e.target.value))}
               className={inputCls}
             >
               {SIMILARITY_TIERS.map((t) => (
@@ -440,11 +540,12 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
           <div>
             <label htmlFor={ids.garment} className={labelCls}>
               Garment colours <Required />
+              <FilledMark show={isMarked('garment_colors')} />
             </label>
             <TagInput
               id={ids.garment}
               value={form.garment_colors}
-              onChange={(v) => setForm((f) => ({ ...f, garment_colors: v }))}
+              onChange={(v) => setField('garment_colors', v)}
               disabled={disabled}
               placeholder="black, white, heather"
               ariaLabel="Garment colours"
@@ -461,12 +562,13 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
         <div>
           <label htmlFor={ids.notes} className={labelCls}>
             Notes
+            <FilledMark show={isMarked('notes')} />
           </label>
           <textarea
             id={ids.notes}
             value={form.notes}
             disabled={disabled}
-            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+            onChange={(e) => setField('notes', e.target.value)}
             rows={3}
             placeholder="Anything else the profiler should know about this client"
             className={`${inputCls} resize-y`}
@@ -483,6 +585,17 @@ export const BriefStep = forwardRef<HTMLHeadingElement, Props>(function BriefSte
     </StepFrame>
   )
 })
+
+/** The mark on a control a "Fill from text" changed; it stays until the control is edited, saved or undone. */
+function FilledMark({ show }: { show: boolean }) {
+  if (!show) return null
+  return (
+    <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-accent-50 px-1.5 py-px align-middle text-[10px] font-medium text-accent-700 dark:bg-accent-950/50 dark:text-accent-300">
+      <Sparkles className="h-2.5 w-2.5" aria-hidden="true" />
+      filled from text
+    </span>
+  )
+}
 
 /** The red asterisk of a required field, read as "required" by screen readers. */
 function Required() {
@@ -567,18 +680,24 @@ function LockToggle({
   legend,
   name,
   locked,
+  marked,
   disabled,
   onChange,
 }: {
   legend: string
   name: string
   locked: boolean
+  /** A "Fill from text" changed it and it was not edited since (shows the mark). */
+  marked: boolean
   disabled: boolean
   onChange: (locked: boolean) => void
 }) {
   return (
     <fieldset>
-      <legend className={labelCls}>{legend}</legend>
+      <legend className={labelCls}>
+        {legend}
+        <FilledMark show={marked} />
+      </legend>
       <div className="inline-flex overflow-hidden rounded-lg border border-neutral-300 text-sm dark:border-neutral-700" role="radiogroup" aria-label={legend}>
         {[
           { value: true, label: 'Locked' },

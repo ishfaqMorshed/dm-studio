@@ -14,6 +14,53 @@ export type Database = {
   }
   public: {
     Tables: {
+      brief_parse_requests: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          last_error: string | null
+          n8n_execution_id: string | null
+          requested_by: string | null
+          result: Json | null
+          status: string
+          text: string
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          n8n_execution_id?: string | null
+          requested_by?: string | null
+          result?: Json | null
+          status?: string
+          text: string
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          n8n_execution_id?: string | null
+          requested_by?: string | null
+          result?: Json | null
+          status?: string
+          text?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brief_parse_requests_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cards: {
         Row: {
           approved_at: string | null
@@ -803,6 +850,33 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "cards"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      brief_parse_update: {
+        Args: {
+          p_error?: string
+          p_execution_id?: string
+          p_request_id: string
+          p_result?: Json
+          p_status: string
+        }
+        Returns: {
+          client_id: string
+          created_at: string
+          id: string
+          last_error: string | null
+          n8n_execution_id: string | null
+          requested_by: string | null
+          result: Json | null
+          status: string
+          text: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "brief_parse_requests"
           isOneToOne: true
           isSetofReturn: false
         }

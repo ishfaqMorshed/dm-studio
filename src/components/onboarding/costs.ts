@@ -7,4 +7,6 @@
  */
 export const ANALYSE_COST_LABEL = 'about $0.05'
 export const TEST_RENDER_COST_LABEL = 'about $0.10'
+/** "Fill from text" (WF-8): one text-model call over at most 8000 characters of brief. */
+export const BRIEF_PARSE_COST_LABEL = 'about $0.01'
 export const COST_SUFFIX = 'of API cost'

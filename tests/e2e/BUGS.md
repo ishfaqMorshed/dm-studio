@@ -196,3 +196,18 @@ Open / follow-ups:
 - Deploy prompt-engine v8, qc-judge v2 and style-card-check; apply the n8n ops and activate the templates per `n8n/ops/README.md` (ship-together rule R1). Until then: drafts have no `reference_ids`/`validation`, QC reports have no `style_match` ("not reported"), and every analysis fails the brief-subject check because style_profiler v2 ignores the brief subjects.
 - Migrations studio_19–24 were applied with execute_sql and are not recorded in `supabase_migrations.schema_migrations` (that table stops at studio_18c) — record them before the next CLI migration run.
 - Test client state after this run: brief subjects ["Highland cows","chickens"] (kept), draft v6, v5 locked current.
+
+---
+
+## Run 7 (2026-10-01): "Fill from text" in the onboarding brief step (workflows wf_46954d9a-364 → stopped on a usage limit, wf_31023074-5f0 finished)
+
+Built: `brief_parse_requests` + trigger → n8n **WF-8 Brief Parse** `Cu7if7YfPpWjNVnL` (published, OpenRouter/Kie text model, temperature 0) → `brief_parse_update`; prompt template `brief_parser` (v3 active); wizard panel "Fill from text · about $0.01" with progress, error/Try again, "filled from text" marks, merged Undo, notes for the designer; nothing saved until Save brief.
+
+Live runs on the E2E client (3 parses, ~$0.03 in total, 4.6–7.4 s each; the client's saved brief untouched each time):
+- v1 (e9ee9d02): every field filled, but lists replaced the saved precise wording ("photo-real stuff" for "photo-realism", "badge frame" for "circular badge frame") and the tier was set to 5 while a note said none was given → **fixed** in studio_25b (template v2, list merge in `applyParsedBrief`, tier only when stated).
+- v2 (2afa6b2c): saved wording kept, lists merged, tier left alone with a note; but "handle at the bottom" went into must-have (a text demand) and the saved niche was returned although the text describes a different business → studio_25c (template v3).
+- v3 (latest): handle placement goes to the typography note, must-have clean; the niche conflict is flagged ("Text describes a farm shop; saved niche says vintage outdoor badges") but the field keeps the saved niche. Accepted as conservative behaviour (the designer decides); a new client has no saved niche, so it fills from the text.
+
+Found and fixed during the build: an apostrophe in a top-level comment of `wf8-brief-parse.sdk.js` made the SDK parser turn `\n` escapes inside Code-node strings into real line breaks (the node would have crashed live; `check.js` still said valid) — the tool test now audits every jsCode against plain evaluation; a stale-result bug (a second fill could re-apply the previous result); Undo now keeps edits made after the fill; a no-change fill no longer dirties the form; Undo stays visible while a later parse runs.
+
+Open (user, n8n UI): bind WF-6 as the Error workflow of WF-8; confirm the Kie node "Kie Parse Brief" uses credential "GPT Image 2 [DM-Kie]" (only matters when the platform is Kie or Auto).

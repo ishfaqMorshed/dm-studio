@@ -45,9 +45,31 @@ Kie.ai keeps its EXISTING credentials (bind by id): images "GPT Image 2 [DM-Kie]
    style_draft_update has no `raw` argument: "Draft → done" writes {status, style_card_id, n8n_execution_id, raw}, "Draft → failed" writes
    {status, last_error, n8n_execution_id, raw}; "Draft → working" still calls the RPC. raw = {sheets, card, validation, template_versions}
    (column added by studio_21). Vision HTTP nodes (Describe Designs, Profile Style and their OpenRouter twins) use timeout 240000.
+14. WF-8 Brief Parse (`Cu7if7YfPpWjNVnL`, file n8n/wf8-brief-parse.sdk.js, created and published 2026-10-01): "Fill from text" in the
+   onboarding Written brief step. brief_parse_requests insert (studio_25) → trigger brief_parse_requests_notify → POST
+   /webhook/studio-brief-parse {request_id, client_id} + x-studio-secret → Load Config (WF-0) → Secret OK? → rpc brief_parse_update
+   working → Get Request (single object, clients(name,style_brief)) → Get Settings (ai_platform, openrouter_models) → Get Template
+   (prompt_templates brief_parser, the active row: v2 since studio_25b, v1 kept inactive) → Build Request (fills CLIENT_NAME, EXISTING_BRIEF = saved style_brief JSON minus source_text
+   or "none", BRIEF_TEXT) → Text Platform? → Kie `/claude/v1/messages` (claude-sonnet-4-6, anthropic-version 2023-06-01, credential
+   "GPT Image 2 [DM-Kie]" w0sDpl2nll4HkF6h, the WF-7 Distill endpoint) | OpenRouter chat/completions (settings.openrouter_models.text,
+   response_format json_object); Auto = Kie, then OpenRouter via Kie Parse Down? → Parse (only the 15 result keys of studio_25, coerced
+   and capped: strings 400 chars, lists 20 distinct items, enums palette_mode / text_case, locks, tier 1..5) → rpc brief_parse_update
+   done + p_result, or Fail Message → rpc brief_parse_update failed + p_error (colon-free text). Writes ONLY brief_parse_requests; the
+   client row changes only when the designer presses Save brief. Tests: `node n8n/tools/test-wf8-parse.js` (runs against the
+   active template body from the migrations and checks v2 keeps the v1 output object and placeholders). The wizard applies the
+   result as: niche / audience / typography note / choices replace, lists and notes only gain entries (studio_25b; brief_parser
+   v2 returns saved wording for items a saved entry covers, so the merge does not add near-duplicates). A template change is a
+   new prompt_templates version, never a WF-8 edit; WF-8 itself was not changed by studio_25b. Timing: the wizard keeps
+   watching the row, says "slow" after 90 s (offers Stop waiting) and only gives up after 11 min (PARSE_GIVE_UP_MS in
+   useBriefParse.ts), above the WF-8 worst case that still ends in done (model calls 2 x (2 x 120 s + 5 s) in Auto, plus the
+   Supabase calls with retries, about 635 s). Raise PARSE_GIVE_UP_MS if WF-8 timeouts or tries ever grow.
+15. SDK parser escaping rule (found on WF-8): the parser pre-scans the source for quotes before evaluating it, so an apostrophe (or any
+   quote) in a builder-level `//` comment flips its string state and it then turns the escaped `\n` inside jsCode strings into real
+   line breaks, which leaves a Code node with a syntax error live while check.js still says valid. Keep quotes out of top-level
+   comments; test-wf8-parse.js compares every jsCode / sticky / string parameter with plain Node evaluation of the file to catch it.
 
 ## Workflow set and create order (all in folder QKT7A5gRiL349k8X, projectId i0N36mu4STExMeN4, never publish from code)
-WF-0 Studio Config → WF-5 Poll → WF-2 Generate → WF-3 Edit → WF-1 Intake → WF-1b Style Draft → WF-4 Finisher → WF-6 Error → WF-7 Lessons
+WF-0 Studio Config → WF-5 Poll → WF-2 Generate → WF-3 Edit → WF-1 Intake → WF-1b Style Draft → WF-4 Finisher → WF-6 Error → WF-7 Lessons → WF-8 Brief Parse (`Cu7if7YfPpWjNVnL`)
 
 ## Frontend ⇄ workflow bindings (already deployed DB triggers; nothing to change in the app)
 form submit / New card → cards insert (stage intake) → /webhook/studio-intake → WF-1
@@ -56,6 +78,7 @@ Approve → approve_card → cards.stage=approved → /webhook/studio-generate �
 Edit text / Edit region / Regenerate → request_edit → generations insert kind≠generate → /webhook/studio-edit → WF-3
 Accept → accept_generation → fin_jobs queued → /webhook/studio-finisher-dispatch → WF-4
 pg_cron 02:00 UTC → /webhook/studio-lessons → WF-7
+Fill from text (onboarding, Written brief step) → brief_parse_requests insert → /webhook/studio-brief-parse → WF-8 (result back on the row via rpc brief_parse_update; the wizard watches it over Realtime)
 Retry → retry_card requeues the generation / fin_job → same webhooks
 
 Field names shared by WF-4 and the app (keep in sync):
@@ -79,6 +102,8 @@ digest). Any re-create of these five workflows from code must repeat this step.
    n8n refuses to bind an error workflow that has no published version, so this step MUST come after WF-6 is published
    (verified 2026-09-24: `update_workflow` setWorkflowSettings.errorWorkflow on WF-2/3/4 answered "has no published version").
    WF-6 runs only for unhandled node crashes on production executions; the inline Fail Message paths stay the normal failure route.
-   WF-5 (sub-workflow), WF-0, WF-6 and WF-7 get no error workflow.
+   WF-5 (sub-workflow), WF-0, WF-6 and WF-7 get no error workflow. WF-8 Brief Parse (`Cu7if7YfPpWjNVnL`) should get WF-6 too (it is an
+   interactive webhook like WF-1b); NOT yet set (2026-10-01: update_workflow is unavailable in the session that created it) - set it
+   in Settings → Error workflow.
 4. Delete the superseded copies `62DdRaJTr7rIsPFP` (old WF-4) and `3QD6HDEtWWcBYFbD` (stray WF-5); check every studio workflow sits in folder QKT7A5gRiL349k8X.
 5. Then run the acceptance flow (docs/generation-spec.md section 6) — see docs/STATUS.md.

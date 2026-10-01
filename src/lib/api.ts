@@ -8,6 +8,7 @@ import { REFS_BUCKET, storagePaths, supabase } from './supabase'
 import type { Database, Json } from './database.types'
 import type {
   AiPlatform,
+  BriefParseRequest,
   Card,
   CardStage,
   Client,
@@ -412,6 +413,43 @@ export async function saveOnboardingBrief(clientId: string, patch: OnboardingBri
     throw rpcError(res.error, 'Save brief failed')
   }
   return updateClient(clientId, patch)
+}
+
+/* ---------- "Fill from text" (brief_parse_requests, studio_25) ---------- */
+
+/** The table's check constraint: `length(text) between 20 and 8000`. */
+export const BRIEF_PARSE_MIN_CHARS = 20
+export const BRIEF_PARSE_MAX_CHARS = 8000
+
+/**
+ * Inserts a queued parse request for the client. The DB trigger posts it to n8n (WF-8), which
+ * reads the text with the text model and updates the row (working → done with `result`, or
+ * failed with `last_error`). Nothing is written to the client; follow it with `useBriefParse`.
+ * Throws before the insert when the text is outside the 20–8000 character window.
+ */
+export async function requestBriefParse(clientId: string, text: string): Promise<BriefParseRequest> {
+  const trimmed = text.trim()
+  if (trimmed.length < BRIEF_PARSE_MIN_CHARS) {
+    throw new Error(`Paste at least ${BRIEF_PARSE_MIN_CHARS} characters of the brief.`)
+  }
+  if (trimmed.length > BRIEF_PARSE_MAX_CHARS) {
+    throw new Error(`The text is too long (${trimmed.length} characters); the limit is ${BRIEF_PARSE_MAX_CHARS}.`)
+  }
+  const userId = await currentUserId()
+  const res = await supabase
+    .from('brief_parse_requests')
+    .insert({ client_id: clientId, requested_by: userId, text: trimmed })
+    .select('*')
+    .single()
+  if (res.error) throw rpcError(res.error, 'Fill from text failed')
+  return res.data
+}
+
+/** One parse request by id, or null when it is gone (cascade with the client). */
+export async function getBriefParseRequest(id: string): Promise<BriefParseRequest | null> {
+  const res = await supabase.from('brief_parse_requests').select('*').eq('id', id).maybeSingle()
+  if (res.error) throw rpcError(res.error, 'Load parse request failed')
+  return res.data ?? null
 }
 
 /* ---------- Style Card drafting (style_draft_requests) ---------- */

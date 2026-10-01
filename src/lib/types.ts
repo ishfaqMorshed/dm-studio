@@ -14,6 +14,10 @@ export type ClientReferenceInsert = TablesInsert<'client_references'>
 /** A "Draft Style Card from library" job; insert → pg_net → n8n WF-1b → style_draft_update. */
 export type StyleDraftRequest = Tables<'style_draft_requests'>
 export type StyleDraftRequestInsert = TablesInsert<'style_draft_requests'>
+/** A "Fill from text" job (studio_25); insert → pg_net → n8n WF-8 → brief_parse_update. `status` is plain text. */
+export type BriefParseRequest = Tables<'brief_parse_requests'>
+export type BriefParseRequestInsert = TablesInsert<'brief_parse_requests'>
+export type BriefParseStatus = 'queued' | 'working' | 'done' | 'failed'
 export type Generation = Tables<'generations'>
 export type FinJob = Tables<'fin_jobs'>
 export type FinJobEvent = Tables<'fin_job_events'>

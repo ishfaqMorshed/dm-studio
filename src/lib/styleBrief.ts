@@ -25,6 +25,11 @@ export interface StyleBrief {
   avoid: string[]
   lock_typography: boolean
   lock_composition: boolean
+  /**
+   * The client's own words the fields were filled from ("Fill from text", studio_25): the pasted
+   * email, chat or notes. Optional; written only when non-empty, never shown as a field.
+   */
+  source_text?: string
 }
 
 /** The four rules the profiler copies into `style_cards.json.rules`. */
@@ -110,6 +115,8 @@ export function parseStyleBrief(json: Json | null | undefined): StyleBrief {
   b.avoid = strList(json.avoid)
   b.lock_typography = bool(json.lock_typography, true)
   b.lock_composition = bool(json.lock_composition, true)
+  const source = str(json.source_text).trim()
+  if (source) b.source_text = source
   return b
 }
 
@@ -130,6 +137,7 @@ export function styleBriefToJson(b: StyleBrief): Record<string, Json> {
     avoid: cleanList(b.avoid),
     lock_typography: b.lock_typography,
     lock_composition: b.lock_composition,
+    ...(b.source_text && b.source_text.trim() ? { source_text: b.source_text.trim() } : {}),
   }
 }
 
@@ -230,4 +238,320 @@ export function briefSummary(b: StyleBrief, tier: number, empty = false): string
   if (empty) return 'Not written yet'
   const mode = PALETTE_MODES.find((m) => m.value === b.palette_mode)?.label ?? b.palette_mode
   return `${mode} · ${TEXT_CASE_LABEL[b.text_case]} · ${b.must_have.length} must · ${b.avoid.length} never · tier ${tier}`
+}
+
+/* ---------- "Fill from text" (brief_parse_requests.result → the form) ---------- */
+
+/** The brief step's form: the brief plus the three client fields saved with it. */
+export interface BriefForm {
+  brief: StyleBrief
+  tier: number
+  garment_colors: string[]
+  notes: string
+}
+
+/**
+ * What WF-8 returns for a pasted brief (`brief_parse_requests.result`): every key present; "" / []
+ * / null mean "the text did not say". `notes_for_designer` lists what the text implied but the
+ * parser was unsure about (shown under the panel, never written anywhere).
+ */
+export interface ParsedBrief {
+  niche: string
+  audience: string
+  subjects: string[]
+  brand_text: string[]
+  typography_note: string
+  palette_mode: PaletteMode | null
+  text_case: TextCase | null
+  must_have: string[]
+  avoid: string[]
+  lock_typography: boolean | null
+  lock_composition: boolean | null
+  default_similarity_tier: number | null
+  garment_colors: string[]
+  notes: string
+  notes_for_designer: string[]
+}
+
+/** The worker caps the same way (WF-8 Parse); applied again here so a hand-edited row cannot flood the form. */
+const PARSED_MAX_ITEMS = 20
+const PARSED_MAX_CHARS = 400
+
+function parsedStr(v: Json | undefined): string {
+  return str(v).trim().slice(0, PARSED_MAX_CHARS)
+}
+
+function parsedList(v: Json | undefined): string[] {
+  return strList(v)
+    .map((s) => s.slice(0, PARSED_MAX_CHARS))
+    .slice(0, PARSED_MAX_ITEMS)
+}
+
+function boolOrNull(v: Json | undefined): boolean | null {
+  if (typeof v === 'boolean') return v
+  if (v === 'true') return true
+  if (v === 'false') return false
+  return null
+}
+
+function tierOrNull(v: Json | undefined): number | null {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN
+  return Number.isInteger(n) && n >= 1 && n <= 5 ? n : null
+}
+
+/**
+ * Reads a parse result tolerantly: unknown enum values become null, strings and lists are capped,
+ * empty strings are dropped from lists. Null when the result is not an object at all.
+ */
+export function readParsedBrief(json: Json | null | undefined): ParsedBrief | null {
+  if (!isRecord(json)) return null
+  return {
+    niche: parsedStr(json.niche),
+    audience: parsedStr(json.audience),
+    subjects: parsedList(json.subjects),
+    brand_text: parsedList(json.brand_text),
+    typography_note: parsedStr(json.typography_note),
+    palette_mode: isPaletteMode(json.palette_mode) ? json.palette_mode : null,
+    text_case: isTextCase(json.text_case) ? json.text_case : null,
+    must_have: parsedList(json.must_have),
+    avoid: parsedList(json.avoid),
+    lock_typography: boolOrNull(json.lock_typography),
+    lock_composition: boolOrNull(json.lock_composition),
+    default_similarity_tier: tierOrNull(json.default_similarity_tier),
+    garment_colors: parsedList(json.garment_colors),
+    notes: parsedStr(json.notes),
+    notes_for_designer: parsedList(json.notes_for_designer),
+  }
+}
+
+/** The form controls a fill may change, in the order the step shows them. */
+export const BRIEF_FILL_KEYS = [
+  'niche',
+  'audience',
+  'subjects',
+  'brand_text',
+  'typography_note',
+  'palette_mode',
+  'text_case',
+  'must_have',
+  'avoid',
+  'lock_typography',
+  'lock_composition',
+  'tier',
+  'garment_colors',
+  'notes',
+] as const
+export type BriefFillKey = (typeof BRIEF_FILL_KEYS)[number]
+
+/** How the step names each control in a sentence ("kept your later edits to subjects, never do"). */
+export const BRIEF_FILL_LABEL: Record<BriefFillKey, string> = {
+  niche: 'niche',
+  audience: 'audience',
+  subjects: 'subjects',
+  brand_text: 'brand text',
+  typography_note: 'typography note',
+  palette_mode: 'palette rule',
+  text_case: 'text case',
+  must_have: 'must-haves',
+  avoid: 'never do',
+  lock_typography: 'typography lock',
+  lock_composition: 'composition lock',
+  tier: 'similarity tier',
+  garment_colors: 'garment colours',
+  notes: 'notes',
+}
+
+function sameList(a: readonly string[], b: readonly string[]): boolean {
+  const x = cleanList([...a])
+  const y = cleanList([...b])
+  return x.length === y.length && x.every((v, i) => v === y[i])
+}
+
+/** The key two list entries are compared by: case, outer spaces and repeated spaces do not count (as in TagInput). */
+const entryKey = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase()
+
+/**
+ * A fill never removes a list entry: the form's entries stay as they are, in their order, and the parsed
+ * entries that are not there yet (compared without case) are added after them. Same list back = nothing new.
+ */
+function mergeList(existing: readonly string[], parsed: readonly string[]): string[] {
+  const seen = new Set(cleanList([...existing]).map(entryKey))
+  const added: string[] = []
+  for (const p of cleanList([...parsed])) {
+    const k = entryKey(p)
+    if (seen.has(k)) continue
+    seen.add(k)
+    added.push(p)
+  }
+  return added.length ? [...existing, ...added] : [...existing]
+}
+
+/**
+ * Applies a parse result to the form. Niche, audience, typography note, the palette rule, text case, locks
+ * and tier: a value the text supported (a non-empty string, a non-null choice) overwrites the form value.
+ * Lists (subjects, brand text, must-haves, never do, garment colours): the parsed entries the form does not
+ * hold yet are ADDED; nothing already in the form is removed or reworded. Notes: the parsed sentence is
+ * appended unless the notes already contain it. (A fill can never silently drop a designer's entry; the
+ * designer removes what the client no longer wants.) "" / [] / null mean "the text did not say" and leave
+ * the field as the designer has it. `sourceText` (the pasted text) is kept as `brief.source_text`
+ * so Save stores it. Nothing is saved here; `changedKeys` names the controls whose value actually changed
+ * (the ones to mark and to undo). The input form is not mutated.
+ */
+export function applyParsedBrief(
+  form: BriefForm,
+  result: ParsedBrief,
+  sourceText?: string,
+): { next: BriefForm; changedKeys: BriefFillKey[] } {
+  const brief: StyleBrief = { ...form.brief }
+  const next: BriefForm = { ...form, brief }
+  const changedKeys: BriefFillKey[] = []
+
+  const setText = (key: 'niche' | 'audience' | 'typography_note') => {
+    const v = result[key]
+    if (v && v !== brief[key].trim()) {
+      brief[key] = v
+      changedKeys.push(key)
+    }
+  }
+  const setList = (key: 'subjects' | 'brand_text' | 'must_have' | 'avoid') => {
+    const merged = mergeList(brief[key], result[key])
+    if (merged.length !== brief[key].length) {
+      brief[key] = merged
+      changedKeys.push(key)
+    }
+  }
+  const setLock = (key: 'lock_typography' | 'lock_composition') => {
+    const v = result[key]
+    if (v !== null && v !== brief[key]) {
+      brief[key] = v
+      changedKeys.push(key)
+    }
+  }
+
+  setText('niche')
+  setText('audience')
+  setList('subjects')
+  setList('brand_text')
+  setText('typography_note')
+  if (result.palette_mode !== null && result.palette_mode !== brief.palette_mode) {
+    brief.palette_mode = result.palette_mode
+    changedKeys.push('palette_mode')
+  }
+  if (result.text_case !== null && result.text_case !== brief.text_case) {
+    brief.text_case = result.text_case
+    changedKeys.push('text_case')
+  }
+  setList('must_have')
+  setList('avoid')
+  setLock('lock_typography')
+  setLock('lock_composition')
+  if (result.default_similarity_tier !== null && result.default_similarity_tier !== form.tier) {
+    next.tier = result.default_similarity_tier
+    changedKeys.push('tier')
+  }
+  const garments = mergeList(form.garment_colors, result.garment_colors)
+  if (garments.length !== form.garment_colors.length) {
+    next.garment_colors = garments
+    changedKeys.push('garment_colors')
+  }
+  // Notes gain the parsed sentence (on a new line) unless the notes already say it; never replaced.
+  const notes = form.notes.trim()
+  if (result.notes && !entryKey(notes).includes(entryKey(result.notes))) {
+    next.notes = notes ? `${notes}\n${result.notes}` : result.notes
+    changedKeys.push('notes')
+  }
+  const source = sourceText?.trim()
+  if (source) brief.source_text = source
+  return { next, changedKeys }
+}
+
+/** One control's value, for comparing "still what the fill wrote?". */
+function fillValue(f: BriefForm, key: BriefFillKey): string | number | boolean | readonly string[] {
+  if (key === 'tier') return f.tier
+  if (key === 'garment_colors') return f.garment_colors
+  if (key === 'notes') return f.notes
+  return f.brief[key]
+}
+
+function sameFillValue(a: string | number | boolean | readonly string[], b: string | number | boolean | readonly string[]): boolean {
+  if (Array.isArray(a) && Array.isArray(b)) return sameList(a, b)
+  if (typeof a === 'string' && typeof b === 'string') return a.trim() === b.trim()
+  return a === b
+}
+
+/** `target` with the values of `keys` copied from `source` (new objects; `source_text` is not touched). */
+export function copyBriefFormKeys(target: BriefForm, source: BriefForm, keys: readonly BriefFillKey[]): BriefForm {
+  const brief: StyleBrief = { ...target.brief }
+  const next: BriefForm = { ...target, brief }
+  const copyBrief = <K extends keyof StyleBrief>(key: K) => {
+    brief[key] = source.brief[key]
+  }
+  for (const key of keys) {
+    if (key === 'tier') next.tier = source.tier
+    else if (key === 'garment_colors') next.garment_colors = source.garment_colors
+    else if (key === 'notes') next.notes = source.notes
+    else copyBrief(key)
+  }
+  return next
+}
+
+function withSourceText(f: BriefForm, source: string | undefined): BriefForm {
+  const brief: StyleBrief = { ...f.brief }
+  if (source) brief.source_text = source
+  else delete brief.source_text
+  return { ...f, brief }
+}
+
+/**
+ * What "Undo fill" puts back: every fill since the last save (or undo), merged into one record.
+ * `previous` holds, per key, the value from before the FIRST fill that changed it; `filled` holds the
+ * value the LAST fill that changed it wrote. Only `keys` and `brief.source_text` of the two forms are read.
+ */
+export interface BriefFillRecord {
+  previous: BriefForm
+  filled: BriefForm
+  /** Every control any of the merged fills changed, in BRIEF_FILL_KEYS order. */
+  keys: BriefFillKey[]
+  /** How many fills the record merges (1 for a single fill). */
+  fills: number
+}
+
+/**
+ * Adds one applied fill (`before` → `after`, `changedKeys`) to the open record, or starts one. A key a
+ * later fill did not touch keeps the value the earlier fill wrote, so a designer edit made between two
+ * fills is still recognised as an edit by `undoBriefFill`.
+ */
+export function recordBriefFill(
+  open: BriefFillRecord | null,
+  before: BriefForm,
+  after: BriefForm,
+  changedKeys: readonly BriefFillKey[],
+): BriefFillRecord {
+  if (!open) return { previous: before, filled: after, keys: [...changedKeys], fills: 1 }
+  const union = new Set<BriefFillKey>([...open.keys, ...changedKeys])
+  return {
+    previous: withSourceText(copyBriefFormKeys(before, open.previous, open.keys), open.previous.brief.source_text),
+    filled: withSourceText(copyBriefFormKeys(open.filled, after, changedKeys), after.brief.source_text),
+    keys: BRIEF_FILL_KEYS.filter((k) => union.has(k)),
+    fills: open.fills + 1,
+  }
+}
+
+/**
+ * "Undo fill": puts back the value from before the fill for every key whose value is STILL what the fill
+ * wrote, and `brief.source_text` likewise. A control the designer changed after the fill keeps the
+ * designer's value and is listed in `kept`; every other field stays as it is now.
+ */
+export function undoBriefFill(form: BriefForm, record: BriefFillRecord): { next: BriefForm; kept: BriefFillKey[] } {
+  const restore: BriefFillKey[] = []
+  const kept: BriefFillKey[] = []
+  for (const key of record.keys) {
+    if (sameFillValue(fillValue(form, key), fillValue(record.filled, key))) restore.push(key)
+    else kept.push(key)
+  }
+  let next = copyBriefFormKeys(form, record.previous, restore)
+  if ((form.brief.source_text ?? '') === (record.filled.brief.source_text ?? '')) {
+    next = withSourceText(next, record.previous.brief.source_text)
+  }
+  return { next, kept }
 }
