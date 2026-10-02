@@ -24,6 +24,7 @@ const TONE_CLASS: Record<Tone, string> = {
  * navigation once the event is defaultPrevented.
  */
 export function Panel({
+  id,
   title,
   subtitle,
   actions,
@@ -34,6 +35,8 @@ export function Panel({
   collapsible = false,
   defaultOpen,
 }: {
+  /** DOM id of the panel element, for `#id` deep links (the page scrolls to it and opens it). */
+  id?: string
   title: ReactNode
   subtitle?: ReactNode
   actions?: ReactNode
@@ -55,6 +58,7 @@ export function Panel({
   if (collapsible) {
     return (
       <details
+        id={id}
         className={`${panelCls} ${TONE_CLASS[tone]} ${className}`}
         open={open}
         onToggle={(e) => {
@@ -80,7 +84,7 @@ export function Panel({
     )
   }
   return (
-    <section className={`${panelCls} ${TONE_CLASS[tone]} ${className}`}>
+    <section id={id} className={`${panelCls} ${TONE_CLASS[tone]} ${className}`}>
       <header className="flex flex-wrap items-center justify-between gap-2 px-4 pb-2 pt-3">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold">{title}</h2>

@@ -1,15 +1,20 @@
-// qc-judge v2 — Supabase Edge Function (Deno). Normalises the vision QC verdict for one generation and writes
+// qc-judge v2.2 — Supabase Edge Function (Deno). Normalises the vision QC verdict for one generation and writes
 // generations.qc_report / needs_regen / text_elements. Contract: docs/generation-spec.md §3 "qc-judge".
 //
 // Auth: rejected unless the caller sends x-studio-secret and rpc studio_secret_ok (called with that header forwarded)
 // returns true. verify_jwt is off; the apikey is the project's publishable key (public), never a service-role key.
-// POST {generation_id, qc_raw, exact_text_lines?: string[], style_card?: object, expected_subject?: string, attempt?: number}
+// POST {generation_id, qc_raw, exact_text_lines?: string[], style_card?: object, expected_subject?: string, attempt?: number,
+//       art_reference_attached?: boolean}
 //   qc_raw = the Gemini response text, the whole chat-completions response object, or the parsed verdict object.
 //   exact_text_lines defaults to the card's print_text lines when omitted; style_card defaults to prompt-engine v8's
 //   magic_prompt_json.effective_style (the look the prompt asked for - the Art style reference look on an art-reference
 //   card), else the generation's style_card_snapshot; expected_subject defaults to magic_prompt_json.subject.text (prompt-engine v8), else
 //   brief_snapshot.subject, else cards.client_submission.subject; attempt defaults to generations.attempt.
 //   settings.qc_subject_regen (studio_21, default true) decides whether a wrong hero regenerates once.
+//   v2.2 (2026-10-02): art_reference_attached === true (sent by WF-2 when it attached the card's Art style reference as
+//   the SECOND image of the vision call) makes qc-judge read style.art_match into the style_match check 'art_style';
+//   anything else (absent, false, a string) = not attached. settings.qc_art_regen (studio_28, default true) decides whether
+//   overall 'different' regenerates once. Both flags are read with select=* so a missing column (pre-studio_28) = true.
 
 import { normaliseQc, normaliseTextLines, pickStyleJson } from './qc.ts';
 export { normaliseQc } from './qc.ts';
@@ -50,16 +55,25 @@ async function loadGeneration(secret: string, id: string): Promise<GenRow | null
   return rows[0] ?? null;
 }
 
-/** settings.qc_subject_regen; true (the column default) when the row or the column is missing (pre-studio_21). */
-async function loadSubjectRegen(secret: string): Promise<boolean> {
+type RegenFlags = { qc_subject_regen: boolean; qc_art_regen: boolean };
+
+/**
+ * settings.qc_subject_regen (studio_21) and settings.qc_art_regen (studio_28); each true (the column default) when the
+ * row or its column is missing. select=* so a database without one of the columns still returns the other.
+ */
+async function loadRegenFlags(secret: string): Promise<RegenFlags> {
+  const on: RegenFlags = { qc_subject_regen: true, qc_art_regen: true };
   try {
-    const r = await fetch(`${SB_URL}/rest/v1/settings?id=eq.1&select=qc_subject_regen`, { headers: sbHeaders(secret, { accept: 'application/json' }) });
-    if (!r.ok) return true;
-    const rows = (await r.json()) as { qc_subject_regen?: unknown }[];
-    const v = rows[0]?.qc_subject_regen;
-    return typeof v === 'boolean' ? v : true;
+    const r = await fetch(`${SB_URL}/rest/v1/settings?id=eq.1&select=*`, { headers: sbHeaders(secret, { accept: 'application/json' }) });
+    if (!r.ok) return on;
+    const rows = (await r.json()) as { qc_subject_regen?: unknown; qc_art_regen?: unknown }[];
+    const row = rows[0] ?? {};
+    return {
+      qc_subject_regen: typeof row.qc_subject_regen === 'boolean' ? row.qc_subject_regen : true,
+      qc_art_regen: typeof row.qc_art_regen === 'boolean' ? row.qc_art_regen : true,
+    };
   } catch {
-    return true;
+    return on;
   }
 }
 
@@ -85,7 +99,8 @@ export async function handler(req: Request): Promise<Response> {
   if (!UUID_RE.test(generation_id)) return json(400, { error: 'generation_id must be a uuid' });
 
   try {
-    const [gen, qc_subject_regen] = await Promise.all([loadGeneration(secret, generation_id), loadSubjectRegen(secret)]);
+    const [gen, flags] = await Promise.all([loadGeneration(secret, generation_id), loadRegenFlags(secret)]);
+    const { qc_subject_regen, qc_art_regen } = flags;
     if (!gen) return json(404, { error: 'generation not found', generation_id });
 
     const exact_text_lines = body.exact_text_lines !== undefined && body.exact_text_lines !== null
@@ -96,12 +111,15 @@ export async function handler(req: Request): Promise<Response> {
     const bodyAttempt = Number(body.attempt);
     const attempt = Number.isFinite(bodyAttempt) && bodyAttempt >= 1 ? Math.floor(bodyAttempt) : (gen.attempt ?? 1);
 
-    const { qc_report, needs_regen, text_elements } = normaliseQc(body.qc_raw, { exact_text_lines, style_card, attempt, expected_subject, qc_subject_regen });
+    // strictly the boolean true WF-2 sends when the Art style reference was the second image of the vision call
+    const art_reference_attached = body.art_reference_attached === true;
+
+    const { qc_report, needs_regen, text_elements } = normaliseQc(body.qc_raw, { exact_text_lines, style_card, attempt, expected_subject, qc_subject_regen, art_reference_attached, qc_art_regen });
     await patchGeneration(secret, generation_id, { qc_report, needs_regen, text_elements });
     return json(200, {
       generation_id, qc_report, needs_regen, text_elements,
       corrective_instruction: qc_report.corrective_instruction,
-      verdict: qc_report.verdict, style_match: qc_report.style_match, expected_subject, qc_subject_regen,
+      verdict: qc_report.verdict, style_match: qc_report.style_match, expected_subject, qc_subject_regen, art_reference_attached, qc_art_regen,
     });
   } catch (e) {
     return json(500, { error: (e as Error).message ?? String(e), generation_id });

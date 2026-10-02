@@ -17,6 +17,9 @@
 // (also in the response) is what WF-2/WF-3 QC judges against. Style-test cards (cards.source style_test) never take it.
 // regenerate re-derives it - and the reference reading - from the card; edit_text and edit_region keep the look of the
 // parent they edit (its effective_style).
+// v8 QC art reference (2026-10-02): effective_style also carries reference_path (the refs-bucket path of the art image,
+// the same string input_paths signs) and reference_image_index (its 1-based position in input_paths), null for a Style
+// Card look; WF-2 attaches the signed art image to the vision QC call as the second image. Edits inherit the parent's.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import {
   applyEdit,
@@ -30,6 +33,7 @@ import {
   effectiveStyle,
   findUnresolvedToken,
   imageRoleLabels,
+  inheritLook,
   type InputPath,
   lintStyleCard,
   type MagicPrompt,
@@ -315,11 +319,12 @@ async function handle(req: Request): Promise<Response> {
     // of a pre-v8 generation never carries '..', 'Locked:' or 'as_typed' forward; the SUBJECT is added when absent (R3).
     magic.style_card = { version: styleCard.version, status: sc.status, lines: sc.lines, negatives: sc.negatives, prose: sc.prose, rules: sc.rules };
     magic.text.typography = styleCardTypography(fixedCard, plan);
-    // effective_style: an edit keeps the parent's art reference look (QC judges the edit against it); otherwise it is
-    // re-derived (regenerate: the card's decision; an edit of a Style Card look: the current Style Card values)
+    // effective_style: an edit keeps the parent's art reference look (QC judges the edit against it) - reference_path /
+    // reference_image_index included, null when the parent predates them; otherwise it is re-derived (regenerate: the
+    // card's decision and its own plan; an edit of a Style Card look: the current Style Card values)
     magic.effective_style = inherited
-      ? JSON.parse(JSON.stringify(inherited))
-      : effectiveStyle({ card: fixedCard, garment_color: garmentColor, art: isEditKind ? null : art, reference_slot: artImage });
+      ? inheritLook(inherited)
+      : effectiveStyle({ card: fixedCard, garment_color: garmentColor, art: isEditKind ? null : art, reference_slot: artImage, plan });
     // the SUBJECT is added when absent (R3); a regenerate also re-resolves one that came from a reference slot, so it
     // follows the re-read card (a WHAT TO MAKE read made before staff changed the roles is no longer used)
     if (!magic.subject || (kind === "regenerate" && magic.subject.source === "reference")) {

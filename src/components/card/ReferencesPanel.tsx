@@ -1,6 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { AlertTriangle, ImageOff, Paintbrush, Tags } from 'lucide-react'
 import { updateCardReferenceRoles } from '../../lib/api'
+import { prefersReducedMotion } from '../../lib/motion'
 import { REFS_BUCKET } from '../../lib/supabase'
 import { useSettings } from '../../lib/useSettings'
 import { useSignedUrl } from '../../lib/useSignedUrl'
@@ -18,6 +20,7 @@ import {
 import { btnSecondary } from '../style/classes'
 import { JsonTree } from './JsonTree'
 import { parseEmbeddedJson, recordEntries } from './json'
+import { REFERENCES_ANCHOR } from './qc'
 import { checkerboard, inlineSelectCls } from './styles'
 import { Panel, Spinner } from './ui'
 import type { CardRow } from './useCardData'
@@ -198,7 +201,8 @@ function ReferenceSlot({
  * one-line "drawn in this image's style" caption (2026-10-01 rule; never on a style_test card). A
  * legacy card (null column) is captioned "Style reference", because that is how the render reads it,
  * with one "Apply roles" button that stamps the studio order from Settings. Staff can change a slot's
- * role until the card is approved.
+ * role until the card is approved. `/card/:id#references` (the QC report's art-style links) opens the
+ * panel and scrolls it into view, on every visit to that link.
  */
 export function ReferencesPanel({
   card,
@@ -211,6 +215,7 @@ export function ReferencesPanel({
 }) {
   const toast = useToast()
   const { settings } = useSettings()
+  const location = useLocation()
   const paths = card.reference_paths ?? []
   const roles = useMemo(() => cardSlotRoles(card, settings), [card, settings])
   const stamped = hasStampedRoles(card)
@@ -227,6 +232,18 @@ export function ReferencesPanel({
     for (const r of roles) (seen.has(r) ? dup : seen).add(r)
     return [...dup]
   }, [roles])
+
+  // Deep link: open the panel (setting the DOM `open` goes through Panel's toggle handler, so it stays
+  // open like a designer's click) and bring it into view. Keyed on location.key so a second click on
+  // the same link from the QC report works after the designer closed the panel again.
+  useEffect(() => {
+    if (location.hash !== `#${REFERENCES_ANCHOR}`) return
+    const el = document.getElementById(REFERENCES_ANCHOR)
+    if (!el) return
+    if (el instanceof HTMLDetailsElement && !el.open) el.open = true
+    el.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
+    el.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true })
+  }, [location.key, location.hash])
 
   async function saveRole(index: number, role: ReferenceRole) {
     if (savingSlot !== null) return
@@ -258,6 +275,8 @@ export function ReferencesPanel({
 
   return (
     <Panel
+      id={REFERENCES_ANCHOR}
+      className="scroll-mt-20"
       title="References"
       subtitle={
         pending

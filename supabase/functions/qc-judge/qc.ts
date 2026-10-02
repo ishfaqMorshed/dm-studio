@@ -17,10 +17,32 @@
 // the palette check name say "the Art style reference" instead of "the Style Card". Judging is unchanged, except that a
 // value-less art look (no per-slot reading of the art image: palette [] / empty medium .. edge_finish) leaves the palette
 // and medium checks not judged (pass null) - QC sees only the generated image, there is nothing to compare against.
+// v2.2 (2026-10-02, QC sees the Art style reference): WF-2 attaches the card's Art style reference as the SECOND image of
+// the vision call and sends art_reference_attached true; qc_prompt v2 (studio_28) then asks for style.art_match
+// {medium_ok, linework_ok, shading_ok, texture_ok, palette_ok, overall same|close|different, notes}. It becomes ONE
+// combined style_match check, id 'art_style', field 'art_reference' (one row "Drawn like the Art style reference" with the
+// notes reads clearer than five sub-rows, and a different style weighs once in the score): pass false when overall is
+// 'different' or any sub-key is false, true when 'same' / 'close' with no false sub-key, null 'not reported' when
+// art_match is missing or unreadable. overall 'different' + settings.qc_art_regen (default true) + attached = verdict
+// 'fail', needs_regen and a corrective "Redraw in the attached ART STYLE reference's look"; every other mismatch is a
+// 'warn' ('close' never fails). Not attached (WF-3 edits, Style Card looks, older WF-2) = no art check; a stray
+// art_match is ignored because the judge never saw the reference.
 
 export type QcCheck = { id: string; name: string; pass: boolean | null; note: string };
 export type StyleCheck = { id: string; field: string; pass: boolean | null; note: string };
-export type StyleMatch = { score: number | null; checks: StyleCheck[]; subject_seen: string; case_seen: string };
+/** style.art_match as the judge reported it, normalised (sub-keys null when not reported). */
+export type ArtMatch = {
+  overall: 'same' | 'close' | 'different' | null;
+  medium_ok: boolean | null; linework_ok: boolean | null; shading_ok: boolean | null; texture_ok: boolean | null; palette_ok: boolean | null;
+  notes: string;
+};
+export type StyleMatch = {
+  score: number | null; checks: StyleCheck[]; subject_seen: string; case_seen: string;
+  /** v2.2: true when WF-2 showed the judge the Art style reference (the art_style check exists only then) */
+  art_reference_attached: boolean;
+  /** v2.2: the normalised style.art_match, null when not attached or not reported */
+  art_match: ArtMatch | null;
+};
 
 export type QcReport = {
   version: 2;
@@ -44,10 +66,14 @@ export type QcContext = {
   exact_text_lines?: unknown;
   style_card?: unknown;
   attempt?: unknown;
-  /** magic_prompt_json.subject.text (the SUBJECT block); '' when the design has no explicit subject */
+  /** magic_prompt_json.subject.text (the SUBJECT block, whatever its source: brief, subject reference, Style Card or the description fallback); '' only when none reached the judge */
   expected_subject?: unknown;
   /** settings.qc_subject_regen (default true): regenerate once when the judge reports the wrong hero */
   qc_subject_regen?: unknown;
+  /** WF-2 body.art_reference_attached: true ONLY when the Art style reference was the second image of the vision call */
+  art_reference_attached?: unknown;
+  /** settings.qc_art_regen (default true): regenerate once when the judge sees a different art style than the reference */
+  qc_art_regen?: unknown;
 };
 
 type Verdict = Record<string, unknown>;
@@ -111,10 +137,19 @@ const CORE_CHECKS: { id: string; name: string; mode: 'strictTrue' | 'notFalse' |
   { id: 'edges_clean',   name: 'Continuous edges, no stray dots',        mode: 'notFalse',    regen: true },
 ];
 
-/** style_match check ids -> the Style Card field they judge (deep links in the UI). */
+/** style_match check ids -> the Style Card field they judge (deep links in the UI); art_style is no Style Card field -
+ *  'art_reference' sends the UI to the card's References panel. */
 export const STYLE_FIELDS: Record<string, string> = {
   palette: 'palette', medium: 'medium', typography: 'typography.headline', composition: 'composition', subject: 'subjects', forbid: 'forbid',
+  art_style: 'art_reference',
 };
+/** style.art_match sub-keys, in the order qc_prompt v2 (studio_28) lists them, with the words a note uses. */
+export const ART_MATCH_KEYS: { key: 'medium_ok' | 'linework_ok' | 'shading_ok' | 'texture_ok' | 'palette_ok'; word: string }[] = [
+  { key: 'medium_ok', word: 'medium' }, { key: 'linework_ok', word: 'linework' }, { key: 'shading_ok', word: 'shading' },
+  { key: 'texture_ok', word: 'texture' }, { key: 'palette_ok', word: 'palette' },
+];
+export const ART_NOT_REPORTED = 'not reported';
+export const ART_UNREADABLE = 'not reported - art_match unreadable';
 
 // Verbatim template pieces from `Build Corrective Gen Request` (EXTRACT.md §3.9).
 const CORRECTIVE_HEAD = 'CRITICAL CORRECTIONS - a previous attempt failed quality inspection. Fix ALL of the following while keeping everything else identical: ';
@@ -227,8 +262,69 @@ export function subjectCorrection(expectedSubject: string, subjectSeen: string):
   return 'Draw ' + expectedSubject + ' as the hero, not ' + (subjectSeen || 'what the text names') + '; the text is lettering only and never chooses the subject';
 }
 
+/**
+ * The sentence appended to the corrective instruction when the judge sees a different art style than the attached reference.
+ * Its tail names what to take from the reference (the look only), never what to keep from the failed attempt: the corrective
+ * attempt is a fresh render, and a "keep the subject" tail would contradict the wrong-hero sentence when both fire.
+ */
+export function artCorrection(notes: string, differs: string[] = []): string {
+  const what = notes.trim().replace(/[.;\s]+$/, '') || 'match its ' + (differs.length ? differs.join(', ') : 'medium, linework, shading, texture and colours');
+  return "Redraw in the attached ART STYLE reference's look: " + what + '; take only its look, never its subject, layout or words';
+}
+
+// ---- art_match (qc_prompt v2 + studio_28: the Art style reference is the SECOND image) --------------------------------
+function artOverall(v: unknown): ArtMatch['overall'] {
+  const w = typeof v === 'string' ? v.trim().toLowerCase() : '';
+  if (w === 'same' || w === 'identical') return 'same';
+  if (w === 'close' || w === 'similar') return 'close';
+  if (w === 'different' || w === 'differs' || w === 'differ') return 'different';
+  return null;
+}
+
+/**
+ * style.art_match -> ArtMatch. 'missing' = the key is absent; 'unreadable' = present but neither an overall word nor a
+ * boolean sub-key can be read (a bare boolean counts as unreadable - a guess must never trigger a paid retry). A string
+ * holding JSON is parsed; a bare string is read as the overall word.
+ */
+export function parseArtMatch(raw: unknown): { match: ArtMatch | null; state: 'ok' | 'missing' | 'unreadable' } {
+  if (raw === undefined || raw === null || raw === '') return { match: null, state: 'missing' };
+  let o: unknown = raw;
+  if (typeof raw === 'string') {
+    const t = raw.trim();
+    if (t.startsWith('{')) { try { o = JSON.parse(t); } catch { return { match: null, state: 'unreadable' }; } }
+    else o = { overall: t };
+  }
+  if (!isObj(o)) return { match: null, state: 'unreadable' };
+  const am: Record<string, unknown> = o;
+  const sub = (k: string): boolean | null => { const b = toBool(am[k]); return b === undefined ? null : b; };
+  const notes = (typeof am.notes === 'string' ? am.notes : typeof am.note === 'string' ? am.note : '').replace(/\s+/g, ' ').trim().replace(/[.;\s]+$/, '').slice(0, 240);
+  const match: ArtMatch = {
+    overall: artOverall(am.overall), medium_ok: sub('medium_ok'), linework_ok: sub('linework_ok'), shading_ok: sub('shading_ok'),
+    texture_ok: sub('texture_ok'), palette_ok: sub('palette_ok'), notes,
+  };
+  const readable = match.overall !== null || ART_MATCH_KEYS.some((k) => match[k.key] !== null);
+  return readable ? { match, state: 'ok' } : { match: null, state: 'unreadable' };
+}
+
+/** Sub-keys the judge reported false, as note words (medium, linework, shading, texture, palette). */
+export function artDiffers(m: ArtMatch | null): string[] {
+  return m ? ART_MATCH_KEYS.filter((k) => m[k.key] === false).map((k) => k.word) : [];
+}
+
+/** The one combined art_style check (see the v2.2 header): false on 'different' or any false sub-key. */
+export function artStyleCheck(m: ArtMatch | null, state: 'ok' | 'missing' | 'unreadable'): StyleCheck {
+  const field = STYLE_FIELDS.art_style;
+  if (!m) return { id: 'art_style', field, pass: null, note: state === 'unreadable' ? ART_UNREADABLE : ART_NOT_REPORTED };
+  const differs = artDiffers(m);
+  const pass = m.overall === 'different' || differs.length ? false : (m.overall !== null || ART_MATCH_KEYS.some((k) => m[k.key] === true) ? true : null);
+  const head = m.overall ? (m.notes ? m.overall + ': ' + m.notes : m.overall) : m.notes;
+  const tail = differs.length ? differs.join(', ') + (differs.length === 1 ? ' differs' : ' differ') : '';
+  const note = head && tail ? head + ' (' + tail + ')' : head || tail;
+  return { id: 'art_style', field, pass, note: pass === null && !note ? ART_NOT_REPORTED : note };
+}
+
 // ---- style_match (qc_prompt v2 "style" key, judged against the Style Card only) ---------------------------------------
-export function buildStyleMatch(v: Verdict, card: Record<string, unknown> | null, expectedSubject: string): StyleMatch {
+export function buildStyleMatch(v: Verdict, card: Record<string, unknown> | null, expectedSubject: string, opts: { art_attached?: boolean } = {}): StyleMatch {
   const style = isObj(v.style) ? v.style : {};
   const look = lookWords(card);
   const unread = unreadArtLook(card);
@@ -281,9 +377,20 @@ export function buildStyleMatch(v: Verdict, card: Record<string, unknown> | null
     const reported = 'forbid_hits' in style;
     push('forbid', hits.length ? false : (reported ? true : null), named.join('; '));
   }
+  // art_style: only when WF-2 attached the Art style reference (the judge saw it); otherwise style.art_match is ignored
+  const attached = opts.art_attached === true;
+  let art_match: ArtMatch | null = null;
+  if (attached) {
+    const parsed = parseArtMatch(style.art_match);
+    art_match = parsed.match;
+    checks.push(artStyleCheck(parsed.match, parsed.state));
+  }
   const judged = checks.filter((c) => c.pass !== null);
   const score = judged.length ? Math.round((judged.filter((c) => c.pass === true).length / judged.length) * 100) : null;
-  return { score, checks, subject_seen: subjectSeen, case_seen: typeof style.case_seen === 'string' ? style.case_seen.trim() : '' };
+  return {
+    score, checks, subject_seen: subjectSeen, case_seen: typeof style.case_seen === 'string' ? style.case_seen.trim() : '',
+    art_reference_attached: attached, art_match,
+  };
 }
 
 // ---- main -------------------------------------------------------------------------------------------------------------
@@ -296,6 +403,8 @@ export function normaliseQc(raw: unknown, ctx: QcContext = {}): { qc_report: QcR
   const look = lookWords(card);
   const expectedSubject = typeof ctx.expected_subject === 'string' ? ctx.expected_subject.trim() : '';
   const subjectRegenOn = ctx.qc_subject_regen === undefined || ctx.qc_subject_regen === null ? true : toBool(ctx.qc_subject_regen) !== false;
+  const artAttached = ctx.art_reference_attached === true;
+  const artRegenOn = ctx.qc_art_regen === undefined || ctx.qc_art_regen === null ? true : toBool(ctx.qc_art_regen) !== false;
 
   const { verdict, error } = extractVerdict(raw);
   const known = CORE_CHECKS.map((c) => c.id).concat(['pass', 'issues', 'text_found']);
@@ -343,7 +452,7 @@ export function normaliseQc(raw: unknown, ctx: QcContext = {}): { qc_report: QcR
   }
 
   // -- Style Card: style_match (v2) + the compat palette check + the rules-violated list (designer flags)
-  const style_match = buildStyleMatch(v, card, expectedSubject);
+  const style_match = buildStyleMatch(v, card, expectedSubject, { art_attached: artAttached });
   const style_violations = toStrList(v.style_violations);
   const paletteUnread = unreadArtLook(card).palette;
   const paletteOk = paletteUnread ? undefined : toBool(style.palette_ok ?? v.palette_ok);
@@ -379,12 +488,15 @@ export function normaliseQc(raw: unknown, ctx: QcContext = {}): { qc_report: QcR
   const coreFailed = checks.some((c) => c.pass === false && c.id !== 'style_palette');
   const subjectCheck = style_match.checks.find((c) => c.id === 'subject');
   const subjectRegen = subjectRegenOn && !!expectedSubject && subjectCheck?.pass === false;
+  // a different art style regenerates once only when the judge saw the reference and the setting is on ('close' never)
+  const artRegen = artRegenOn && artAttached && style_match.art_match?.overall === 'different';
   const styleWarn = (style_match.score !== null && style_match.score < 100) || judgePass === false || !palettePass;
-  const verdictWord: QcReport['verdict'] = coreFailed || subjectRegen ? 'fail' : (styleWarn ? 'warn' : 'pass');
+  const verdictWord: QcReport['verdict'] = coreFailed || subjectRegen || artRegen ? 'fail' : (styleWarn ? 'warn' : 'pass');
 
-  const needs_regen = (coreFailed && failedRegen.length > 0) || subjectRegen;
+  const needs_regen = (coreFailed && failedRegen.length > 0) || subjectRegen || artRegen;
   const correctiveIssues = issues.slice();
   if (subjectRegen) correctiveIssues.push(subjectCorrection(expectedSubject, style_match.subject_seen));
+  if (artRegen) correctiveIssues.push(artCorrection(style_match.art_match?.notes ?? '', artDiffers(style_match.art_match)));
   const corrective_instruction = needs_regen ? buildCorrective(correctiveIssues, expected) : null;
 
   // -- text_elements for generations.text_elements

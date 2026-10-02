@@ -1,6 +1,10 @@
 // qc-judge v2 tests. Run: npm run test:functions (Node shim, spec 3.4)   or   deno test supabase/functions/qc-judge/
 // No jsr imports on purpose (local assert helpers, like render_test.ts) so the file runs under node --experimental-strip-types.
-import { buildStyleMatch, fromArtReference, normaliseQc, pickStyleJson, subjectCorrection, UNREAD_MEDIUM_NOTE, UNREAD_PALETTE_NOTE, unreadArtLook } from './qc.ts';
+import { readFile } from 'node:fs/promises';
+import {
+  ART_MATCH_KEYS, ART_NOT_REPORTED, ART_UNREADABLE, artCorrection, artStyleCheck, buildStyleMatch, fromArtReference, normaliseQc, parseArtMatch,
+  pickStyleJson, STYLE_FIELDS, subjectCorrection, UNREAD_MEDIUM_NOTE, UNREAD_PALETTE_NOTE, unreadArtLook,
+} from './qc.ts';
 import { CHICKEN_FORBID, FIXTURES } from './qc_fixtures.ts';
 
 function assert(cond: unknown, msg?: string): void {
@@ -290,4 +294,161 @@ Deno.test('art reference with no reading of the art image (value-less look): pal
   // the same verdict against a read art look still fails palette / medium (no regression)
   const read = normaliseQc(verdict, artCtx);
   assertEquals([styleCheck(read, 'palette')?.pass, styleCheck(read, 'medium')?.pass, read.qc_report.verdict], [false, false, 'warn']);
+});
+
+// ---------------------------------------------------------------------------
+// v2.2 (2026-10-02): QC sees the Art style reference - WF-2 attaches it as the SECOND image (art_reference_attached true)
+// and qc_prompt v2 (studio_28) asks for style.art_match; one combined style_match check 'art_style' (field 'art_reference')
+
+/** v2AllGood with style.art_match (or any other style keys) merged in. */
+const withArt = (artMatch: unknown, extra: Record<string, unknown> = {}, style: Record<string, unknown> = {}) => {
+  const v = JSON.parse(FIXTURES.v2AllGood);
+  return JSON.stringify({ ...v, ...extra, style: { ...v.style, ...style, ...(artMatch === undefined ? {} : { art_match: artMatch }) } });
+};
+const attachedCtx = { ...artCtx, art_reference_attached: true, qc_art_regen: true };
+const DIFFERENT = { medium_ok: true, linework_ok: false, shading_ok: false, texture_ok: true, palette_ok: true, overall: 'different', notes: 'thin brush lines instead of bold uniform outlines, no halftone.' };
+const REDRAW = "Redraw in the attached ART STYLE reference's look: thin brush lines instead of bold uniform outlines, no halftone; take only its look, never its subject, layout or words";
+
+Deno.test('art reference attached: art_match same / close / different -> one art_style check; different fails and regenerates once', () => {
+  // same: pass, the check is the last style_match check, the score counts it
+  const same = normaliseQc(withArt({ medium_ok: true, linework_ok: true, shading_ok: true, texture_ok: true, palette_ok: true, overall: 'same', notes: '' }), attachedCtx);
+  assertEquals(same.qc_report.style_match?.checks.map((c) => c.id), ['palette', 'medium', 'typography', 'composition', 'subject', 'forbid', 'art_style']);
+  assertEquals(styleCheck(same, 'art_style'), { id: 'art_style', field: 'art_reference', pass: true, note: 'same' });
+  assertEquals(STYLE_FIELDS.art_style, 'art_reference', 'the UI links art_reference to the card References panel');
+  assertEquals([same.qc_report.verdict, same.needs_regen, same.qc_report.style_match?.score, same.qc_report.corrective_instruction], ['pass', false, 100, null]);
+  assertEquals(same.qc_report.style_match?.art_reference_attached, true);
+  assertEquals(same.qc_report.style_match?.art_match, { overall: 'same', medium_ok: true, linework_ok: true, shading_ok: true, texture_ok: true, palette_ok: true, notes: '' });
+  // close with every sub-key true: pass; close with a false sub-key: warn, never a retry ('close' never fails)
+  const closeOk = normaliseQc(withArt({ medium_ok: true, linework_ok: true, shading_ok: true, texture_ok: true, palette_ok: true, overall: 'close', notes: 'slightly finer grain' }), attachedCtx);
+  assertEquals([styleCheck(closeOk, 'art_style')?.pass, styleCheck(closeOk, 'art_style')?.note, closeOk.qc_report.verdict], [true, 'close: slightly finer grain', 'pass']);
+  const close = normaliseQc(withArt({ medium_ok: true, linework_ok: false, shading_ok: true, texture_ok: true, palette_ok: true, overall: 'close', notes: 'lines a little thinner' }), attachedCtx);
+  assertEquals(styleCheck(close, 'art_style'), { id: 'art_style', field: 'art_reference', pass: false, note: 'close: lines a little thinner (linework differs)' });
+  assertEquals([close.qc_report.verdict, close.needs_regen, close.qc_report.corrective_instruction, close.qc_report.style_match?.score], ['warn', false, null, 86]);
+  // different: fail, needs_regen, the corrective names the reference look and takes only the look from it (never its subject, layout or words)
+  const diff = normaliseQc(withArt(DIFFERENT), attachedCtx);
+  assertEquals(styleCheck(diff, 'art_style'), { id: 'art_style', field: 'art_reference', pass: false, note: 'different: thin brush lines instead of bold uniform outlines, no halftone (linework, shading differ)' });
+  assertEquals([diff.qc_report.verdict, diff.needs_regen, diff.qc_report.score, diff.qc_report.style_match?.score], ['fail', true, 100, 86], 'core score untouched, 6 of 7 style checks');
+  assertStringIncludes(diff.qc_report.corrective_instruction!, 'CRITICAL CORRECTIONS - a previous attempt failed quality inspection. Fix ALL of the following while keeping everything else identical: ' + REDRAW + '. The ONLY text in the image must read exactly: "CHICKEN HAPPY HOUR / EST. 2026"');
+  assert(diff.qc_report.checks.every((c) => c.pass !== false), 'no core check failed - the art style alone decided the retry');
+  // no notes: the corrective names the differing parts, else the whole look
+  assertEquals(artCorrection('', ['linework', 'shading']), "Redraw in the attached ART STYLE reference's look: match its linework, shading; take only its look, never its subject, layout or words");
+  assertEquals(artCorrection('  '), "Redraw in the attached ART STYLE reference's look: match its medium, linework, shading, texture and colours; take only its look, never its subject, layout or words");
+  const bare = normaliseQc(withArt({ overall: 'different' }), attachedCtx);
+  assertStringIncludes(bare.qc_report.corrective_instruction!, 'look: match its medium, linework, shading, texture and colours; take only its look');
+  assertEquals(styleCheck(bare, 'art_style')?.note, 'different');
+  // WF-2 caps the retry (attempt 2 never retries); qc-judge reports the same decision on attempt 2
+  const second = normaliseQc(withArt(DIFFERENT), { ...attachedCtx, attempt: 2 });
+  assertEquals([second.qc_report.attempt, second.qc_report.verdict, second.needs_regen], [2, 'fail', true]);
+});
+
+Deno.test('art reference attached, settings.qc_art_regen off -> a different style is a warn, no retry; the flag defaults to on', () => {
+  const off = normaliseQc(withArt(DIFFERENT), { ...attachedCtx, qc_art_regen: false });
+  assertEquals([off.qc_report.verdict, off.needs_regen, off.qc_report.corrective_instruction], ['warn', false, null]);
+  assertEquals(styleCheck(off, 'art_style')?.pass, false, 'the finding is still reported');
+  assertEquals(normaliseQc(withArt(DIFFERENT), { ...attachedCtx, qc_art_regen: 'false' }).needs_regen, false, 'string false');
+  const { qc_art_regen: _drop, ...noFlag } = attachedCtx;
+  assertEquals(normaliseQc(withArt(DIFFERENT), noFlag).needs_regen, true, 'absent -> on');
+  assertEquals(normaliseQc(withArt(DIFFERENT), { ...attachedCtx, qc_art_regen: null }).needs_regen, true, 'null -> on');
+  // the subject switch is independent of the art switch
+  const both = normaliseQc(withArt(DIFFERENT, {}, { subject_ok: false, subject_seen: 'a chicken' }), { ...attachedCtx, qc_art_regen: false, qc_subject_regen: true });
+  assertEquals(both.needs_regen, true, 'the wrong hero still retries');
+  assert(!both.qc_report.corrective_instruction!.includes('ART STYLE reference'), 'no art sentence when the art switch is off');
+});
+
+Deno.test('art reference NOT attached (WF-3 edits, Style Card looks, older WF-2): no art_style check, a stray art_match is ignored', () => {
+  for (const c of [artCtx, { ...artCtx, art_reference_attached: false }, { ...artCtx, art_reference_attached: 'true' }, { ...artCtx, art_reference_attached: 1 }, chickenCtx]) {
+    const r = normaliseQc(withArt(DIFFERENT), c);
+    assertEquals(r.qc_report.style_match?.checks.map((x) => x.id), ['palette', 'medium', 'typography', 'composition', 'subject', 'forbid'], 'no art_style check: ' + JSON.stringify((c as { art_reference_attached?: unknown }).art_reference_attached));
+    assertEquals([r.qc_report.verdict, r.needs_regen, r.qc_report.style_match?.art_match, r.qc_report.style_match?.art_reference_attached], ['pass', false, null, false]);
+  }
+  // buildStyleMatch defaults to not attached
+  assertEquals(buildStyleMatch({ style: { art_match: DIFFERENT } }, null, '').checks.some((c) => c.id === 'art_style'), false);
+});
+
+Deno.test('malformed art_match: missing -> not reported, unreadable -> not reported (unreadable), tolerant strings, never a retry on a guess', () => {
+  const missing = normaliseQc(withArt(undefined), attachedCtx);
+  assertEquals(styleCheck(missing, 'art_style'), { id: 'art_style', field: 'art_reference', pass: null, note: ART_NOT_REPORTED });
+  assertEquals([missing.qc_report.verdict, missing.needs_regen, missing.qc_report.style_match?.score], ['pass', false, 100], 'an unreported check leaves the score');
+  for (const junk of [[1, 2], 42, true, false, '{"overall": diff', { foo: 1 }, { overall: 'kinda', notes: 'n/a' }]) {
+    const r = normaliseQc(withArt(junk), attachedCtx);
+    assertEquals(styleCheck(r, 'art_style'), { id: 'art_style', field: 'art_reference', pass: null, note: ART_UNREADABLE }, 'unreadable ' + JSON.stringify(junk));
+    assertEquals([r.qc_report.verdict, r.needs_regen], ['pass', false], 'no verdict change for ' + JSON.stringify(junk));
+  }
+  // a bare overall word, a JSON string, string booleans and an upper-case word are read
+  assertEquals(normaliseQc(withArt('different'), attachedCtx).needs_regen, true, 'bare word');
+  assertEquals(parseArtMatch('{"overall":"Same","palette_ok":"true"}').match?.overall, 'same', 'JSON string, case-insensitive');
+  assertEquals(parseArtMatch({ overall: ' DIFFERENT ', medium_ok: 'false' }).match, { overall: 'different', medium_ok: false, linework_ok: null, shading_ok: null, texture_ok: null, palette_ok: null, notes: '' });
+  assertEquals(parseArtMatch(null).state, 'missing');
+  // the literal template choice "same|close|different" is no overall word; a false sub-key still warns, never retries
+  const literal = normaliseQc(withArt({ overall: 'same|close|different', palette_ok: false, notes: 'rust swapped for teal' }), attachedCtx);
+  assertEquals(styleCheck(literal, 'art_style'), { id: 'art_style', field: 'art_reference', pass: false, note: 'rust swapped for teal (palette differs)' });
+  assertEquals([literal.qc_report.verdict, literal.needs_regen], ['warn', false]);
+  // sub-keys only, all true: pass
+  assertEquals(artStyleCheck(parseArtMatch({ medium_ok: true }).match, 'ok').pass, true);
+  // notes are one line, trimmed of a trailing full stop, at most 240 characters
+  assertEquals(parseArtMatch({ overall: 'close', notes: 'a\n  b.' }).match?.notes, 'a b');
+  assertEquals(parseArtMatch({ overall: 'close', notes: 'x'.repeat(400) }).match?.notes.length, 240);
+  assertEquals(ART_MATCH_KEYS.map((k) => k.key), ['medium_ok', 'linework_ok', 'shading_ok', 'texture_ok', 'palette_ok']);
+});
+
+Deno.test('art reference different combined with a text failure and a wrong hero: one retry, every correction in order', () => {
+  const textFail = { text_found: 'CHICKEN HAPY HOUR EST. 2026', text_matches: false, issues: ['Spell the text exactly "CHICKEN HAPPY HOUR"'] };
+  const r = normaliseQc(withArt(DIFFERENT, textFail, { subject_ok: false, subject_seen: 'a chicken' }), attachedCtx);
+  assertEquals([r.qc_report.verdict, r.needs_regen, r.qc_report.text_ok], ['fail', true, false]);
+  assertStringIncludes(r.qc_report.corrective_instruction!, 'identical: Spell the text exactly "CHICKEN HAPPY HOUR"; Draw a highland cow as the hero, not a chicken; the text is lettering only and never chooses the subject; ' + REDRAW + '. The ONLY text in the image must read exactly: "CHICKEN HAPPY HOUR / EST. 2026" - spelled letter for letter');
+  // the art sentence never tells the redraw to keep the subject: with a wrong hero that would contradict the hero sentence
+  assert(!/keep(ing)? the subject/i.test(r.qc_report.corrective_instruction!), r.qc_report.corrective_instruction!);
+  assertEquals(r.qc_report.corrective_instruction!.match(/Draw a highland cow as the hero/g)?.length, 1);
+  // the art switch off: the text failure still retries, without the art sentence
+  const off = normaliseQc(withArt(DIFFERENT, textFail), { ...attachedCtx, qc_art_regen: false });
+  assertEquals([off.qc_report.verdict, off.needs_regen], ['fail', true]);
+  assert(!off.qc_report.corrective_instruction!.includes('ART STYLE reference'), off.qc_report.corrective_instruction!);
+  // a close style with a text failure: the text retry carries no art sentence ('close' never asks for a redraw)
+  const close = normaliseQc(withArt({ ...DIFFERENT, overall: 'close' }, textFail), attachedCtx);
+  assert(close.needs_regen && !close.qc_report.corrective_instruction!.includes('ART STYLE reference'), close.qc_report.corrective_instruction!);
+});
+
+Deno.test('value-less art look (live card 72354a02 shape) + the reference attached: palette / medium stay not judged, the art_style check closes the gap', () => {
+  const unread = { ...artLook, medium: '', realism: '', linework: { weight: '', style: '', outline: '' }, shading: '', shading_method: '', texture: '', edge_finish: '', palette: [] };
+  const r = normaliseQc(withArt(DIFFERENT, {}, { palette_ok: true, medium_ok: true }), { ...attachedCtx, style_card: unread });
+  assertEquals([styleCheck(r, 'palette')?.pass, styleCheck(r, 'medium')?.pass], [null, null], 'nothing read to judge the text look against');
+  assertEquals(styleCheck(r, 'art_style')?.pass, false, 'judged against the image itself');
+  assertEquals([r.qc_report.verdict, r.needs_regen], ['fail', true]);
+  assertEquals(r.qc_report.checks.find((c) => c.id === 'style_palette')?.name, 'Palette matches Art style reference');
+});
+
+Deno.test('studio_28 migration: guard first, qc_prompt v2 gets the ART STYLE REFERENCE paragraph once, every placeholder kept, the art_match keys qc-judge reads, settings.qc_art_regen', async () => {
+  const mig = await readFile(new URL('../../migrations/20261002_studio_28_qc_art_reference.sql', import.meta.url), 'utf8');
+  const guard = mig.indexOf('do $guard$');
+  assert(guard > 0 && guard < mig.indexOf('update public.prompt_templates'), 'the inactive / never-activated guard runs before any update');
+  assert(/t\.active or t\.activated_at is not null or t\.activated_by is not null/.test(mig), 'guard refuses an active or once-activated row');
+  assert(/where slug = 'qc_prompt' and version = 2 and not active and activated_at is null and activated_by is null;/.test(mig), 'the update itself is guarded');
+  assert(!/insert\s+into\s+public\.prompt_templates/i.test(mig) && !/set\s+active\s*=/i.test(mig), 'no insert, no activation');
+  assert(/alter table public\.settings add column if not exists qc_art_regen boolean not null default true;/.test(mig), 'settings.qc_art_regen boolean not null default true');
+  assert(/comment on column public\.settings\.qc_art_regen is/.test(mig), 'column comment');
+  const m = mig.match(/art_tail constant text := \$s\$([\s\S]*?)\$s\$;/);
+  assert(m, 'art_tail constant');
+  const tail = m![1];
+  assert(tail.startsWith('ART STYLE REFERENCE ATTACHED: {{ART_REFERENCE_ATTACHED}}.\nWhen yes, TWO images are attached: the FIRST is the generated design, the SECOND is the client\'s Art style reference'), 'paragraph head');
+  assertEquals(tail.split('{{').length - 1, 1, 'exactly one placeholder in the paragraph');
+  for (const k of ART_MATCH_KEYS) assertStringIncludes(tail, '"' + k.key + '":true|false', 'art_match key ' + k.key);
+  assertStringIncludes(tail, '"overall":"same|close|different"');
+  assertStringIncludes(tail, '"notes":"25 words or fewer naming what differs');
+  assertStringIncludes(tail, 'never its subject, layout or words');
+  assert(tail.endsWith('When no, only the generated design is attached: omit "art_match".'), 'the no branch closes the paragraph');
+  assert(!tail.includes("the card's") && !/\bthe reference\b/.test(tail), 'never "the card" / a bare "the reference"');
+  // the studio_21 body + the studio_26 sentence edits + this paragraph: every placeholder kept, the paragraph last
+  const m21 = await readFile(new URL('../../migrations/20260930_studio_21_style_card_v2.sql', import.meta.url), 'utf8');
+  const m26 = await readFile(new URL('../../migrations/20261001_studio_26_art_style_wins.sql', import.meta.url), 'utf8');
+  let body = m21.match(/\$qc\$([\s\S]*?)\$qc\$/)![1];
+  const c26 = new Map<string, string>();
+  for (const x of m26.matchAll(/(\w+) constant text := \$s\$([\s\S]*?)\$s\$;/g)) c26.set(x[1], x[2]);
+  for (const n of [1, 2, 3, 4, 5]) body = body.replace(c26.get('e' + n + '_old')!, c26.get('e' + n + '_new')!);
+  assert(body.endsWith('{{STYLE_CARD_JSON}}'), 'qc_prompt v2 ends with the STYLE_CARD_JSON placeholder (the migration checks it before appending)');
+  const v2 = body + '\n\n' + tail;
+  for (const tok of ['EXPECTED ON-DESIGN TEXT: """{{EXPECTED_TEXT}}"""', '{{EXPECTED_SUBJECT}}', '{{PALETTE_RULE}}', '{{FORBID_LIST}}', '{{STYLE_CARD_JSON}}', '{{ART_REFERENCE_ATTACHED}}']) assertStringIncludes(v2, tok, 'keeps ' + tok);
+  // the self-check LIKE patterns hold on the appended body
+  for (const x of mig.matchAll(/body like '%([^%]+)%'/g)) assert(v2.includes(x[1].replace(/''/g, "'")), 'self-check pattern present: ' + x[1]);
+  for (const x of mig.matchAll(/body not like '%([^%]+)%'/g)) assert(!v2.includes(x[1].replace(/''/g, "'")), 'self-check pattern absent: ' + x[1]);
+  assert(v2.endsWith('omit "art_match".'), 'ends with the no branch (the anchored LIKE)');
 });

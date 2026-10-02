@@ -87,6 +87,8 @@ export function TestRenderResult({
       <StyleMatchStrip
         report={gen?.qc_report}
         clientId={card.client_id}
+        cardId={card.id}
+        magicPrompt={gen?.magic_prompt_json}
         styleCardId={styleCardId}
         expectedSubject={expectedSubject}
         styleCard={styleCard}

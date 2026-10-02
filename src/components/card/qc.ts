@@ -20,7 +20,7 @@ import { humanizeKey, jsonToText, parseEmbeddedJson, pickNumber, pickString, rec
 
 /** One `style_match` check as qc-judge v2 writes it. `pass` null = the judge did not report it. */
 export interface StyleMatchCheck {
-  /** palette | medium | typography | composition | subject | forbid */
+  /** palette | medium | typography | composition | subject | forbid | art_style */
   id: string
   /** Style Card field the check judged (`typography.headline`, `subjects`…); the editor deep link. */
   field: string | null
@@ -38,6 +38,15 @@ export interface StyleMatch {
   caseSeen: string | null
 }
 
+/**
+ * The art comparison (qc-judge, 2026-10-02): when WF-2 attached the card's Art style reference as a second
+ * image, the judge compares how the design is drawn with it (`style.art_match`) and qc-judge writes the
+ * result as `style_match` check(s) with this id and field. Not a Style Card field: it deep-links to the
+ * card's References panel instead of the Style Card editor.
+ */
+export const ART_STYLE_CHECK_ID = 'art_style'
+export const ART_STYLE_CHECK_FIELD = 'art_reference'
+
 const STYLE_CHECK_LABEL: Record<string, string> = {
   palette: 'Palette',
   medium: 'Medium',
@@ -45,6 +54,7 @@ const STYLE_CHECK_LABEL: Record<string, string> = {
   composition: 'Composition',
   subject: 'Subject',
   forbid: 'Forbid list',
+  [ART_STYLE_CHECK_ID]: 'Drawn like the Art style reference',
 }
 
 /** Field per check id when the judge wrote none (mirrors qc-judge STYLE_FIELDS). */
@@ -55,10 +65,47 @@ const STYLE_CHECK_FIELD: Record<string, string> = {
   composition: 'composition',
   subject: 'subjects',
   forbid: 'forbid',
+  [ART_STYLE_CHECK_ID]: ART_STYLE_CHECK_FIELD,
 }
 
 export function styleCheckLabel(id: string): string {
   return STYLE_CHECK_LABEL[id] ?? humanizeKey(id)
+}
+
+/** True for the check(s) comparing the design with the attached Art style reference image. */
+export function isArtStyleCheck(check: Pick<StyleMatchCheck, 'id' | 'field'>): boolean {
+  return check.id === ART_STYLE_CHECK_ID || check.field === ART_STYLE_CHECK_FIELD
+}
+
+/**
+ * Where the look of a generation came from: prompt-engine v8 `magic_prompt_json.effective_style.source`
+ * ('art_reference' when the card's Art style reference set it, edits inherit the parent's), or null for a
+ * prompt written before v8 (the Style Card look).
+ */
+export function effectiveStyleSource(magicPrompt: Json | null | undefined): 'art_reference' | 'style_card' | null {
+  const m = parseEmbeddedJson(magicPrompt)
+  if (!isRecord(m)) return null
+  const es = parseEmbeddedJson(m.effective_style)
+  if (!isRecord(es)) return null
+  return es.source === 'art_reference' ? 'art_reference' : es.source === 'style_card' ? 'style_card' : null
+}
+
+/**
+ * True when the style verdict is about the card's Art style reference rather than the Style Card: the
+ * look came from it, or the judge compared the design with it (an art check is present).
+ */
+export function judgedAgainstArtReference(magicPrompt: Json | null | undefined, match: StyleMatch | null): boolean {
+  return effectiveStyleSource(magicPrompt) === 'art_reference' || Boolean(match?.checks.some(isArtStyleCheck))
+}
+
+/**
+ * `/card/:id#references`: the card page with its References panel opened and scrolled into view (where
+ * the Art style reference image sits). The fix for an art mismatch is on the card, not in the Style Card.
+ */
+export const REFERENCES_ANCHOR = 'references'
+
+export function cardReferencesLink(cardId: string): string {
+  return `/card/${cardId}#${REFERENCES_ANCHOR}`
 }
 
 /**

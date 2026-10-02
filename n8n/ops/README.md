@@ -5,6 +5,9 @@ State on 2026-09-30: NOTHING in this folder has been applied to n8n. The sources
 (validator green, tool tests green), the BEFORE copies equal the live workflows (verified today, version ids below),
 and every `*.ops.json` here is the exact `update_workflow` payload that turns the live workflow into the source.
 The operator (user, or a session with the n8n write tools) runs the steps below in order. Nothing is committed.
+Update 2026-10-02 (QC sees the Art style reference): `wf2.ops.json`, `wf3.ops.json` and both sticky ops regenerated from the
+current sources; the live WF-2 / WF-3 were re-read the same day (read only) - versionIds still `53073bc3-...` / `1fbb0856-...`
+and every BEFORE node's parameters equal live, so the BEFORE copies stand.
 
 ## 1. Files
 
@@ -12,8 +15,8 @@ The operator (user, or a session with the n8n write tools) runs the steps below 
 |---|---|---|---|---|---|---|
 | WF-1b Style Draft | `CsohPMosybjBoP8s` | `5ae44133-6c67-4196-a5a6-236f152bf49d` (updated 07:05:28Z) | `before/wf1b-style-draft.live-CsohPMosybjBoP8s.sdk.js` = `git show 2c90fc2:n8n/wf1b-style-draft.sdk.js` | `n8n/wf1b-style-draft.sdk.js` | `wf1b.ops.json` (65 ops; `wf1b.ops.split8.jsonl` = the same 65 in 9 lines of <= 8) | `wf1b.sticky.ops.json` -> live `Sticky Note 8350ba26` |
 | WF-1 Intake | `CrpmkqYiaWBtvto6` | `e5d2cb76-d4e6-4da9-9727-cfc15de759a2` (07:05:25Z) | `before/wf1-intake.sdk.js` = HEAD | `n8n/wf1-intake.sdk.js` | `wf1.ops.json` (22 ops) | `wf1.sticky.ops.json` -> `Sticky Note ae342437` |
-| WF-2 Generate | `KVLDYPaWZZZtOoir` | `53073bc3-253c-4fcf-af39-202e9db63330` (07:05:29Z) | `before/wf2-generate.sdk.js` = HEAD | `n8n/wf2-generate.sdk.js` | `wf2.ops.json` (4 ops) | `wf2.sticky.ops.json` -> `Sticky Note e40f5e01` |
-| WF-3 Edit | `V83NWHjzDdyiqtNP` | `1fbb0856-b853-4458-b181-03d5a7bc0fcd` (07:05:31Z) | `before/wf3-edit.sdk.js` = HEAD | `n8n/wf3-edit.sdk.js` | `wf3.ops.json` (3 ops) | `wf3.sticky.ops.json` -> `Sticky Note b3ad825a` |
+| WF-2 Generate | `KVLDYPaWZZZtOoir` | `53073bc3-253c-4fcf-af39-202e9db63330` (07:05:29Z; re-verified 2026-10-02) | `before/wf2-generate.sdk.js` = HEAD | `n8n/wf2-generate.sdk.js` | `wf2.ops.json` (4 ops) | `wf2.sticky.ops.json` -> `Sticky Note e40f5e01` |
+| WF-3 Edit | `V83NWHjzDdyiqtNP` | `1fbb0856-b853-4458-b181-03d5a7bc0fcd` (07:05:31Z; re-verified 2026-10-02) | `before/wf3-edit.sdk.js` = HEAD | `n8n/wf3-edit.sdk.js` | `wf3.ops.json` (3 ops) | `wf3.sticky.ops.json` -> `Sticky Note b3ad825a` |
 
 Op counts (diff-ops order: addNode/setNodeSettings -> updateNodeParameters -> removeConnection -> removeNode -> addConnection):
 
@@ -23,6 +26,7 @@ Op counts (diff-ops order: addNode/setNodeSettings -> updateNodeParameters -> re
 - `wf2.ops.json`: 4 = updateNodeParameters 4 (Get Generation, Build QC Request, QC Judge, Build Corrective Prompt).
 - `wf3.ops.json`: 3 = updateNodeParameters 3 (Get Generation, Build QC Request, QC Judge).
 - Art style override (2026-10-01, regenerated after the WF-2/3 change): `Build QC Request` (both) uses `magic_prompt_json.effective_style` from prompt-engine v8 when present - `STYLE_CARD_JSON` = that look pruned to the same keys plus its `source` (`art_reference` = the analysed Art style reference of the card wins: its medium, linework, shading, texture, edge finish and palette; `style_card` = the Style Card values as the engine pruned them), `PALETTE_RULE` from its `palette_mode` (the client strictness applied to that palette), `FORBID_LIST` from its `forbid` (same text-demand filter) - and outputs it as `style_card`; `QC Judge` (both) adds `style_card` to the qc-judge body (JSON.stringify drops it when absent, so without effective_style the body is the old four keys and qc-judge keeps its `style_card_snapshot` default). Without `effective_style` (prompt-engine up to v7) the Style Card path is unchanged, byte for byte. Sticky ops regenerated for the new canvas text. Regenerated again 2026-10-01 (same 4 / 3 ops): `PALETTE_RULE` is "always true - no colours were read from the Art style reference, so colours are not judged" when an `art_reference` look has no palette (prompt-engine v8 sends that value-less look for a stamped Art style slot with no per-slot reading, e.g. card 72354a02); sticky text says so.
+- Art style reference attached as the SECOND QC image (2026-10-02, regenerated; still 4 / 3 ops, same nodes - `wf2.ops.json` 4 = updateNodeParameters Get Generation, Build QC Request, QC Judge, Build Corrective Prompt; `wf3.ops.json` 3 = updateNodeParameters Get Generation, Build QC Request, QC Judge; no node, connection or credential change, no new HTTP call). WF-2 `Build QC Request`: when `magic_prompt_json.effective_style.source` is `art_reference` and its `reference_path` (prompt-engine v8, the refs-bucket path the input plan signs; a `refs/` prefix is stripped) equals the `path` of a refs item of `List Input Paths`, the `signedURL` that `Sign Input` produced for that item (same order - the URL the image model got as that input) is appended as a second `image_url`: content = text, generated design, art reference. `{{ART_REFERENCE_ATTACHED}}` = `yes` / `no`; output `art_reference_attached` true / false. It runs again unchanged on the corrective pass (Sign Input / List Input Paths still hold the first-pass items), so BOTH QC passes carry the art image; Kie `Vision QC` sends `$json.body` and `OpenRouter QC` the same body plus its model, so both platforms get it. Gate: only a template that carries the `ART_REFERENCE_ATTACHED` token (qc_prompt v2 after studio_28) gets the second image - qc_prompt v1 and the pre-studio_28 v2 body render byte for byte as before. WF-2 `QC Judge` body gains `art_reference_attached` (always a boolean; `=== true` of the Build QC Request output) for qc-judge v2.2. WF-3 `Build QC Request`: `artUrl` fixed to `''` - `ART_REFERENCE_ATTACHED` is always `no`, one image only (an edit is judged against its previous version); WF-3 `QC Judge` unchanged (no `art_reference_attached` key = not attached). Both nodes keep their shared lines byte-identical (the `const gen` line now also reads `magic`, the EXTRACT 3.8 comment moved to the end of its line, so both stay at 20 lines). Sticky text updated (WF-2 note height 1180 -> 1320). Signed-URL window: Sign Input signs for 3600 s and the art URL is reused, not re-signed; the second QC call normally runs well inside the hour (each pass is sized for the 20-min requeue_stale window), and only a run that exhausts most timeouts and retries could outlive it - that vision call then fails and QC degrades fail-open as it already does for any failed vision call.
 
 Sanity (run today, repeat any time - every file is a JSON array, every addConnection / update / settings op names a node of the AFTER file, every removeNode names a node that is gone):
 
@@ -36,7 +40,7 @@ const names=new Set(after.nodes.map(n=>n.name));const c={};for(const x of ops)c[
 const bad=ops.filter(x=>x.type==="addConnection"&&(!names.has(x.source)||!names.has(x.target)));
 console.log(o,ops.length,JSON.stringify(c),"bad addConnection:",bad.length)' n8n/ops/$k.ops.json n8n/$f.sdk.js; done
 ```
-Result 2026-09-30: `wf1b 65 ... bad addConnection: 0`, `wf1 22 ... 0`, `wf2 3 ... 0`, `wf3 2 ... 0`. Result 2026-10-01 after the art style override: `wf2 4 ... 0`, `wf3 3 ... 0` (again after the value-less palette rule; every update op's parameters equal the AFTER node's).
+Result 2026-09-30: `wf1b 65 ... bad addConnection: 0`, `wf1 22 ... 0`, `wf2 3 ... 0`, `wf3 2 ... 0`. Result 2026-10-01 after the art style override: `wf2 4 ... 0`, `wf3 3 ... 0` (again after the value-less palette rule; every update op's parameters equal the AFTER node's). Result 2026-10-02 after the art reference attachment: `wf2 4 {"updateNodeParameters":4} bad addConnection: 0`, `wf3 3 {"updateNodeParameters":3} bad addConnection: 0`, every update op's parameters equal the AFTER node's; `node n8n/tools/check.js n8n/wf2-generate.sdk.js n8n/wf3-edit.sdk.js` valid / ok, `node n8n/tools/test-wf2-prompts.js` all checks passed (117).
 
 Duplicates: `wf1b-from-live-CsohPMosybjBoP8s.ops.json` and `wf1b-from-base-baCsaUp7HdrrSf2i.ops.json` (+ `.split8.jsonl`) are byte-identical to `wf1b.ops.json` (checked with `cmp`); the former `wf1-intake.ops.json`, `wf2-generate.ops.json` and `wf3-edit.ops.json` copies were removed on 2026-10-01 after the WF-2/3 forbid-filter change (the canonical `wf2.ops.json` / `wf3.ops.json` carry it). The runbooks (`wf1-intake.runbook.md`, `docs/runbook-wf1b-style-card-v2.md`, `docs/runbook-wf2-wf3-qc-v2.md`) hold the per-node detail and failure tables. Apply ONE set, once.
 
@@ -50,8 +54,13 @@ Duplicates: `wf1b-from-live-CsohPMosybjBoP8s.ops.json` and `wf1b-from-base-baCsa
    -- expected new rows, all active = false: style_sheet 1, style_profiler 3, analysis_prompt 3, tier_rules 2, text_rules 2, defects 2, background_rule 2, style_card_render 2, qc_prompt 2
    select column_name from information_schema.columns where table_name = 'style_draft_requests' and column_name = 'raw';  -- 1 row
    ```
+   And `supabase/migrations/20261002_studio_28_qc_art_reference.sql` applied (qc_prompt v2, still inactive, gains the ART STYLE REFERENCE paragraph with `{{ART_REFERENCE_ATTACHED}}`; `settings.qc_art_regen` boolean not null default true). Without it WF-2 never attaches the art image (the gate is the token in the active template). Check:
+   ```sql
+   select (body like '%ART STYLE REFERENCE ATTACHED: {{ART_REFERENCE_ATTACHED}}.%') as art_paragraph, active, md5(body) from public.prompt_templates where slug = 'qc_prompt' and version = 2;  -- true, false
+   select column_name from information_schema.columns where table_name = 'settings' and column_name = 'qc_art_regen';  -- 1 row
+   ```
 2. Edge Functions deployed FIRST, project `voatrqhfsdfjomyajovi`, all with verify_jwt off (they check `x-studio-secret` themselves):
-   `prompt-engine` (v8), `qc-judge` (v2), `style-card-check` (new). `supabase/config.toml` has `verify_jwt = false` blocks for prompt-engine and qc-judge only - the backend owner adds `[functions.style-card-check] verify_jwt = false` (or deploys it with `--no-verify-jwt`).
+   `prompt-engine` (v8, with `effective_style.reference_path` / `reference_image_index`), `qc-judge` (v2.2: reads `art_reference_attached` and `style.art_match`), `style-card-check` (new). `supabase/config.toml` has `verify_jwt = false` blocks for prompt-engine and qc-judge only - the backend owner adds `[functions.style-card-check] verify_jwt = false` (or deploys it with `--no-verify-jwt`).
    ```sh
    supabase functions deploy style-card-check --project-ref voatrqhfsdfjomyajovi --no-verify-jwt
    supabase functions deploy prompt-engine    --project-ref voatrqhfsdfjomyajovi --no-verify-jwt
@@ -137,7 +146,7 @@ prompt-engine v8 must already be deployed (section 2) - tier_rules v2 carries `{
 
 ## 5. Step C - WF-2 (`KVLDYPaWZZZtOoir`) + WF-3 (`V83NWHjzDdyiqtNP`) + qc_prompt v2
 
-qc-judge v2 deployed first (section 2); otherwise `style_match` stays null and the request degrades gracefully.
+qc-judge v2 deployed first (section 2); otherwise `style_match` stays null and the request degrades gracefully. The art reference attachment switches itself on with the template: while qc_prompt v1 is active the new WF-2 sends one image as before; it attaches the Art style reference only once qc_prompt v2 (carrying studio_28's `{{ART_REFERENCE_ATTACHED}}`) is the active row - so activate v2 only after qc-judge v2.2 is deployed (an older qc-judge ignores `art_match` and `art_reference_attached`, harmless but no art check).
 
 1. `update_workflow('KVLDYPaWZZZtOoir', operations = <wf2.ops.json>)`; `update_workflow('KVLDYPaWZZZtOoir', operations = <wf2.sticky.ops.json>)` (target `Sticky Note e40f5e01`); `validate_workflow('KVLDYPaWZZZtOoir')`.
 2. `update_workflow('V83NWHjzDdyiqtNP', operations = <wf3.ops.json>)`; `update_workflow('V83NWHjzDdyiqtNP', operations = <wf3.sticky.ops.json>)` (target `Sticky Note b3ad825a`); `validate_workflow('V83NWHjzDdyiqtNP')`.
@@ -161,7 +170,16 @@ qc-judge v2 deployed first (section 2); otherwise `style_match` stays null and t
      ```
      In the execution, `Build QC Request` output has `expected_subject`, `template_version` 2, and its text contains `EXPECTED SUBJECT: "`, `FORBID: 1. `, the pruned one-line card JSON, no `{{`, no `Add two keys to your JSON` (the v1 paragraph), no `@` / `handle`.
      Art style override (prompt-engine v8): on a card whose Art style slot holds an analysed reference, `Build QC Request` output has `style_card.source` = `art_reference`, its card JSON line starts with `{"source":"art_reference"` and carries the reference medium and palette (not the Style Card hexes), the `palette_ok` sentence matches the client `palette_mode`, and the `QC Judge` request body carries the same `style_card`; on a card with an empty Art style slot `source` is `style_card`; a `style_test` card is always `style_card`.
-   - WF-3: Edit text on that generation -> the same checks on its `Build QC Request`; when a corrective pass runs, `Build Corrective Prompt` output starts with `CRITICAL CORRECTIONS` exactly once and has no `..`.
+     Art style reference attached (2026-10-02, needs studio_28 + qc_prompt v2 active): on that art-reference card the `Vision QC` (or `OpenRouter QC`) request body has 2 `image_url` parts - the generated design, then the art reference, whose URL is the `Sign Input` output of the `List Input Paths` item whose `path` equals `magic_prompt_json.effective_style.reference_path` - the `Build QC Request` text contains `ART STYLE REFERENCE ATTACHED: yes.`, its output has `art_reference_attached: true`, and the `QC Judge` body has `"art_reference_attached":true`. When a corrective pass runs, its second `Vision QC` call carries the same 2 parts (new design URL, same art URL). On a Style Card card (`source` `style_card`) or a card whose `reference_path` is null: 1 `image_url`, `ATTACHED: no.`, `art_reference_attached` false. Then:
+     ```sql
+     select magic_prompt_json->'effective_style'->>'source' as source, magic_prompt_json->'effective_style'->>'reference_path' as ref_path,
+            qc_report->'style_match'->'art_reference_attached' as attached, qc_report->'style_match'->'art_match'->>'overall' as overall,
+            jsonb_path_query_array(qc_report, '$.style_match.checks[*] ? (@.id == "art_style")') as art_check, needs_regen, attempt
+       from public.generations order by created_at desc limit 1;
+     -- art reference card: source art_reference, ref_path set, attached true, overall same|close|different, one art_style check;
+     -- overall different + settings.qc_art_regen on -> attempt 2 (one corrective pass, attempt 2 never retries)
+     ```
+   - WF-3: Edit text on that generation -> the same checks on its `Build QC Request`; when a corrective pass runs, `Build Corrective Prompt` output starts with `CRITICAL CORRECTIONS` exactly once and has no `..`. An edit never attaches the art reference: 1 `image_url`, `ART STYLE REFERENCE ATTACHED: no.`, no `art_reference_attached` key in its `QC Judge` body.
 
 ## 6. Rollback (per step; templates and workflow in the same step, reverse order of section 2's rule does not matter here because both go back together)
 
@@ -189,7 +207,7 @@ qc-judge v2 deployed first (section 2); otherwise `style_match` stays null and t
   update public.prompt_templates set active = true  where slug = 'qc_prompt' and version = 1;
   commit;
   ```
-  Template-only rollback is also safe on its own: the new Code nodes append the v1 fallback paragraph again.
+  Template-only rollback is also safe on its own: the new Code nodes append the v1 fallback paragraph again, and without the `ART_REFERENCE_ATTACHED` token WF-2 stops attaching the Art style reference (one image, `art_reference_attached` false). To stop only the art retry, set `settings.qc_art_regen = false` (qc-judge then reports a different art style as warn).
 - Alternative to restore_workflow_version: `node n8n/tools/diff-ops.js n8n/<after>.sdk.js n8n/ops/before/<before>.sdk.js` (arguments reversed) prints the ops that restore the BEFORE parameters.
 
 ## 7. Regenerate / verify

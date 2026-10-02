@@ -10,6 +10,7 @@ import {
   alignReadings,
   applyEdit,
   artImageNumber,
+  artPlanEntry,
   cardReading,
   attachesClientLook,
   buildMagicPrompt,
@@ -25,6 +26,7 @@ import {
   IMAGE_ROLE_ART,
   IMAGE_ROLE_ART_WINS,
   imageRoleLabels,
+  inheritLook,
   type InputPath,
   type MagicPrompt,
   pickAspect,
@@ -703,7 +705,7 @@ Deno.test("art reference: the ART STYLE block replaces the Style Card look lines
   assert(out.length <= 12000, "length " + out.length);
   // effective_style (the CONTRACT with WF-2/WF-3 Build QC Request)
   assertEquals(artMagic.effective_style, {
-    source: "art_reference", reference_slot: 2,
+    source: "art_reference", reference_slot: 2, reference_path: chickenV2.card.reference_paths[1], reference_image_index: 2,
     medium: "screen-print vector", realism: "stylised", linework: { weight: "bold", style: "uniform outlines", outline: "" },
     shading: "halftone", shading_method: "halftone", texture: "paper grain", edge_finish: "clean",
     palette: [{ name: "cream", hex: "#F2E8D5", role: "fill" }, { name: "rust", hex: "#B5482A", role: "accent" }],
@@ -809,7 +811,8 @@ Deno.test("legacy roles without per-slot analysis (live card 72354a02): value-le
     "Image 3: LETTERING - take only the lettering style, weight, case, placement and effects; never its words",
   ], "the art image labelled ART STYLE, no client_look span");
   assertEquals(legacy.effective_style, {
-    source: "art_reference", reference_slot: 2, medium: "", realism: "", linework: { weight: "", style: "", outline: "" },
+    source: "art_reference", reference_slot: 2, reference_path: chickenV2.card.reference_paths[1], reference_image_index: 2,
+    medium: "", realism: "", linework: { weight: "", style: "", outline: "" },
     shading: "", shading_method: "", texture: "", edge_finish: "", palette: [], palette_mode: "strict",
     forbid: legacy.effective_style!.forbid, composition: legacy.effective_style!.composition, typography: legacy.effective_style!.typography, rules: legacy.effective_style!.rules,
   } as typeof legacy.effective_style, "empty look, client strictness");
@@ -970,11 +973,11 @@ Deno.test("effective_style (Style Card source): the garment-side palette variant
     composition: "badge", typography: { vibe: "woodtype" }, forbid: ["No gradients", "neon"], rules: { palette_mode: "strict" },
   };
   const dark = effectiveStyle({ card, garment_color: "black", art: null });
-  assertEquals(Object.keys(dark), ["source", "reference_slot", "medium", "realism", "linework", "shading", "shading_method", "texture", "edge_finish", "palette", "palette_mode", "forbid", "composition", "typography", "rules"], "contract keys in order");
+  assertEquals(Object.keys(dark), ["source", "reference_slot", "reference_path", "reference_image_index", "medium", "realism", "linework", "shading", "shading_method", "texture", "edge_finish", "palette", "palette_mode", "forbid", "composition", "typography", "rules"], "contract keys in order");
   assertEquals(dark.palette, [{ name: "bone", hex: "#EEEEEE", role: "fill", weight: "secondary" }, { name: "red", hex: "#C0392B", weight: "accent" }], "dark variant, labelled from the palette");
   assertEquals(effectiveStyle({ card, garment_color: "white", art: null }).palette, [{ name: "ink", hex: "#111111", weight: "dominant" }], "light variant");
   assertEquals(dark.forbid, ["gradients", "neon"], "linted forbid (negator stripped)");
-  assertEquals([dark.source, dark.reference_slot, dark.palette_mode, dark.medium, dark.linework.outline], ["style_card", null, "strict", "linocut", "none"]);
+  assertEquals([dark.source, dark.reference_slot, dark.reference_path, dark.reference_image_index, dark.palette_mode, dark.medium, dark.linework.outline], ["style_card", null, null, null, "strict", "linocut", "none"]);
   // the prompt Palette line and effective_style agree on the colours
   const line = renderStyleCard(card, { garment_color: "black" }).lines.find((l) => l.startsWith("- Palette"));
   assertEquals(line, "- Palette (STRICT - use ONLY these colours plus the flat grey background, no other hue): bone #EEEEEE (fill, secondary); red #C0392B (accent)");
@@ -982,6 +985,49 @@ Deno.test("effective_style (Style Card source): the garment-side palette variant
   const old = { ...readReference(slotAnalysis).references![1] };
   delete (old as { palette_entries?: unknown }).palette_entries;
   assertEquals(effectiveStyle({ card, art: old }).palette, [{ name: "cream", hex: "#F2E8D5" }, { name: "rust", hex: "#B5482A" }]);
+});
+
+Deno.test("effective_style reference_path / reference_image_index: where the art image sits in the input plan (WF-2 attaches it to QC)", () => {
+  // fresh build: the plan entry roled art_style - its path is the string the input plan signs (no bucket prefix)
+  const plan = artInput(chickenV2).plan;
+  const es = artMagic.effective_style!;
+  assertEquals([es.reference_image_index, es.reference_path], [2, chickenV2.card.reference_paths[1]], "Image 2, its refs path");
+  assertEquals(plan[es.reference_image_index! - 1], { bucket: "refs", path: es.reference_path!, role: "style_reference", slot_role: "art_style" }, "the planned input WF-2 signs");
+  assert(!/^(refs|gens)\//.test(es.reference_path!), "no bucket prefix (List Input Paths strips it the same way)");
+  assertEquals(es.reference_image_index, es.reference_slot, "attached: the plan index is the image number the prompt names");
+  // re-roled card: the stamped art slot moves, the path follows it (value-less look, still attached)
+  const swapped = buildMagicPrompt(artInput(chickenV2, { roles: ["art_style", "subject", "typography"] })).effective_style!;
+  assertEquals([swapped.reference_image_index, swapped.reference_path], [1, chickenV2.card.reference_paths[0]], "re-roled: Image 1");
+  // value-less override (live card 72354a02 shape: roles stamped, flat analysis): the art image is still in the plan
+  const flat = buildMagicPrompt(artInput(chickenV2, { reference_analysis: chickenV2.card.reference_analysis as ReferenceAnalysis })).effective_style!;
+  assertEquals([flat.source, flat.medium, flat.reference_image_index, flat.reference_path], ["art_reference", "", 2, chickenV2.card.reference_paths[1]], "value-less look still points at the attached art image");
+  // role-less plan (legacy card read with analysis_prompt v3): the reading's slot in the plan
+  const roleless = buildMagicPrompt(artInput(chickenV2, { roles: null, reference_roles: null })).effective_style!;
+  assertEquals([roleless.source, roleless.reference_image_index, roleless.reference_path], ["art_reference", 2, chickenV2.card.reference_paths[1]], "role-less plan");
+  // Style Card look (style-test card, or no art slot): both null
+  const test = buildMagicPrompt(inputFrom(chickenV2, V2_26, { tier: 3, roles: ROLED, reference_analysis: slotAnalysis, explicit_subject: "" })).effective_style!;
+  assertEquals([test.source, test.reference_path, test.reference_image_index], ["style_card", null, null], "style_card: null");
+  // not attached: no plan, an edit plan (previous version + mask), a gens entry
+  const art = resolveArtReference({ ...DESIGNER, reference_analysis: slotAnalysis, reference_roles: ROLED })!;
+  assertEquals(artPlanEntry(undefined, art), { index: null, path: null }, "no plan");
+  assertEquals(artPlanEntry([{ bucket: "gens", path: "c/prev.png", role: "previous_version" }, { bucket: "gens", path: "c/mask.png", role: "mask" }], art), { index: null, path: null }, "edit plan");
+  assertEquals(artPlanEntry([{ bucket: "refs", path: "a.png", role: "subject_reference", slot_role: "subject" }, { bucket: "gens", path: "b.png", role: "style_reference", slot_role: "art_style" }], art), { index: null, path: null }, "never a gens path");
+  assertEquals(artPlanEntry(plan, null), { index: null, path: null }, "no art reference");
+  const noPlan = effectiveStyle({ card: chickenV2.style_card_snapshot as unknown as StyleCard, art, reference_slot: 2 });
+  assertEquals([noPlan.reference_slot, noPlan.reference_path, noPlan.reference_image_index], [2, null, null], "reference_slot keeps its fallback, the plan fields stay null");
+  // regenerate (index.ts): re-derived from the regenerate's own plan
+  const regen = effectiveStyle({ card: chickenV2.style_card_snapshot as unknown as StyleCard, art, reference_slot: artImageNumber(plan, art), plan });
+  assertEquals(regen, es, "regenerate = fresh build");
+  // edits inherit the parent's values (index.ts inheritLook); a parent written before the keys existed gets null
+  const edited = applyEdit(artMagic, "edit_region", { instruction: "bigger hat" });
+  assertEquals(inheritLook(edited.effective_style!), es, "edit keeps the parent's path and index");
+  const old = JSON.parse(JSON.stringify(es)) as Record<string, unknown>;
+  delete old.reference_path; delete old.reference_image_index;
+  const kept = inheritLook(old as unknown as typeof es);
+  assertEquals([kept.reference_path, kept.reference_image_index, kept.medium, kept.source], [null, null, es.medium, "art_reference"], "older parent: nulls, look unchanged");
+  // R3 / renderer: the new keys never change the prompt (an effective_style without them renders byte-identical)
+  assertEquals(renderPrompt({ ...artMagic, effective_style: old as unknown as typeof es }), artGolden, "prompt text unchanged without the keys");
+  assertEquals(renderPrompt(edited), renderPrompt({ ...edited, effective_style: kept }), "edit render unchanged");
 });
 
 Deno.test("tier_rules v2 as rewritten by studio_26: WHAT TO MAKE for subject/composition only, look from the ART STYLE reference else the Style Card", () => {

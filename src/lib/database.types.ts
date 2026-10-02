@@ -637,6 +637,7 @@ export type Database = {
           openrouter_models: Json
           per_card_price_usd: number
           pipeline_paused: boolean
+          qc_art_regen: boolean
           qc_subject_regen: boolean
           reference_roles: Json
           updated_at: string
@@ -654,6 +655,7 @@ export type Database = {
           openrouter_models?: Json
           per_card_price_usd?: number
           pipeline_paused?: boolean
+          qc_art_regen?: boolean
           qc_subject_regen?: boolean
           reference_roles?: Json
           updated_at?: string
@@ -671,6 +673,7 @@ export type Database = {
           openrouter_models?: Json
           per_card_price_usd?: number
           pipeline_paused?: boolean
+          qc_art_regen?: boolean
           qc_subject_regen?: boolean
           reference_roles?: Json
           updated_at?: string

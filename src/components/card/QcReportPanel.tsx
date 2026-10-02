@@ -7,7 +7,10 @@ import { JsonTree } from './JsonTree'
 import { jsonToText } from './json'
 import {
   VERDICT_LABEL,
+  cardReferencesLink,
   expectedSubjectOf,
+  isArtStyleCheck,
+  judgedAgainstArtReference,
   parseQcReport,
   parseStyleMatch,
   styleCheckLabel,
@@ -54,6 +57,12 @@ function useCardClientId(cardId: string | null, given: string | null | undefined
  * Card verdict (`style_match`, qc-judge v2) under the violations box with a "Fix in editor" link per
  * failed check (`/clients/:id/style?version=<style_card_id>&field=<field>`). Reports written before
  * v2 show the Style Card verdict as "not reported".
+ *
+ * When the look came from the card's Art style reference (`magic_prompt_json.effective_style.source =
+ * 'art_reference'`, prompt-engine v8) the section is "Art style match", and the judge's comparison with
+ * the attached reference image (check id `art_style`, field `art_reference`) reads "Drawn like the Art
+ * style reference" with the judge's notes; its link opens this card's References panel, where that
+ * image sits. The other checks keep their Style Card editor links.
  */
 export function QcReportPanel({
   generation,
@@ -69,6 +78,7 @@ export function QcReportPanel({
 }) {
   const report = useMemo(() => parseQcReport(generation?.qc_report), [generation?.qc_report])
   const styleMatch = useMemo(() => parseStyleMatch(generation?.qc_report), [generation?.qc_report])
+  const artLook = useMemo(() => judgedAgainstArtReference(generation?.magic_prompt_json, styleMatch), [generation?.magic_prompt_json, styleMatch])
   const expectedSubject = useMemo(() => expectedSubjectOf(generation?.magic_prompt_json), [generation?.magic_prompt_json])
   const clientId = useCardClientId(generation?.card_id ?? null, givenClientId)
   const fold = { collapsible, defaultOpen }
@@ -170,7 +180,7 @@ export function QcReportPanel({
         }`}
       >
         <p className="flex items-center justify-between gap-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
-          <span>Style Card match</span>
+          <span>{artLook ? 'Art style match' : 'Style Card match'}</span>
           <span className="normal-case tracking-normal">
             {!styleMatch
               ? 'not reported'
@@ -181,29 +191,41 @@ export function QcReportPanel({
         </p>
         {!styleMatch ? (
           <p className="mt-1 text-xs text-neutral-500">
-            This report was judged before the Style Card checks existed (qc-judge v2); palette, medium, typography,
-            composition, subject and forbid list were not scored one by one.
+            This report was judged before the {artLook ? 'style' : 'Style Card'} checks existed (qc-judge v2); palette,
+            medium, typography, composition, subject and forbid list were not scored one by one.
           </p>
         ) : (
           <>
             <ul className="mt-1 divide-y divide-neutral-100 dark:divide-neutral-800">
-              {styleMatch.checks.map((c) => {
+              {styleMatch.checks.map((c, i) => {
                 const verdict: QcVerdict = c.pass === true ? 'pass' : c.pass === false ? 'fail' : 'unknown'
+                const art = isArtStyleCheck(c)
+                // qc-judge may write more than one art_style check (one per differing aspect): the index keeps keys unique.
                 return (
-                  <li key={c.id} className="flex items-start gap-2 py-1.5">
+                  <li key={`${c.id}-${i}`} className="flex items-start gap-2 py-1.5">
                     <span className="mt-0.5 shrink-0" title={c.pass === null ? 'Not reported' : VERDICT_LABEL[verdict]}>
                       {ICON[verdict]}
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className={c.pass === false ? 'font-medium' : undefined}>
                         {styleCheckLabel(c.id)}
-                        {c.field && <span className="ml-1 font-mono text-[11px] text-neutral-400">{c.field}</span>}
+                        {c.field && !art && <span className="ml-1 font-mono text-[11px] text-neutral-400">{c.field}</span>}
                       </p>
                       <p className="whitespace-pre-wrap text-xs text-neutral-600 dark:text-neutral-400">
                         {c.note ?? (c.pass === null ? 'not reported' : '')}
                       </p>
                     </div>
-                    {c.pass === false && c.field && clientId && (
+                    {c.pass === false && art && (
+                      <Link
+                        to={cardReferencesLink(generation.card_id)}
+                        className="inline-flex shrink-0 items-center gap-1 text-xs font-medium underline underline-offset-2 outline-none focus-visible:ring-4 focus-visible:ring-accent-500/30"
+                        title="Open this card's References panel to compare with the Art style reference"
+                      >
+                        See reference
+                        <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                      </Link>
+                    )}
+                    {c.pass === false && !art && c.field && clientId && (
                       <Link
                         to={styleFieldLink(clientId, generation.style_card_id, c.field)}
                         className="inline-flex shrink-0 items-center gap-1 text-xs font-medium underline underline-offset-2 outline-none focus-visible:ring-4 focus-visible:ring-accent-500/30"

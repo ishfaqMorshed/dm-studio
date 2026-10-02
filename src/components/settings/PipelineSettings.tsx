@@ -31,6 +31,8 @@ interface Draft {
   orImage: string
   orEdit: string
   orText: string
+  qcSubjectRegen: boolean
+  qcArtRegen: boolean
 }
 
 type DraftErrors = Partial<Record<keyof Draft, string>>
@@ -48,7 +50,21 @@ const DRAFT_KEYS: readonly (keyof Draft)[] = [
   'orImage',
   'orEdit',
   'orText',
+  'qcSubjectRegen',
+  'qcArtRegen',
 ]
+
+/** The QC retry switches: draft field and the boolean `settings` column it saves to (both default true). */
+type QcRegenColumn = 'qc_subject_regen' | 'qc_art_regen'
+
+/**
+ * A QC retry switch as stored, or null when the row has no such column yet (`qc_art_regen` arrives with
+ * migration studio_28): the switch then shows the column default and is never written.
+ */
+function qcRegenOf(s: Settings, column: QcRegenColumn): boolean | null {
+  const v: unknown = (s as Partial<Settings>)[column]
+  return typeof v === 'boolean' ? v : null
+}
 
 /** Draft field ↔ `settings.openrouter_models` key, in form order. */
 const OPENROUTER_FIELDS = [
@@ -87,6 +103,8 @@ function toDraft(s: Settings): Draft {
     orImage: models.image,
     orEdit: models.edit,
     orText: models.text,
+    qcSubjectRegen: qcRegenOf(s, 'qc_subject_regen') ?? true,
+    qcArtRegen: qcRegenOf(s, 'qc_art_regen') ?? true,
   }
 }
 
@@ -154,6 +172,10 @@ function validate(d: Draft, current: Settings): { patch: SettingsUpdate; errors:
     // Keep keys this form does not know about (a later job type, a flag the workers read).
     patch.openrouter_models = { ...stored, ...nextModels }
   }
+  const subjectRegen = qcRegenOf(current, 'qc_subject_regen')
+  if (subjectRegen !== null && d.qcSubjectRegen !== subjectRegen) patch.qc_subject_regen = d.qcSubjectRegen
+  const artRegen = qcRegenOf(current, 'qc_art_regen')
+  if (artRegen !== null && d.qcArtRegen !== artRegen) patch.qc_art_regen = d.qcArtRegen
   return { patch, errors }
 }
 
@@ -235,6 +257,70 @@ function ModelField({
   )
 }
 
+/** Cost of one corrective retry: one more image plus its QC pass. */
+const RETRY_COST = 'about $0.08 per retry'
+
+/**
+ * One QC retry switch (saved with the form, unlike the pause switch). `missing` = the column is not on the
+ * settings row yet: shown at its default, disabled, with the migration that adds it.
+ */
+function RetrySwitch({
+  id,
+  label,
+  column,
+  checked,
+  missing,
+  disabled,
+  onChange,
+  children,
+}: {
+  id: string
+  label: string
+  column: QcRegenColumn
+  checked: boolean
+  missing?: string
+  disabled: boolean
+  onChange: (next: boolean) => void
+  children: ReactNode
+}) {
+  const off = disabled || Boolean(missing)
+  return (
+    <div className="flex items-start gap-3 rounded-xl border border-neutral-200 px-4 py-3 dark:border-neutral-800">
+      <div className="min-w-0 flex-1">
+        <p id={`${id}-label`} className="text-sm font-medium">
+          {label}
+        </p>
+        <p id={`${id}-hint`} className="text-xs text-neutral-500">
+          {children}
+          <span className="mt-0.5 block">
+            <span className="font-medium text-neutral-600 dark:text-neutral-300">{RETRY_COST}</span> · stored in{' '}
+            <code className={codeCls}>settings.{column}</code>
+          </span>
+          {missing && <span className="mt-0.5 block text-amber-700 dark:text-amber-300">{missing}</span>}
+        </p>
+      </div>
+      <button
+        id={id}
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-labelledby={`${id}-label`}
+        aria-describedby={`${id}-hint`}
+        disabled={off}
+        onClick={() => onChange(!checked)}
+        className={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full outline-none ring-neutral-900/20 transition focus-visible:ring-4 disabled:opacity-50 dark:ring-white/30 ${
+          checked ? 'bg-emerald-600 dark:bg-emerald-500' : 'bg-neutral-300 dark:bg-neutral-700'
+        }`}
+      >
+        <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
+      </button>
+      <span className="mt-1 w-7 text-right text-xs font-medium text-neutral-600 dark:text-neutral-300" aria-hidden="true">
+        {checked ? 'On' : 'Off'}
+      </span>
+    </div>
+  )
+}
+
 /**
  * The single settings row. The pause switch saves on its own the moment it is flipped
  * (it is the emergency brake); price, worker caps and the engine fields save together
@@ -279,7 +365,7 @@ export function PipelineSettings() {
     try {
       await update(patch)
       setDraft(null)
-      toast.success('Settings saved. Caps, price and engine settings apply from the next job.')
+      toast.success('Settings saved. Caps, price, engine and QC settings apply from the next job.')
     } catch (err) {
       toast.error(`Could not save settings: ${errorMessage(err)}`)
     } finally {
@@ -318,7 +404,7 @@ export function PipelineSettings() {
           Pipeline
         </h2>
         <p className="text-xs text-neutral-500">
-          Pause switch, per-card price shown on Approve, how many jobs run at once, the models the engine calls and the AI platform they run on.
+          Pause switch, per-card price shown on Approve, how many jobs run at once, the models the engine calls, QC retries and the AI platform they run on.
         </p>
       </div>
 
@@ -569,6 +655,43 @@ export function PipelineSettings() {
                     from library&rdquo;; the rest are ignored. Default {GENERATION_DEFAULTS.max_style_refs}.
                   </Hint>
                 </div>
+              </div>
+            </div>
+
+            <div className="space-y-3 border-t border-neutral-200 pt-4 dark:border-neutral-800">
+              <div>
+                <h3 className="text-sm font-semibold">QC</h3>
+                <p className="text-xs text-neutral-500">
+                  After Approve or Regenerate the vision model judges the design. When it finds one of these problems the
+                  worker makes one corrective attempt with the fix appended to the prompt, at most once per design and
+                  never on an edit. Off: the design goes to review with the QC report as it is.
+                </p>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-2">
+                <RetrySwitch
+                  id="qc-subject-regen"
+                  label="Retry once when QC sees the wrong subject"
+                  column="qc_subject_regen"
+                  checked={view.qcSubjectRegen}
+                  disabled={saving}
+                  onChange={(qcSubjectRegen) => edit({ qcSubjectRegen })}
+                >
+                  The design shows a different hero than the prompt asked for, such as what the text names. QC expects
+                  the subject the prompt used: the brief&apos;s subject, else the subject reference, else the Style
+                  Card&apos;s first subject, else the brief description.
+                </RetrySwitch>
+                <RetrySwitch
+                  id="qc-art-regen"
+                  label="Retry once when QC sees a different art style than the Art style reference"
+                  column="qc_art_regen"
+                  checked={view.qcArtRegen}
+                  missing={qcRegenOf(settings, 'qc_art_regen') === null ? 'Not on the settings row yet: available once migration studio_28 is applied.' : undefined}
+                  disabled={saving}
+                  onChange={(qcArtRegen) => edit({ qcArtRegen })}
+                >
+                  QC compares the design with the card&apos;s Art style reference image and finds it drawn differently
+                  (medium, lines, shading, texture or colours). A close match never retries.
+                </RetrySwitch>
               </div>
             </div>
 

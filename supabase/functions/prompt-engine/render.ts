@@ -21,6 +21,8 @@
 // ART STYLE block says "exactly as in Image k" and effective_style carries an empty look. Per-slot readings are aligned
 // to the stamped roles (alignReadings), so a stale read never lends its values to another image. Style-test cards
 // (source style_test) never take the override - they exist to test the Style Card. No art slot = the Style Card governs.
+// 2026-10-02 (QC sees the Art style reference): effective_style adds reference_path + reference_image_index - where the
+// art image sits in the input plan - so WF-2 can show it to the vision QC judge as a second image.
 import { checkStyleCard, normaliseCase, type PaletteEntryV2, type StyleCardV2 } from "../_shared/style_card_rules.ts";
 
 export type PaletteEntry = PaletteEntryV2;
@@ -123,11 +125,20 @@ export type EffectivePaletteEntry = { name: string; hex: string; role?: string; 
  * applied to the reference palette, forbid / composition / typography / rules come from the Style Card.
  * source 'style_card': every value from the (linted) Style Card, the palette resolved for the garment side the way the
  * prompt renders it.
+ * reference_path / reference_image_index (2026-10-02, QC sees the Art style reference): where the art image sits in the
+ * image-model input plan, so WF-2 Build QC Request can attach the signed URL Sign Input made for that path as the SECOND
+ * image of the vision QC call. Both null for source 'style_card' and when the art image is not in the plan; edit kinds
+ * inherit the parent's values with the rest of its look (WF-3 never attaches the reference - an edit is judged against
+ * its previous version).
  */
 export type EffectiveStyle = {
   source: "art_reference" | "style_card";
   /** 'art_reference': the image number of the art-style reference in the input plan (else its card slot); null otherwise */
   reference_slot: number | null;
+  /** 'art_reference': refs-bucket object path of the art image, the same string the input plan signs; null otherwise */
+  reference_path: string | null;
+  /** 'art_reference': 1-based index of the art image in the image-model input plan; null otherwise or when not attached */
+  reference_image_index: number | null;
   medium: string;
   realism: string;
   linework: { weight: string; style: string; outline: string };
@@ -786,14 +797,39 @@ export function artImageNumber(plan: InputPath[], art: SlotReading | null): numb
 }
 
 /**
+ * Where the art image sits in the input plan: its 1-based index (artImageNumber) and the refs-bucket path the plan signs.
+ * Both null when there is no art reference, it is not attached (edit kinds), or the entry is not a refs path.
+ */
+export function artPlanEntry(plan: InputPath[] | null | undefined, art: SlotReading | null): { index: number | null; path: string | null } {
+  const p = Array.isArray(plan) ? plan : [];
+  const k = artImageNumber(p, art);
+  const entry = k ? p[k - 1] : undefined;
+  const path = entry && entry.bucket === "refs" ? s(entry.path) : "";
+  return path ? { index: k, path } : { index: null, path: null };
+}
+
+/**
+ * The look an edit_text / edit_region keeps: a deep copy of the parent's effective_style with every value as the parent
+ * had it (reference_path / reference_image_index included); a parent written before those keys existed gets them as null.
+ */
+export function inheritLook(parent: EffectiveStyle): EffectiveStyle {
+  const copy = JSON.parse(JSON.stringify(parent)) as EffectiveStyle;
+  if (copy.reference_path === undefined) copy.reference_path = null;
+  if (copy.reference_image_index === undefined) copy.reference_image_index = null;
+  return copy;
+}
+
+/**
  * magic_prompt_json.effective_style (see the EffectiveStyle contract). art null -> the Style Card look, pruned the way
- * WF-2 prunes STYLE_CARD_JSON (palette resolved for the garment side as the Palette line renders it).
+ * WF-2 prunes STYLE_CARD_JSON (palette resolved for the garment side as the Palette line renders it). plan = the
+ * image-model input plan (reference_path / reference_image_index of the art image; absent = not attached).
  */
 export function effectiveStyle(opts: {
   card: StyleCard | null | undefined;
   garment_color?: string;
   art: SlotReading | null;
   reference_slot?: number | null;
+  plan?: InputPath[] | null;
 }): EffectiveStyle {
   const card = lintStyleCard(opts.card);
   const rules = isObj(card.rules) ? { ...card.rules } : {};
@@ -809,9 +845,12 @@ export function effectiveStyle(opts: {
   };
   const art = opts.art;
   if (art) {
+    const at = artPlanEntry(opts.plan, art);
     return {
       source: "art_reference",
       reference_slot: opts.reference_slot ?? art.slot,
+      reference_path: at.path,
+      reference_image_index: at.index,
       medium: s(art.medium),
       realism: s(art.realism),
       linework: { weight: s(art.line_weight), style: s(art.line_style), outline: "" },
@@ -831,6 +870,8 @@ export function effectiveStyle(opts: {
   return {
     source: "style_card",
     reference_slot: null,
+    reference_path: null,
+    reference_image_index: null,
     medium: s(card.medium),
     realism: s(card.realism),
     linework: { weight: s(lw.weight), style: s(lw.style), outline: s(lw.outline) },
@@ -1060,7 +1101,7 @@ export function buildMagicPrompt(input: BuildInput): MagicPrompt {
     subject: resolveSubject({ explicit: input.explicit_subject, tier, references: reading.references, card_subjects: fixed.subjects }),
     brief: { description: s(input.description), garment_color: s(input.garment_color), placement: s(input.placement), avoid_notes: s(input.avoid_notes) },
     text: { rule: s(input.text_rules_body), typography: styleCardTypography(fixed, input.plan), lines: printText },
-    effective_style: effectiveStyle({ card: fixed, garment_color: input.garment_color, art, reference_slot: artImage }),
+    effective_style: effectiveStyle({ card: fixed, garment_color: input.garment_color, art, reference_slot: artImage, plan: input.plan }),
   };
 }
 
