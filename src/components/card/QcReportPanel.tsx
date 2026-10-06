@@ -11,6 +11,7 @@ import {
   expectedSubjectOf,
   isArtStyleCheck,
   judgedAgainstArtReference,
+  parseQcRegion,
   parseQcReport,
   parseStyleMatch,
   styleCheckLabel,
@@ -77,6 +78,7 @@ export function QcReportPanel({
   defaultOpen?: boolean
 }) {
   const report = useMemo(() => parseQcReport(generation?.qc_report), [generation?.qc_report])
+  const region = useMemo(() => parseQcRegion(generation?.qc_report), [generation?.qc_report])
   const styleMatch = useMemo(() => parseStyleMatch(generation?.qc_report), [generation?.qc_report])
   const artLook = useMemo(() => judgedAgainstArtReference(generation?.magic_prompt_json, styleMatch), [generation?.magic_prompt_json, styleMatch])
   const expectedSubject = useMemo(() => expectedSubjectOf(generation?.magic_prompt_json), [generation?.magic_prompt_json])
@@ -100,7 +102,9 @@ export function QcReportPanel({
             ? 'QC runs right after the image is generated.'
             : generation.status === 'failed'
               ? 'QC did not run — the generation failed.'
-              : 'No QC report was stored for this generation.'}
+              : generation.composite_mode === 'extend' || generation.composite_mode === 'full'
+                ? 'Not re-checked by QC: this version was recombined from an earlier regeneration at no cost.'
+                : 'No QC report was stored for this generation.'}
         </p>
       </Panel>
     )
@@ -161,6 +165,18 @@ export function QcReportPanel({
             </li>
           ))}
         </ul>
+      )}
+
+      {region && (
+        <div className="mt-3 rounded-lg border border-neutral-200 px-3 py-2 text-sm dark:border-neutral-800">
+          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Area edit check</p>
+          <p className="mt-0.5 whitespace-pre-wrap">{region.notes ?? 'The judge left no notes on the area.'}</p>
+          {region.overflow_measured && (
+            <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+              Measured: the new element runs past your area. Extend area under the picture recombines it at no cost.
+            </p>
+          )}
+        </div>
       )}
 
       {report.violations.length > 0 && (

@@ -28,13 +28,15 @@ export type Settings = Tables<'settings'>
 export type SettingsUpdate = TablesUpdate<'settings'>
 /**
  * `settings.openrouter_models` (jsonb): the OpenRouter model id per job. `vision` reads
- * references and judges QC, `image` generates, `edit` runs Edit text / Edit region, `text`
- * writes lessons. The row may carry more keys; the Settings form keeps them on save.
+ * references and judges QC, `image` generates, `edit` runs Edit text, `region` runs Fix an area
+ * (GPT Image 2.5 Sunburst, locked outside, studio_29), `text` writes lessons. The row may carry
+ * more keys; the Settings form keeps them on save.
  */
 export interface OpenRouterModels {
   vision: string
   image: string
   edit: string
+  region: string
   text: string
 }
 export type PromptTemplate = Tables<'prompt_templates'>
@@ -135,6 +137,194 @@ export const GENERATION_KIND_LABEL: Record<GenerationKind, string> = {
   edit_text: 'Edit text',
   edit_region: 'Edit region',
   regenerate: 'Regenerate',
+}
+
+/* ---------- Fix an area, locked outside (studio_29, Edge Function region-composite) ---------- */
+
+/**
+ * `generations.composite_mode` (plain text, edit_region only). `locked`: WF-3 kept the regeneration
+ * inside the box, faded it over the blend ring and left the parent byte-identical beyond.
+ * `extend`: the same stored regeneration recombined over a larger box ($0, no AI). `full`: the
+ * untouched full regeneration itself.
+ */
+export const COMPOSITE_MODES = ['locked', 'extend', 'full'] as const
+export type CompositeMode = (typeof COMPOSITE_MODES)[number]
+
+export const COMPOSITE_MODE_LABEL: Record<CompositeMode, string> = {
+  locked: 'Locked outside',
+  extend: 'Extended area',
+  full: 'Full regeneration',
+}
+
+export function isCompositeMode(v: unknown): v is CompositeMode {
+  return typeof v === 'string' && (COMPOSITE_MODES as readonly string[]).includes(v)
+}
+
+/**
+ * Above this share of changed pixels (> 8 levels) outside the box, the full regeneration also moved
+ * lettering, outlines or the background: "Use full regeneration" warns (region-composite `full_safe_pct`).
+ */
+export const FULL_DRIFT_SAFE_PCT = 1
+
+/** A rectangle in image pixels; `width`/`height` = the image it was drawn on (region-composite scales it when they differ). */
+export interface RegionRectPx {
+  x: number
+  y: number
+  w: number
+  h: number
+  width?: number
+  height?: number
+}
+
+export interface RegionBox {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+export interface RegionSize {
+  w: number
+  h: number
+}
+
+/**
+ * `generations.region_metrics` (jsonb, version 1): what region-composite measured. Snake_case keys as
+ * stored. A measurement the row does not carry reads null, never 0, so the page never shows a made-up value.
+ */
+export interface RegionMetrics {
+  version: 1
+  mode: CompositeMode | null
+  /** extend/full children: the edit_region generation whose stored regeneration was recombined. */
+  source_generation_id: string | null
+  rect: RegionBox | null
+  rect_scaled: boolean
+  image_size: RegionSize | null
+  regen_size: RegionSize | null
+  /** 'up' when the AI returned fewer pixels than the design (OpenRouter answers 1024 px for a 2048 px parent). */
+  resampled: 'up' | 'down' | null
+  resample_factor: number | null
+  ring_pct: number | null
+  ring_px: number | null
+  band_px: number | null
+  shift: { dx: number; dy: number; applied: boolean; reliable: boolean; samples: number | null; score0: number | null; score: number | null }
+  colour_offset: { r: number; g: number; b: number; reliable: boolean; samples: number | null }
+  /** % of pixels beyond the blend ring that the full regeneration changed by more than 8 levels. */
+  drift_outside_pct_gt8: number | null
+  drift_outside_pct_gt20: number | null
+  full_drift_high: boolean
+  changed_inside_box_pct: number | null
+  ring_changed_pct_gt40: number | null
+  ring_blend_changed_pct: number | null
+  overflow: {
+    detected: boolean
+    px: number
+    /** The box grown to hold the whole new element (at most 2x the box), or null. */
+    suggested_rect: RegionBox | null
+    sides: { left: number; right: number; top: number; bottom: number }
+  }
+  seam_ratio_box: number | null
+  seam_ratio_ring: number | null
+  /** The lock gate: pixels beyond the ring that differ from the parent. Always 0 on a stored composite. */
+  beyond_ring_changed_px: number | null
+  tuning: Record<string, number>
+  timing_ms: Record<string, number>
+  computed_at: string | null
+}
+
+function finiteOrNull(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
+}
+
+function regionBoxOf(v: unknown): RegionBox | null {
+  if (!isRecord(v)) return null
+  const x = finiteOrNull(v.x)
+  const y = finiteOrNull(v.y)
+  const w = finiteOrNull(v.w)
+  const h = finiteOrNull(v.h)
+  if (x === null || y === null || w === null || h === null || w <= 0 || h <= 0) return null
+  return { x, y, w, h }
+}
+
+function regionSizeOf(v: unknown): RegionSize | null {
+  if (!isRecord(v)) return null
+  const w = finiteOrNull(v.w)
+  const h = finiteOrNull(v.h)
+  return w !== null && h !== null && w > 0 && h > 0 ? { w, h } : null
+}
+
+function numberMap(v: unknown): Record<string, number> {
+  const out: Record<string, number> = {}
+  if (!isRecord(v)) return out
+  for (const [k, n] of Object.entries(v)) {
+    if (typeof n === 'number' && Number.isFinite(n)) out[k] = n
+  }
+  return out
+}
+
+/** `generations.region_metrics`, or null unless it is an object with `version: 1`. Tolerates missing or odd keys. */
+export function parseRegionMetrics(j: Json | null | undefined): RegionMetrics | null {
+  if (!isRecord(j) || j.version !== 1) return null
+  type Rec = Record<string, Json | undefined>
+  const shift: Rec = isRecord(j.shift) ? j.shift : {}
+  const colour: Rec = isRecord(j.colour_offset) ? j.colour_offset : {}
+  const overflow: Rec = isRecord(j.overflow) ? j.overflow : {}
+  const sides: Rec = isRecord(overflow.sides) ? overflow.sides : {}
+  const gt8 = finiteOrNull(j.drift_outside_pct_gt8)
+  return {
+    version: 1,
+    mode: isCompositeMode(j.mode) ? j.mode : null,
+    source_generation_id: typeof j.source_generation_id === 'string' && j.source_generation_id ? j.source_generation_id : null,
+    rect: regionBoxOf(j.rect),
+    rect_scaled: j.rect_scaled === true,
+    image_size: regionSizeOf(j.image_size),
+    regen_size: regionSizeOf(j.regen_size),
+    resampled: j.resampled === 'up' || j.resampled === 'down' ? j.resampled : null,
+    resample_factor: finiteOrNull(j.resample_factor),
+    ring_pct: finiteOrNull(j.ring_pct),
+    ring_px: finiteOrNull(j.ring_px),
+    band_px: finiteOrNull(j.band_px),
+    shift: {
+      dx: finiteOrNull(shift.dx) ?? 0,
+      dy: finiteOrNull(shift.dy) ?? 0,
+      applied: shift.applied === true,
+      reliable: shift.reliable === true,
+      samples: finiteOrNull(shift.samples),
+      score0: finiteOrNull(shift.score0),
+      score: finiteOrNull(shift.score),
+    },
+    colour_offset: {
+      r: finiteOrNull(colour.r) ?? 0,
+      g: finiteOrNull(colour.g) ?? 0,
+      b: finiteOrNull(colour.b) ?? 0,
+      reliable: colour.reliable === true,
+      samples: finiteOrNull(colour.samples),
+    },
+    drift_outside_pct_gt8: gt8,
+    drift_outside_pct_gt20: finiteOrNull(j.drift_outside_pct_gt20),
+    // The stored flag, or the same rule when an older row lacks it.
+    full_drift_high: j.full_drift_high === true || (gt8 !== null && gt8 > FULL_DRIFT_SAFE_PCT),
+    changed_inside_box_pct: finiteOrNull(j.changed_inside_box_pct),
+    ring_changed_pct_gt40: finiteOrNull(j.ring_changed_pct_gt40),
+    ring_blend_changed_pct: finiteOrNull(j.ring_blend_changed_pct),
+    overflow: {
+      detected: overflow.detected === true,
+      px: finiteOrNull(overflow.px) ?? 0,
+      suggested_rect: regionBoxOf(overflow.suggested_rect),
+      sides: {
+        left: finiteOrNull(sides.left) ?? 0,
+        right: finiteOrNull(sides.right) ?? 0,
+        top: finiteOrNull(sides.top) ?? 0,
+        bottom: finiteOrNull(sides.bottom) ?? 0,
+      },
+    },
+    seam_ratio_box: finiteOrNull(j.seam_ratio_box),
+    seam_ratio_ring: finiteOrNull(j.seam_ratio_ring),
+    beyond_ring_changed_px: finiteOrNull(j.beyond_ring_changed_px),
+    tuning: numberMap(j.tuning),
+    timing_ms: numberMap(j.timing_ms),
+    computed_at: typeof j.computed_at === 'string' ? j.computed_at : null,
+  }
 }
 
 export const REJECTION_REASONS: readonly RejectionReason[] = [

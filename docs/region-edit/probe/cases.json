@@ -1,0 +1,59 @@
+{
+ "b33727a9": {
+  "instruction": "change the sunglass color to red",
+  "rect": {
+   "x": 413,
+   "y": 287,
+   "w": 305,
+   "h": 158
+  },
+  "size": [
+   1024,
+   1024
+  ],
+  "where": "the area from 40% to 70% across and 28% to 43% down the image",
+  "parent_path": "f3e4ed09-39bc-4b28-9e04-814f6e6c8e0f/fc1a7553-c303-4d7e-8f89-93ce97bacad6.png",
+  "parent_url": "https://voatrqhfsdfjomyajovi.supabase.co/storage/v1/object/sign/gens/f3e4ed09-39bc-4b28-9e04-814f6e6c8e0f/fc1a7553-c303-4d7e-8f89-93ce97bacad6.png?token=REDACTED",
+  "mask_url": "https://voatrqhfsdfjomyajovi.supabase.co/storage/v1/object/sign/gens/probe/region-2026-10-05/b33727a9_mask.png?token=REDACTED",
+  "marked_url": "https://voatrqhfsdfjomyajovi.supabase.co/storage/v1/object/sign/gens/probe/region-2026-10-05/b33727a9_marked.png?token=REDACTED",
+  "out_prefix": "probe/region-2026-10-05/b33727a9"
+ },
+ "45eadf6a": {
+  "instruction": "change the flower from rose to sunflower",
+  "rect": {
+   "x": 449,
+   "y": 374,
+   "w": 405,
+   "h": 153
+  },
+  "size": [
+   1024,
+   1024
+  ],
+  "where": "the area from 44% to 83% across and 37% to 51% down the image",
+  "parent_path": "72354a02-7b0c-47bf-aef5-536b8d8acf56/9f1a2765-559b-4a03-8c06-d5b318b5bd20.png",
+  "parent_url": "https://voatrqhfsdfjomyajovi.supabase.co/storage/v1/object/sign/gens/72354a02-7b0c-47bf-aef5-536b8d8acf56/9f1a2765-559b-4a03-8c06-d5b318b5bd20.png?token=REDACTED",
+  "mask_url": "https://voatrqhfsdfjomyajovi.supabase.co/storage/v1/object/sign/gens/probe/region-2026-10-05/45eadf6a_mask.png?token=REDACTED",
+  "marked_url": "https://voatrqhfsdfjomyajovi.supabase.co/storage/v1/object/sign/gens/probe/region-2026-10-05/45eadf6a_marked.png?token=REDACTED",
+  "out_prefix": "probe/region-2026-10-05/45eadf6a"
+ },
+ "dace73f3": {
+  "instruction": "make the bear to look like a tiger",
+  "rect": {
+   "x": 497,
+   "y": 508,
+   "w": 244,
+   "h": 175
+  },
+  "size": [
+   1024,
+   1024
+  ],
+  "where": "the area from 49% to 72% across and 50% to 67% down the image",
+  "parent_path": "1bed5147-72ba-460c-a66f-e15e35f5a02d/1662b2d0-4e77-48d1-b95b-56f14438fd9e.png",
+  "parent_url": "https://voatrqhfsdfjomyajovi.supabase.co/storage/v1/object/sign/gens/1bed5147-72ba-460c-a66f-e15e35f5a02d/1662b2d0-4e77-48d1-b95b-56f14438fd9e.png?token=REDACTED",
+  "mask_url": "https://voatrqhfsdfjomyajovi.supabase.co/storage/v1/object/sign/gens/probe/region-2026-10-05/dace73f3_mask.png?token=REDACTED",
+  "marked_url": "https://voatrqhfsdfjomyajovi.supabase.co/storage/v1/object/sign/gens/probe/region-2026-10-05/dace73f3_marked.png?token=REDACTED",
+  "out_prefix": "probe/region-2026-10-05/dace73f3"
+ }
+}

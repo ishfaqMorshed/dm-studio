@@ -31,6 +31,30 @@ export function rectToPixels(rect: FractionRect, width: number, height: number) 
   return { x, y, w: Math.min(w, width - x), h: Math.min(h, height - y) }
 }
 
+/**
+ * Width of the soft-blend ring around the box, in image pixels: the same rule region-composite
+ * applies (`ring_px = max(8, round(pct/100 * width))`, pct clamped to 1–10, 3 when unset).
+ * Beyond the ring the parent stays byte-identical.
+ */
+export function ringPxFor(width: number, pct = 3): number {
+  const p = Number.isFinite(pct) && pct > 0 ? Math.min(10, Math.max(1, pct)) : 3
+  return Math.max(8, Math.round((p / 100) * width))
+}
+
+/** The box grown by `ring` pixels on every side, clipped to the `w` × `h` image. */
+export function expandRectPx(
+  px: { x: number; y: number; w: number; h: number },
+  ring: number,
+  w: number,
+  h: number,
+): { x: number; y: number; w: number; h: number } {
+  const x0 = Math.max(0, px.x - ring)
+  const y0 = Math.max(0, px.y - ring)
+  const x1 = Math.min(w, px.x + px.w + ring)
+  const y1 = Math.min(h, px.y + px.h + ring)
+  return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) }
+}
+
 /** Too small to mean anything: under 0.25 % of the image area. */
 export function rectTooSmall(rect: FractionRect): boolean {
   return rect.w * rect.h < 0.0025

@@ -1,0 +1,209 @@
+{
+ "b33727a9_A_mask": {
+  "raw_size": [
+   1024,
+   1024
+  ],
+  "shift_dy_dx": [
+   0,
+   0
+  ],
+  "colour_offset_rgb": [
+   -0.2,
+   -0.4,
+   -0.7
+  ],
+  "drift_outside_pct_gt8": 23.5,
+  "drift_outside_pct_gt20": 12.3,
+  "changed_inside_box_pct": 47.7,
+  "overflow_ring_pct_gt40": 24.7,
+  "red_marker_in_ring_pct": 0.0,
+  "composite_beyond_ring_changed_px": 0,
+  "composite_seam_ratio_box": 0.85,
+  "composite_seam_ratio_ring": 1.0
+ },
+ "b33727a9_B_marked": {
+  "raw_size": [
+   1024,
+   1024
+  ],
+  "shift_dy_dx": [
+   0,
+   0
+  ],
+  "colour_offset_rgb": [
+   0.4,
+   -0.1,
+   -0.4
+  ],
+  "drift_outside_pct_gt8": 22.9,
+  "drift_outside_pct_gt20": 11.8,
+  "changed_inside_box_pct": 47.7,
+  "overflow_ring_pct_gt40": 24.6,
+  "red_marker_in_ring_pct": 0.0,
+  "composite_beyond_ring_changed_px": 0,
+  "composite_seam_ratio_box": 0.86,
+  "composite_seam_ratio_ring": 1.0
+ },
+ "b33727a9_C_words": {
+  "raw_size": [
+   1024,
+   1024
+  ],
+  "shift_dy_dx": [
+   0,
+   0
+  ],
+  "colour_offset_rgb": [
+   -0.2,
+   -0.8,
+   -1.1
+  ],
+  "drift_outside_pct_gt8": 22.9,
+  "drift_outside_pct_gt20": 12.0,
+  "changed_inside_box_pct": 47.7,
+  "overflow_ring_pct_gt40": 24.5,
+  "red_marker_in_ring_pct": 0.0,
+  "composite_beyond_ring_changed_px": 0,
+  "composite_seam_ratio_box": 0.87,
+  "composite_seam_ratio_ring": 1.0
+ },
+ "45eadf6a_A_mask": {
+  "raw_size": [
+   1024,
+   1024
+  ],
+  "shift_dy_dx": [
+   0,
+   0
+  ],
+  "colour_offset_rgb": [
+   -1.0,
+   -0.8,
+   -0.2
+  ],
+  "drift_outside_pct_gt8": 14.7,
+  "drift_outside_pct_gt20": 5.4,
+  "changed_inside_box_pct": 30.9,
+  "overflow_ring_pct_gt40": 3.3,
+  "red_marker_in_ring_pct": 0.0,
+  "composite_beyond_ring_changed_px": 0,
+  "composite_seam_ratio_box": 0.82,
+  "composite_seam_ratio_ring": 1.0
+ },
+ "45eadf6a_B_marked": {
+  "raw_size": [
+   1024,
+   1024
+  ],
+  "shift_dy_dx": [
+   0,
+   0
+  ],
+  "colour_offset_rgb": [
+   -1.0,
+   -1.0,
+   -0.7
+  ],
+  "drift_outside_pct_gt8": 14.7,
+  "drift_outside_pct_gt20": 5.5,
+  "changed_inside_box_pct": 29.0,
+  "overflow_ring_pct_gt40": 3.6,
+  "red_marker_in_ring_pct": 0.0,
+  "composite_beyond_ring_changed_px": 0,
+  "composite_seam_ratio_box": 0.8,
+  "composite_seam_ratio_ring": 1.0
+ },
+ "45eadf6a_C_words": {
+  "raw_size": [
+   1024,
+   1024
+  ],
+  "shift_dy_dx": [
+   0,
+   0
+  ],
+  "colour_offset_rgb": [
+   -1.4,
+   -1.1,
+   -0.9
+  ],
+  "drift_outside_pct_gt8": 14.9,
+  "drift_outside_pct_gt20": 5.5,
+  "changed_inside_box_pct": 31.4,
+  "overflow_ring_pct_gt40": 3.4,
+  "red_marker_in_ring_pct": 0.0,
+  "composite_beyond_ring_changed_px": 0,
+  "composite_seam_ratio_box": 0.83,
+  "composite_seam_ratio_ring": 1.0
+ },
+ "dace73f3_A_mask": {
+  "raw_size": [
+   1024,
+   1024
+  ],
+  "shift_dy_dx": [
+   0,
+   0
+  ],
+  "colour_offset_rgb": [
+   -1.5,
+   -1.2,
+   -0.1
+  ],
+  "drift_outside_pct_gt8": 6.0,
+  "drift_outside_pct_gt20": 1.4,
+  "changed_inside_box_pct": 21.2,
+  "overflow_ring_pct_gt40": 4.6,
+  "red_marker_in_ring_pct": 0.0,
+  "composite_beyond_ring_changed_px": 0,
+  "composite_seam_ratio_box": 1.25,
+  "composite_seam_ratio_ring": 1.0
+ },
+ "dace73f3_B_marked": {
+  "raw_size": [
+   1024,
+   1024
+  ],
+  "shift_dy_dx": [
+   0,
+   0
+  ],
+  "colour_offset_rgb": [
+   -1.4,
+   -0.4,
+   0.9
+  ],
+  "drift_outside_pct_gt8": 5.7,
+  "drift_outside_pct_gt20": 1.4,
+  "changed_inside_box_pct": 38.5,
+  "overflow_ring_pct_gt40": 5.1,
+  "red_marker_in_ring_pct": 0.0,
+  "composite_beyond_ring_changed_px": 0,
+  "composite_seam_ratio_box": 1.61,
+  "composite_seam_ratio_ring": 1.0
+ },
+ "dace73f3_C_words": {
+  "raw_size": [
+   1024,
+   1024
+  ],
+  "shift_dy_dx": [
+   0,
+   0
+  ],
+  "colour_offset_rgb": [
+   -0.6,
+   -0.5,
+   -0.2
+  ],
+  "drift_outside_pct_gt8": 6.4,
+  "drift_outside_pct_gt20": 1.4,
+  "changed_inside_box_pct": 27.0,
+  "overflow_ring_pct_gt40": 5.5,
+  "red_marker_in_ring_pct": 0.0,
+  "composite_beyond_ring_changed_px": 0,
+  "composite_seam_ratio_box": 1.61,
+  "composite_seam_ratio_ring": 1.0
+ }
+}

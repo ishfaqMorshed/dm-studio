@@ -27,6 +27,16 @@
 // 'fail', needs_regen and a corrective "Redraw in the attached ART STYLE reference's look"; every other mismatch is a
 // 'warn' ('close' never fails). Not attached (WF-3 edits, Style Card looks, older WF-2) = no art check; a stray
 // art_match is ignored because the judge never saw the reference.
+// v2.3 (2026-10-05, Fix an area = GPT Image 2.5 Sunburst, locked outside): ctx.region (regionContextOf the generation row:
+// kind edit_region with a mask_rect) makes the report region-aware. WF-3 adds a REGION EDIT paragraph to the vision call
+// (and the previous version as the SECOND image) and the judge returns a top-level "region" key (style.region tolerated):
+// {instruction_done, seam_visible, object_cut_off, text_changed: true|false|null, notes}. Four checks are appended after
+// the core checks: region_instruction_done and region_text_unchanged fail the verdict; region_no_seam and
+// region_not_cut_off only warn (region-composite's measured overflow also marks the element cut off, with an Extend area
+// note). Region checks never set needs_regen (WF-3 has no corrective loop). Colours and objects the instruction names
+// are never a palette or subject failure (mentionedInInstruction), a palette_ok false without a colour list is not
+// judged (the change may bring new colours) and the wrong hero never regenerates an area edit. qc_report.region =
+// {...verdict, overflow_measured} exists ONLY when ctx.region: every other report is byte-identical to v2.2.
 
 export type QcCheck = { id: string; name: string; pass: boolean | null; note: string };
 export type StyleCheck = { id: string; field: string; pass: boolean | null; note: string };
@@ -42,6 +52,23 @@ export type StyleMatch = {
   art_reference_attached: boolean;
   /** v2.2: the normalised style.art_match, null when not attached or not reported */
   art_match: ArtMatch | null;
+};
+
+/** v2.3: the judge's "region" key, normalised (null = not reported / unreadable). */
+export type RegionVerdict = {
+  instruction_done: boolean | null; seam_visible: boolean | null; object_cut_off: boolean | null; text_changed: boolean | null;
+  notes: string;
+};
+/** v2.3: qc_report.region - the region verdict plus whether region-composite measured the new element past the area. */
+export type QcRegion = RegionVerdict & { overflow_measured: boolean };
+/** v2.3: what qc-judge knows about an area edit (regionContextOf the generation row). */
+export type RegionContext = {
+  instruction: string;
+  rect: Record<string, unknown>;
+  /** region_metrics.overflow.detected === true (region-composite measured the change running past the area) */
+  overflow_measured: boolean;
+  overflow_px: number;
+  composite_mode: string | null;
 };
 
 export type QcReport = {
@@ -60,6 +87,8 @@ export type QcReport = {
   issues: string[];
   parse_error: string | null;
   attempt: number;
+  /** v2.3: present ONLY on an area edit (ctx.region) */
+  region?: QcRegion;
 };
 
 export type QcContext = {
@@ -74,6 +103,8 @@ export type QcContext = {
   art_reference_attached?: unknown;
   /** settings.qc_art_regen (default true): regenerate once when the judge sees a different art style than the reference */
   qc_art_regen?: unknown;
+  /** v2.3: regionContextOf(generation) - set ONLY for an edit_region with a mask_rect */
+  region?: unknown;
 };
 
 type Verdict = Record<string, unknown>;
@@ -323,8 +354,99 @@ export function artStyleCheck(m: ArtMatch | null, state: 'ok' | 'missing' | 'unr
   return { id: 'art_style', field, pass, note: pass === null && !note ? ART_NOT_REPORTED : note };
 }
 
+// ---- v2.3 region (Fix an area): the judge's "region" key, the 4 region checks, instruction exemptions ----------------
+export const REGION_CHECKS: { id: string; name: string; warnOnly: boolean }[] = [
+  { id: 'region_instruction_done', name: 'Requested change done inside the area', warnOnly: false },
+  { id: 'region_text_unchanged', name: 'Lettering unchanged by the area edit', warnOnly: false },
+  { id: 'region_no_seam', name: 'No visible seam at the area border', warnOnly: true },
+  { id: 'region_not_cut_off', name: 'New element not cut off at the area border', warnOnly: true },
+];
+/** Checks whose false never makes the verdict 'fail' (they warn): the palette and the two region border checks. */
+const WARN_ONLY = new Set(['style_palette', 'region_no_seam', 'region_not_cut_off']);
+export const REGION_PALETTE_NOTE = 'not judged on an area edit - the change may bring new colours';
+export const REGION_NO_TEXT_NOTE = 'no lettering touches the area';
+export const REGION_NOT_REPORTED = 'not reported';
+const REGION_KEYS = ['instruction_done', 'seam_visible', 'object_cut_off', 'text_changed'] as const;
+
+/**
+ * The judge's region key -> RegionVerdict. 'missing' = absent; 'unreadable' = present but no key can be read (a string
+ * holding JSON is parsed). text_null = the judge said text_changed null on purpose (no lettering touches the area).
+ */
+export function parseRegionVerdict(raw: unknown): { region: RegionVerdict; state: 'ok' | 'missing' | 'unreadable'; text_null: boolean } {
+  const empty: RegionVerdict = { instruction_done: null, seam_visible: null, object_cut_off: null, text_changed: null, notes: '' };
+  if (raw === undefined || raw === null || raw === '') return { region: empty, state: 'missing', text_null: false };
+  let o: unknown = raw;
+  if (typeof raw === 'string') {
+    const t = raw.trim();
+    if (!t.startsWith('{')) return { region: empty, state: 'unreadable', text_null: false };
+    try { o = JSON.parse(t); } catch { return { region: empty, state: 'unreadable', text_null: false }; }
+  }
+  if (!isObj(o)) return { region: empty, state: 'unreadable', text_null: false };
+  const rv: Record<string, unknown> = o;
+  const sub = (k: string): boolean | null => { const b = toBool(rv[k]); return b === undefined ? null : b; };
+  const tc = rv.text_changed;
+  const text_null = 'text_changed' in rv && (tc === null || (typeof tc === 'string' && /^(null|none|n\/a)$/i.test(tc.trim())));
+  const notes = (typeof rv.notes === 'string' ? rv.notes : typeof rv.note === 'string' ? rv.note : '').replace(/\s+/g, ' ').trim().replace(/[.;\s]+$/, '').slice(0, 240);
+  const region: RegionVerdict = {
+    instruction_done: sub('instruction_done'), seam_visible: sub('seam_visible'), object_cut_off: sub('object_cut_off'),
+    text_changed: sub('text_changed'), notes,
+  };
+  const readable = REGION_KEYS.some((k) => region[k] !== null) || text_null;
+  return readable ? { region, state: 'ok', text_null } : { region: empty, state: 'unreadable', text_null: false };
+}
+
+/** A mask_rect qc-judge accepts: an object with finite x, y >= 0 and w, h > 0 (width / height > 0 when present). */
+function validRect(v: unknown): v is Record<string, unknown> {
+  if (!isObj(v)) return false;
+  const n = (k: string) => (typeof v[k] === 'number' && Number.isFinite(v[k]) ? (v[k] as number) : NaN);
+  const [x, y, w, h] = [n('x'), n('y'), n('w'), n('h')];
+  if (!(x >= 0 && y >= 0 && w > 0 && h > 0)) return false;
+  for (const k of ['width', 'height']) if (k in v && !(n(k) > 0)) return false;
+  return true;
+}
+
+/** The region context of a generation row: an edit_region with a usable mask_rect, else null (every other kind). */
+export function regionContextOf(gen: unknown): RegionContext | null {
+  if (!isObj(gen) || gen.kind !== 'edit_region' || !validRect(gen.mask_rect)) return null;
+  const rm = isObj(gen.region_metrics) ? gen.region_metrics : {};
+  const ov = isObj(rm.overflow) ? rm.overflow : {};
+  return {
+    instruction: typeof gen.edit_instruction === 'string' ? gen.edit_instruction : '',
+    rect: gen.mask_rect,
+    overflow_measured: ov.detected === true,
+    overflow_px: Number(ov.px) || 0,
+    composite_mode: typeof rm.mode === 'string' ? rm.mode : null,
+  };
+}
+
+// words that never tie a colour or subject phrase to the instruction on their own (function words, generic colour words)
+const MENTION_STOP = new Set([
+  'the', 'and', 'with', 'for', 'from', 'into', 'onto', 'that', 'this', 'its', 'are', 'was', 'has', 'have', 'not', 'but', 'all',
+  'any', 'one', 'very', 'more', 'less', 'than', 'then', 'like', 'look', 'looks', 'make', 'change', 'colour', 'color', 'colours',
+  'colors', 'coloured', 'colored', 'tone', 'tones', 'shade', 'shades', 'light', 'dark', 'bright', 'pale', 'deep', 'soft', 'area', 'new',
+]);
+/**
+ * True when a word of 3+ letters of `phrase` (a colour name, a subject) appears as a whole word in the instruction,
+ * case-insensitive. Function words and generic colour words (the, colour, bright, light ...) never count on their own,
+ * so 'bright red' is mentioned by 'change the sunglass color to red' but 'skin colour' is not.
+ */
+export function mentionedInInstruction(instruction: unknown, phrase: unknown): boolean {
+  const ins = String(instruction ?? '').toLowerCase();
+  const words = String(phrase ?? '').toLowerCase().match(/[a-z\u00c0-\u024f]{3,}/g) ?? [];
+  return words.some((w) => !MENTION_STOP.has(w) && new RegExp('(^|[^a-z\u00c0-\u024f])' + w + '([^a-z\u00c0-\u024f]|$)').test(ins));
+}
+
+/** An off-palette colour the instruction asked for: its name is mentioned, or its hex (with or without #) appears. */
+function askedColour(instruction: string, o: Record<string, unknown>): boolean {
+  if (mentionedInInstruction(instruction, o.name)) return true;
+  const hex = String(o.hex ?? '').trim().replace(/^#/, '').toLowerCase();
+  return /^[0-9a-f]{3}([0-9a-f]{3})?$/.test(hex) && new RegExp('(^|[^0-9a-f])#?' + hex + '([^0-9a-f]|$)').test(instruction.toLowerCase());
+}
+
 // ---- style_match (qc_prompt v2 "style" key, judged against the Style Card only) ---------------------------------------
-export function buildStyleMatch(v: Verdict, card: Record<string, unknown> | null, expectedSubject: string, opts: { art_attached?: boolean } = {}): StyleMatch {
+export function buildStyleMatch(
+  v: Verdict, card: Record<string, unknown> | null, expectedSubject: string, opts: { art_attached?: boolean; region?: RegionContext | null } = {},
+): StyleMatch {
   const style = isObj(v.style) ? v.style : {};
   const look = lookWords(card);
   const unread = unreadArtLook(card);
@@ -334,9 +456,28 @@ export function buildStyleMatch(v: Verdict, card: Record<string, unknown> | null
   const nr = 'not reported';
   const push = (id: string, pass: boolean | null, note: string) => checks.push({ id, field: STYLE_FIELDS[id], pass, note: pass === null && !note ? nr : note });
 
+  const region = opts.region ?? null;
   // palette: palette_ok, plus off_palette_colours with a LARGE area in flexible mode
   if (unread.palette) push('palette', null, UNREAD_PALETTE_NOTE);
-  else {
+  else if (region) {
+    // v2.3 area edit: colours the instruction asks for are intended; a bare palette_ok false is not judged
+    const ok = toBool(style.palette_ok);
+    const off = (Array.isArray(style.off_palette_colours) ? style.off_palette_colours : []).filter(isObj);
+    const asked = off.filter((o) => askedColour(region.instruction, o));
+    const rest = off.filter((o) => !asked.includes(o));
+    const large = rest.filter((o) => /large/i.test(String(o.area ?? '')));
+    const flexible = rules.palette_mode === 'flexible';
+    const askedNames = asked.map((o) => String(o.name ?? '').trim() || String(o.hex ?? '').trim().toUpperCase()).filter(Boolean).join(', ');
+    const offNote = rest.length ? 'off-palette: ' + rest.map((o) => [String(o.name ?? '').trim(), String(o.hex ?? '').trim().toUpperCase()].filter(Boolean).join(' ') + (o.area ? ' (' + String(o.area) + ')' : '')).join(', ') : '';
+    if (off.length && !rest.length) push('palette', true, 'asked for by the edit: ' + askedNames);
+    else if (ok === false && !off.length) push('palette', null, REGION_PALETTE_NOTE);
+    else {
+      let pass: boolean | null;
+      if (ok === undefined) pass = flexible && large.length ? false : (rest.length ? true : null);
+      else pass = ok && !(flexible && large.length);
+      push('palette', pass, pass === false ? (offNote || 'palette drifts from ' + look.the) : offNote);
+    }
+  } else {
     const ok = toBool(style.palette_ok);
     const off = (Array.isArray(style.off_palette_colours) ? style.off_palette_colours : []).filter(isObj);
     const large = off.filter((o) => /large/i.test(String(o.area ?? '')));
@@ -369,7 +510,9 @@ export function buildStyleMatch(v: Verdict, card: Record<string, unknown> | null
     const ok = raw === null ? null : toBool(raw);
     const pass = ok === undefined ? null : ok;
     const drawn = subjectSeen ? 'drawn: ' + subjectSeen : '';
-    push('subject', pass, pass === null ? (raw === null || !expectedSubject ? (drawn ? drawn + ' (no subject given)' : 'no subject given') : '') : drawn);
+    // v2.3 area edit: a hero the instruction asks for (bear -> tiger) is intended, not a wrong subject
+    if (region && pass === false && subjectSeen && mentionedInInstruction(region.instruction, subjectSeen)) push('subject', null, drawn + ' (asked for by the edit)');
+    else push('subject', pass, pass === null ? (raw === null || !expectedSubject ? (drawn ? drawn + ' (no subject given)' : 'no subject given') : '') : drawn);
   }
   {
     const hits = toIntList(style.forbid_hits).filter((n) => n <= forbid.length || !forbid.length);
@@ -405,6 +548,8 @@ export function normaliseQc(raw: unknown, ctx: QcContext = {}): { qc_report: QcR
   const subjectRegenOn = ctx.qc_subject_regen === undefined || ctx.qc_subject_regen === null ? true : toBool(ctx.qc_subject_regen) !== false;
   const artAttached = ctx.art_reference_attached === true;
   const artRegenOn = ctx.qc_art_regen === undefined || ctx.qc_art_regen === null ? true : toBool(ctx.qc_art_regen) !== false;
+  // v2.3: an area edit (null for every other kind - the code below is then v2.2 unchanged)
+  const region = asRegionContext(ctx.region);
 
   const { verdict, error } = extractVerdict(raw);
   const known = CORE_CHECKS.map((c) => c.id).concat(['pass', 'issues', 'text_found']);
@@ -452,19 +597,42 @@ export function normaliseQc(raw: unknown, ctx: QcContext = {}): { qc_report: QcR
   }
 
   // -- Style Card: style_match (v2) + the compat palette check + the rules-violated list (designer flags)
-  const style_match = buildStyleMatch(v, card, expectedSubject, { art_attached: artAttached });
+  const style_match = buildStyleMatch(v, card, expectedSubject, { art_attached: artAttached, region });
   const style_violations = toStrList(v.style_violations);
+  // v2.3 area edit: a colour remark about what the instruction asked for is no violation
+  if (region) for (let i = style_violations.length - 1; i >= 0; i--) if (/palette|colou?r|hex/i.test(style_violations[i]) && mentionedInInstruction(region.instruction, style_violations[i])) style_violations.splice(i, 1);
   const paletteUnread = unreadArtLook(card).palette;
   const paletteOk = paletteUnread ? undefined : toBool(style.palette_ok ?? v.palette_ok);
   const paletteViolation = paletteUnread ? undefined : style_violations.find((s) => /palette|colou?r|hex/i.test(s));
   const paletteCheck = style_match.checks.find((c) => c.id === 'palette');
-  const palettePass = paletteOk !== false && !paletteViolation && paletteCheck?.pass !== false;
-  if (!palettePass && !paletteViolation) style_violations.push(paletteCheck?.note && paletteCheck.pass === false ? paletteCheck.note : 'palette drifts from ' + look.the + (palette.length ? ' (' + palette.map(hexOf).filter(Boolean).join(', ') + ')' : ''));
-  checks.push({
-    id: 'style_palette', name: 'Palette matches ' + look.name,
-    pass: paletteUnread ? null : palettePass,
-    note: paletteUnread ? UNREAD_PALETTE_NOTE : palettePass ? (paletteOk === undefined && paletteCheck?.pass === null ? (palette.length ? 'not reported' : 'no palette on ' + look.name) : '') : (paletteViolation ?? style_violations[style_violations.length - 1]),
-  });
+  let palettePass: boolean;
+  if (region && !paletteUnread) {
+    // v2.3 area edit: the compat check follows the region-aware palette check (asked-for colours pass; a palette_ok
+    // false or a colour remark without a colour list is not judged - the change may bring new colours)
+    let pass: boolean | null;
+    let note: string;
+    if (paletteCheck?.pass === true || paletteCheck?.pass === false) {
+      pass = paletteCheck.pass && !paletteViolation;
+      note = pass ? paletteCheck.note : (paletteViolation ?? paletteCheck.note);
+      if (!pass && !paletteViolation && !style_violations.includes(paletteCheck.note)) style_violations.push(paletteCheck.note);
+    } else if (paletteCheck?.note === REGION_PALETTE_NOTE || paletteOk === false || paletteViolation) {
+      pass = null;
+      note = REGION_PALETTE_NOTE;
+    } else {
+      pass = true;
+      note = palette.length ? 'not reported' : 'no palette on ' + look.name;
+    }
+    palettePass = pass !== false;
+    checks.push({ id: 'style_palette', name: 'Palette matches ' + look.name, pass, note });
+  } else {
+    palettePass = paletteOk !== false && !paletteViolation && paletteCheck?.pass !== false;
+    if (!palettePass && !paletteViolation) style_violations.push(paletteCheck?.note && paletteCheck.pass === false ? paletteCheck.note : 'palette drifts from ' + look.the + (palette.length ? ' (' + palette.map(hexOf).filter(Boolean).join(', ') + ')' : ''));
+    checks.push({
+      id: 'style_palette', name: 'Palette matches ' + look.name,
+      pass: paletteUnread ? null : palettePass,
+      note: paletteUnread ? UNREAD_PALETTE_NOTE : palettePass ? (paletteOk === undefined && paletteCheck?.pass === null ? (palette.length ? 'not reported' : 'no palette on ' + look.name) : '') : (paletteViolation ?? style_violations[style_violations.length - 1]),
+    });
+  }
   // forbid hits the judge numbered (the v1 regex matcher over issues is gone)
   const forbidCheck = style_match.checks.find((c) => c.id === 'forbid');
   if (forbidCheck?.pass === false) for (const n of forbidCheck.note.split('; ')) if (n && !style_violations.includes(n)) style_violations.push(n);
@@ -477,6 +645,24 @@ export function normaliseQc(raw: unknown, ctx: QcContext = {}): { qc_report: QcR
     checks.push({ id: 'text_height', name: 'Text large enough to print', pass, note: pass ? (min_text_height_frac === null ? 'not reported' : 'min glyph height ' + (min_text_height_frac * 100).toFixed(1) + '% of image') : (issueFor(issues, 'small') ?? 'text too small to print') });
   }
 
+  // -- v2.3 area edit: the judge's region key -> 4 checks (change done / lettering unchanged fail; seam / cut off warn)
+  let regionReport: QcRegion | null = null;
+  if (region) {
+    const parsed = parseRegionVerdict(v.region !== undefined && v.region !== null ? v.region : style.region);
+    const r = parsed.region;
+    const [done, text, seam, cut] = REGION_CHECKS;
+    const nr = REGION_NOT_REPORTED;
+    checks.push({ id: done.id, name: done.name, pass: r.instruction_done, note: r.instruction_done === false ? 'the requested change is not visible inside the area' : r.instruction_done === null ? nr : '' });
+    checks.push({ id: text.id, name: text.name, pass: r.text_changed === null ? null : !r.text_changed, note: r.text_changed === true ? 'lettering changed by the area edit' : r.text_changed === null ? (parsed.text_null ? REGION_NO_TEXT_NOTE : nr) : '' });
+    checks.push({ id: seam.id, name: seam.name, pass: r.seam_visible === null ? null : !r.seam_visible, note: r.seam_visible === true ? 'a visible edge, step or colour jump along the area border' : r.seam_visible === null ? nr : '' });
+    const cutPass = region.overflow_measured || r.object_cut_off === true ? false : r.object_cut_off === false ? true : null;
+    const cutNote = region.overflow_measured
+      ? 'the new element runs past your area (measured ' + region.overflow_px + ' px) - use Extend area'
+      : r.object_cut_off === true ? 'the new element looks cut off at the area border' : cutPass === null ? nr : '';
+    checks.push({ id: cut.id, name: cut.name, pass: cutPass, note: cutNote });
+    regionReport = { ...r, overflow_measured: region.overflow_measured };
+  }
+
   // -- text verdict
   const tm = toBool(v.text_matches) === true;
   const to = toBool(v.text_once) !== false;
@@ -485,12 +671,14 @@ export function normaliseQc(raw: unknown, ctx: QcContext = {}): { qc_report: QcR
 
   // -- overall: core checks decide 'fail'; style findings (or a judge pass:false with every check green) are 'warn'
   const judgePass = toBool(v.pass);
-  const coreFailed = checks.some((c) => c.pass === false && c.id !== 'style_palette');
+  const coreFailed = checks.some((c) => c.pass === false && !WARN_ONLY.has(c.id));
   const subjectCheck = style_match.checks.find((c) => c.id === 'subject');
-  const subjectRegen = subjectRegenOn && !!expectedSubject && subjectCheck?.pass === false;
+  // an area edit never regenerates for the subject (WF-3 has no corrective loop; the instruction may change the hero)
+  const subjectRegen = !region && subjectRegenOn && !!expectedSubject && subjectCheck?.pass === false;
   // a different art style regenerates once only when the judge saw the reference and the setting is on ('close' never)
   const artRegen = artRegenOn && artAttached && style_match.art_match?.overall === 'different';
-  const styleWarn = (style_match.score !== null && style_match.score < 100) || judgePass === false || !palettePass;
+  const regionWarn = !!region && checks.some((c) => c.pass === false && WARN_ONLY.has(c.id) && c.id !== 'style_palette');
+  const styleWarn = (style_match.score !== null && style_match.score < 100) || judgePass === false || !palettePass || regionWarn;
   const verdictWord: QcReport['verdict'] = coreFailed || subjectRegen || artRegen ? 'fail' : (styleWarn ? 'warn' : 'pass');
 
   const needs_regen = (coreFailed && failedRegen.length > 0) || subjectRegen || artRegen;
@@ -513,7 +701,20 @@ export function normaliseQc(raw: unknown, ctx: QcContext = {}): { qc_report: QcR
     checks, score, style_match, needs_regen, corrective_instruction, style_violations, text_ok, text_found,
     expected_text: expected, min_text_height_frac, issues, parse_error: null, attempt,
   };
+  if (regionReport) report.region = regionReport;
   return { qc_report: report, needs_regen, text_elements };
+}
+
+/** ctx.region -> RegionContext (tolerant: any object; null for everything else). */
+function asRegionContext(v: unknown): RegionContext | null {
+  if (!isObj(v)) return null;
+  return {
+    instruction: typeof v.instruction === 'string' ? v.instruction : '',
+    rect: isObj(v.rect) ? v.rect : {},
+    overflow_measured: v.overflow_measured === true,
+    overflow_px: Number(v.overflow_px) || 0,
+    composite_mode: typeof v.composite_mode === 'string' ? v.composite_mode : null,
+  };
 }
 
 function issueFor(issues: string[], key: string): string | undefined {

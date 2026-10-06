@@ -13,6 +13,7 @@ import {
   approveCard,
   duplicateCard,
   parkCard,
+  recompositeRegion,
   requestEdit,
   resumeCard,
   retryCard,
@@ -24,10 +25,12 @@ import {
   errorMessage,
   isRecord,
   parsePrintText,
+  parseRegionMetrics,
   type AiPlatform,
   type Generation,
   type Json,
   type PrintTextLine,
+  type RegionRectPx,
 } from '../lib/types'
 import { safeFileName } from '../lib/download'
 import { useCardFinJobs, useCardGenerations, useCardRow, useStyleCard } from '../components/card/useCardData'
@@ -41,6 +44,7 @@ import { Spinner } from '../components/card/ui'
 import { CardHeader, type ExecutionLink } from '../components/card/CardHeader'
 import { GenerationStrip } from '../components/card/GenerationStrip'
 import { Preview, type EditPhase } from '../components/card/Preview'
+import { RegionEditPanel } from '../components/card/RegionEditPanel'
 import { StagePlaceholder } from '../components/card/StagePlaceholder'
 import { StageActions, StatusLine, type StageActionsProps } from '../components/card/StageActions'
 import { TextSlotsEditor } from '../components/card/TextSlotsEditor'
@@ -132,6 +136,8 @@ function CardView({ cardId }: { cardId: string }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [textEdit, setTextEdit] = useState<TextEditState>(TEXT_EDIT_OFF)
   const [editStatus, setEditStatus] = useState<{ text: string; tone: EditStatusTone }>({ text: '', tone: 'neutral' })
+  /** Fix an area: the generation whose stored full regeneration the picture shows instead of the composite. */
+  const [fullRegenFor, setFullRegenFor] = useState<string | null>(null)
   const pictureRef = useRef<HTMLButtonElement>(null)
 
   const current = useMemo(
@@ -143,6 +149,9 @@ function CardView({ cardId }: { cardId: string }) {
     [generations.rows, viewedId, current],
   )
   const previous = useMemo(() => findPrevious(generations.rows, viewed), [generations.rows, viewed])
+  // Render-phase reset: another generation viewed (or the viewed one lost its raw regeneration) shows its own image again.
+  if (fullRegenFor !== null && (fullRegenFor !== viewed?.id || !viewed.raw_image_path)) setFullRegenFor(null)
+  const regionMetrics = useMemo(() => parseRegionMetrics(viewed?.region_metrics), [viewed?.region_metrics])
   const runningGeneration = useMemo(
     () => generations.rows.find((g) => ACTIVE_JOB_STATUSES.includes(g.status)) ?? null,
     [generations.rows],
@@ -180,6 +189,8 @@ function CardView({ cardId }: { cardId: string }) {
 
   function enterEdit() {
     if (!canEnterEdit || !current) return
+    // The text editor works on the current image: never leave the full regeneration on screen behind it.
+    setFullRegenFor(null)
     setTextEdit({ phase: prefersReducedMotion() ? 'on' : 'scanning', genId: current.id })
   }
   /** Cancel / Escape. Not while Apply is in flight: the drafts must survive a failed request. */
@@ -377,7 +388,8 @@ function CardView({ cardId }: { cardId: string }) {
       async () => {
         const blob = await buildMaskPng(natural.w, natural.h, rect)
         const maskPath = await uploadMask(card.id, current.id, blob)
-        // The worker pastes the edited rectangle back onto the untouched image, so it needs the rectangle in pixels too.
+        // region-composite keeps only this rectangle (plus the blend ring) of the full regeneration, so prompt-engine
+        // needs it in pixels with the image size it was drawn on ({x,y,w,h,width,height}; 422 without it).
         const px = rectToPixels(rect, natural.w, natural.h)
         const mask_rect = { x: px.x, y: px.y, w: px.w, h: px.h, width: natural.w, height: natural.h }
         return requestEdit(current.id, 'edit_region', { mask_path: maskPath, mask_rect, instruction, platform })
@@ -386,7 +398,31 @@ function CardView({ cardId }: { cardId: string }) {
         generations.upsertLocal(child)
         void refreshCard()
         closeDialog()
-        toast.success('Region edit queued — the card is now editing')
+        toast.success('Fix an area queued — the card is now editing')
+      },
+    )
+  }
+
+  /**
+   * Fix an area follow-ups on the viewed generation, $0 and no AI: region-composite recombines its
+   * stored full regeneration (extend over `rect`, or full as it is) into a new child generation that
+   * becomes current. Works while the pipeline is paused: nothing is queued.
+   */
+  function onRegionRecomposite(mode: 'extend' | 'full', rect?: RegionRectPx) {
+    if (!viewed) return
+    void run(
+      'region_' + mode,
+      () => recompositeRegion(viewed.id, mode, rect),
+      (res) => {
+        generations.upsertLocal(res.generation)
+        void refreshCard()
+        setViewedId(null)
+        setFullRegenFor(null)
+        toast.success(
+          mode === 'extend'
+            ? 'Area extended — recombined from the same regeneration ($0)'
+            : 'The full regeneration is now the current version',
+        )
       },
     )
   }
@@ -645,7 +681,25 @@ function CardView({ cardId }: { cardId: string }) {
                 />
               ) : undefined
             }
+            altImage={
+              viewed && viewed.raw_image_path && fullRegenFor === viewed.id
+                ? { path: viewed.raw_image_path, label: 'Full regeneration' }
+                : null
+            }
           />
+          {/* Hidden while the text editor is open: it works on the current image, never on the full regeneration. */}
+          {viewed && textEdit.phase === 'off' && (
+            <RegionEditPanel
+              generation={viewed}
+              metrics={regionMetrics}
+              showFull={fullRegenFor === viewed.id}
+              onToggleFull={() => setFullRegenFor((v) => (v === viewed.id ? null : viewed.id))}
+              canAct={card.stage === 'needs_review' && busy === null}
+              busy={busy === 'region_extend' ? 'extend' : busy === 'region_full' ? 'full' : null}
+              onExtend={(rect) => onRegionRecomposite('extend', rect)}
+              onUseFull={() => onRegionRecomposite('full')}
+            />
+          )}
         </div>
 
         <div className="min-w-0 space-y-3 lg:col-start-2 lg:row-start-1 lg:row-span-2">
@@ -736,7 +790,10 @@ function CardView({ cardId }: { cardId: string }) {
         <EditRegionDialog
           imageUrl={currentImage.url}
           imageBroken={currentImage.broken}
-          defaultPlatform={defaultPlatform}
+          ringPct={Number(settings?.region_ring_pct ?? 3)}
+          // Fix an area is tuned on OpenRouter (GPT Image 2.5 Sunburst); the picker still allows another platform.
+          defaultPlatform="openrouter"
+          studioDefault={defaultPlatform}
           busy={busy === 'edit_region'}
           onClose={closeDialog}
           onSubmit={onEditRegion}

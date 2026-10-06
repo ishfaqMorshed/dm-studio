@@ -416,6 +416,7 @@ export type Database = {
           attempt: number
           brief_snapshot: Json | null
           card_id: string
+          composite_mode: string | null
           created_at: string
           drift_pct: number | null
           edit_instruction: string | null
@@ -436,7 +437,9 @@ export type Database = {
           parent_generation_id: string | null
           platform: string | null
           qc_report: Json | null
+          raw_image_path: string | null
           reference_urls: Json | null
+          region_metrics: Json | null
           rejection_note: string | null
           rejection_reason:
             | Database["public"]["Enums"]["rejection_reason"]
@@ -460,6 +463,7 @@ export type Database = {
           attempt?: number
           brief_snapshot?: Json | null
           card_id: string
+          composite_mode?: string | null
           created_at?: string
           drift_pct?: number | null
           edit_instruction?: string | null
@@ -480,7 +484,9 @@ export type Database = {
           parent_generation_id?: string | null
           platform?: string | null
           qc_report?: Json | null
+          raw_image_path?: string | null
           reference_urls?: Json | null
+          region_metrics?: Json | null
           rejection_note?: string | null
           rejection_reason?:
             | Database["public"]["Enums"]["rejection_reason"]
@@ -504,6 +510,7 @@ export type Database = {
           attempt?: number
           brief_snapshot?: Json | null
           card_id?: string
+          composite_mode?: string | null
           created_at?: string
           drift_pct?: number | null
           edit_instruction?: string | null
@@ -524,7 +531,9 @@ export type Database = {
           parent_generation_id?: string | null
           platform?: string | null
           qc_report?: Json | null
+          raw_image_path?: string | null
           reference_urls?: Json | null
+          region_metrics?: Json | null
           rejection_note?: string | null
           rejection_reason?:
             | Database["public"]["Enums"]["rejection_reason"]
@@ -640,6 +649,7 @@ export type Database = {
           qc_art_regen: boolean
           qc_subject_regen: boolean
           reference_roles: Json
+          region_ring_pct: number
           updated_at: string
           vision_model: string
         }
@@ -658,6 +668,7 @@ export type Database = {
           qc_art_regen?: boolean
           qc_subject_regen?: boolean
           reference_roles?: Json
+          region_ring_pct?: number
           updated_at?: string
           vision_model?: string
         }
@@ -676,6 +687,7 @@ export type Database = {
           qc_art_regen?: boolean
           qc_subject_regen?: boolean
           reference_roles?: Json
+          region_ring_pct?: number
           updated_at?: string
           vision_model?: string
         }
@@ -891,6 +903,7 @@ export type Database = {
           attempt: number
           brief_snapshot: Json | null
           card_id: string
+          composite_mode: string | null
           created_at: string
           drift_pct: number | null
           edit_instruction: string | null
@@ -911,7 +924,9 @@ export type Database = {
           parent_generation_id: string | null
           platform: string | null
           qc_report: Json | null
+          raw_image_path: string | null
           reference_urls: Json | null
+          region_metrics: Json | null
           rejection_note: string | null
           rejection_reason:
             | Database["public"]["Enums"]["rejection_reason"]
@@ -1242,17 +1257,22 @@ export type Database = {
         }
       }
       refs_upload_ok: { Args: { p_name: string }; Returns: boolean }
-      request_edit: {
+      region_child: {
         Args: {
-          p_generation_id: string
-          p_kind: Database["public"]["Enums"]["generation_kind"]
-          p_payload?: Json
+          p_child_id: string
+          p_drift_pct?: number
+          p_image_path: string
+          p_mask_rect: Json
+          p_mode: string
+          p_region_metrics: Json
+          p_source_generation_id: string
         }
         Returns: {
           aspect_ratio: string | null
           attempt: number
           brief_snapshot: Json | null
           card_id: string
+          composite_mode: string | null
           created_at: string
           drift_pct: number | null
           edit_instruction: string | null
@@ -1273,7 +1293,69 @@ export type Database = {
           parent_generation_id: string | null
           platform: string | null
           qc_report: Json | null
+          raw_image_path: string | null
           reference_urls: Json | null
+          region_metrics: Json | null
+          rejection_note: string | null
+          rejection_reason:
+            | Database["public"]["Enums"]["rejection_reason"]
+            | null
+          rendered_prompt: string | null
+          resolution: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          started_at: string | null
+          status: Database["public"]["Enums"]["job_status"]
+          style_card_id: string | null
+          style_card_snapshot: Json | null
+          style_card_version: number | null
+          text_elements: Json | null
+          updated_at: string
+          vendor: string | null
+          vendor_job_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "generations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      request_edit: {
+        Args: {
+          p_generation_id: string
+          p_kind: Database["public"]["Enums"]["generation_kind"]
+          p_payload?: Json
+        }
+        Returns: {
+          aspect_ratio: string | null
+          attempt: number
+          brief_snapshot: Json | null
+          card_id: string
+          composite_mode: string | null
+          created_at: string
+          drift_pct: number | null
+          edit_instruction: string | null
+          final_prompt: string | null
+          finished_at: string | null
+          id: string
+          image_path: string | null
+          kind: Database["public"]["Enums"]["generation_kind"]
+          last_error: string | null
+          magic_prompt_json: Json | null
+          mask_path: string | null
+          mask_rect: Json | null
+          model: string | null
+          n8n_execution_id: string | null
+          needs_regen: boolean | null
+          new_text: string | null
+          old_text: string | null
+          parent_generation_id: string | null
+          platform: string | null
+          qc_report: Json | null
+          raw_image_path: string | null
+          reference_urls: Json | null
+          region_metrics: Json | null
           rejection_note: string | null
           rejection_reason:
             | Database["public"]["Enums"]["rejection_reason"]

@@ -11,6 +11,7 @@ const suites = [
   "../prompt-engine/render_test.ts",
   "../qc-judge/qc_test.ts",
   "../style-card-check/check_test.ts",
+  "../region-composite/composite_test.ts",
 ].map((p) => resolve(here, p));
 const filter = process.argv.slice(2);
 const selected = filter.length ? suites.filter((f) => filter.some((w) => f.includes(w))) : suites;

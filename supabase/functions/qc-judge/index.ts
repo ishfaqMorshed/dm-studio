@@ -1,4 +1,4 @@
-// qc-judge v2.2 — Supabase Edge Function (Deno). Normalises the vision QC verdict for one generation and writes
+// qc-judge v2.3 — Supabase Edge Function (Deno). Normalises the vision QC verdict for one generation and writes
 // generations.qc_report / needs_regen / text_elements. Contract: docs/generation-spec.md §3 "qc-judge".
 //
 // Auth: rejected unless the caller sends x-studio-secret and rpc studio_secret_ok (called with that header forwarded)
@@ -15,8 +15,13 @@
 //   the SECOND image of the vision call) makes qc-judge read style.art_match into the style_match check 'art_style';
 //   anything else (absent, false, a string) = not attached. settings.qc_art_regen (studio_28, default true) decides whether
 //   overall 'different' regenerates once. Both flags are read with select=* so a missing column (pre-studio_28) = true.
+//   v2.3 (2026-10-05, Fix an area = GPT Image 2.5 Sunburst, locked outside): the generation row is loaded with kind,
+//   mask_rect, edit_instruction and region_metrics (studio_29); an edit_region with a mask_rect is judged region-aware
+//   (qc.ts regionContextOf: 4 region checks from the judge's "region" key, the instruction's colours and objects never a
+//   palette or subject failure, never a regen for the region checks). The response adds `region` (qc_report.region, null
+//   for every other kind); reports of other kinds are byte-identical to v2.2.
 
-import { normaliseQc, normaliseTextLines, pickStyleJson } from './qc.ts';
+import { normaliseQc, normaliseTextLines, pickStyleJson, regionContextOf } from './qc.ts';
 export { normaliseQc } from './qc.ts';
 
 const SB_URL = (Deno.env.get('SUPABASE_URL') ?? 'https://voatrqhfsdfjomyajovi.supabase.co').replace(/\/$/, '');
@@ -40,6 +45,7 @@ async function secretOk(secret: string): Promise<boolean> {
 
 type GenRow = {
   id: string; attempt: number | null; style_card_snapshot: unknown;
+  kind: string | null; mask_rect: unknown; edit_instruction: string | null; region_metrics: unknown;
   magic_prompt_json: { subject?: { text?: unknown }; effective_style?: unknown } | null;
   brief_snapshot: { subject?: unknown } | null;
   cards: { print_text: unknown; client_submission: { subject?: unknown } | null } | null;
@@ -48,7 +54,7 @@ type GenRow = {
 // The embed names the FK explicitly: generations.card_id -> cards and cards.current_generation_id -> generations are
 // both relationships, so a bare cards(...) embed is ambiguous (PostgREST 300 PGRST201).
 async function loadGeneration(secret: string, id: string): Promise<GenRow | null> {
-  const u = `${SB_URL}/rest/v1/generations?id=eq.${id}&select=id,attempt,style_card_snapshot,magic_prompt_json,brief_snapshot,cards!generations_card_id_fkey(print_text,client_submission)`;
+  const u = `${SB_URL}/rest/v1/generations?id=eq.${id}&select=id,attempt,kind,mask_rect,edit_instruction,region_metrics,style_card_snapshot,magic_prompt_json,brief_snapshot,cards!generations_card_id_fkey(print_text,client_submission)`;
   const r = await fetch(u, { headers: sbHeaders(secret, { accept: 'application/json' }) });
   if (!r.ok) throw new Error(`load generation failed: ${r.status} ${(await r.text()).slice(0, 200)}`);
   const rows = (await r.json()) as GenRow[];
@@ -113,13 +119,16 @@ export async function handler(req: Request): Promise<Response> {
 
     // strictly the boolean true WF-2 sends when the Art style reference was the second image of the vision call
     const art_reference_attached = body.art_reference_attached === true;
+    // v2.3: an area edit (edit_region with a mask_rect) is judged region-aware; null for every other kind
+    const region = regionContextOf(gen);
 
-    const { qc_report, needs_regen, text_elements } = normaliseQc(body.qc_raw, { exact_text_lines, style_card, attempt, expected_subject, qc_subject_regen, art_reference_attached, qc_art_regen });
+    const { qc_report, needs_regen, text_elements } = normaliseQc(body.qc_raw, { exact_text_lines, style_card, attempt, expected_subject, qc_subject_regen, art_reference_attached, qc_art_regen, region });
     await patchGeneration(secret, generation_id, { qc_report, needs_regen, text_elements });
     return json(200, {
       generation_id, qc_report, needs_regen, text_elements,
       corrective_instruction: qc_report.corrective_instruction,
       verdict: qc_report.verdict, style_match: qc_report.style_match, expected_subject, qc_subject_regen, art_reference_attached, qc_art_regen,
+      region: qc_report.region ?? null,
     });
   } catch (e) {
     return json(500, { error: (e as Error).message ?? String(e), generation_id });

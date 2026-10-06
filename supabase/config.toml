@@ -7,3 +7,7 @@ entrypoint = "./functions/prompt-engine/index.ts"
 [functions.qc-judge]
 verify_jwt = false
 entrypoint = "./functions/qc-judge/index.ts"
+
+[functions.region-composite]
+verify_jwt = false
+entrypoint = "./functions/region-composite/index.ts"

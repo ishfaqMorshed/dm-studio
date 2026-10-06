@@ -12,11 +12,13 @@ export const GENERATION_DEFAULTS = {
 
 /**
  * Default of `settings.openrouter_models`: the OpenRouter id of each model the studio
- * also runs on Kie (Kie runs edits on google/nano-banana-edit).
+ * also runs on Kie (Kie runs Edit text on google/nano-banana-edit and Fix an area on
+ * gpt-image-2-5-sunburst-image-to-image). `region` = Fix an area, locked outside (studio_29).
  */
 export const OPENROUTER_MODEL_DEFAULTS = {
   vision: 'google/gemini-3.1-pro-preview',
   image: 'openai/gpt-image-2.5-sunburst',
   edit: 'google/gemini-2.5-flash-image',
+  region: 'openai/gpt-image-2.5-sunburst',
   text: 'anthropic/claude-sonnet-4.6',
 } as const

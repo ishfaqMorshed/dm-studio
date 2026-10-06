@@ -23,6 +23,8 @@
 // (source style_test) never take the override - they exist to test the Style Card. No art slot = the Style Card governs.
 // 2026-10-02 (QC sees the Art style reference): effective_style adds reference_path + reference_image_index - where the
 // art image sits in the input plan - so WF-2 can show it to the vision QC judge as a second image.
+// v8.1 region lane (2026-10-05): edit_region renders the probe's variant A region prompt (renderRegionPrompt) for
+// GPT Image 2.5 Sunburst; renderPrompt and applyEdit are unchanged.
 import { checkStyleCard, normaliseCase, type PaletteEntryV2, type StyleCardV2 } from "../_shared/style_card_rules.ts";
 
 export type PaletteEntry = PaletteEntryV2;
@@ -1009,6 +1011,106 @@ export function applyEdit(
   }
   m.edit = { kind, instruction, old_text: oldText, new_text: newText };
   return m;
+}
+
+// ---------------------------------------------------------------------------
+// v8.1 region lane (2026-10-05, user decision): Fix an area = GPT Image 2.5 Sunburst, locked outside. The model receives
+// the probe's variant A prompt word for word (docs/region-edit/probe/wf-probe.sdk.js, 9 live calls): the instruction, the
+// box as whole percentages of the image, and the mask attached as Image 2. The model regenerates the whole design; the
+// Edge Function region-composite keeps only the change. The magic prompt is still built (QC reads its text lines and
+// effective_style); this prompt is what the image model receives.
+
+export const REGION_KIE_MODEL = "gpt-image-2-5-sunburst-image-to-image";
+export const REGION_OPENROUTER_DEFAULT = "openai/gpt-image-2.5-sunburst";
+export const REGION_EDIT_HEAD = "TARGETED EDIT OF AN EXISTING DESIGN. Image 1 is the finished print design. Change ONLY this: ";
+export const REGION_EDIT_BODY = "Keep the new element inside that area, at a size that fits it, drawn in the same art style, line weight, texture and colour palette as the rest of the design. EVERYTHING ELSE must stay exactly identical to Image 1 - the same framing and position (no shifting, zooming or cropping), the same composition, every line, texture and colour, all lettering and text, and the flat grey background. Output the complete design at exactly the same framing as Image 1.";
+export const REGION_EDIT_MASK = "Image 2 is a black-and-white mask of the same size - the WHITE rectangle marks the only area that may change; everything black must stay identical.";
+
+/** generations.mask_rect: the box in pixels of the parent image (width/height = the parent image size). */
+export type MaskRect = { x: number; y: number; w: number; h: number; width: number; height: number };
+/** The box as whole percentages of the image (x0..x1 across, y0..y1 down). */
+export type RegionPct = { x0: number; x1: number; y0: number; y1: number };
+
+/**
+ * A usable mask_rect, rounded to whole pixels, or null. Every key must be a finite number; w, h, width and height > 0;
+ * x, y >= 0; the box may overshoot the image by at most 1 px (rounding in the app) and is then clipped to it.
+ */
+export function validMaskRect(v: unknown): MaskRect | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  const n = (k: string) => (typeof o[k] === "number" && Number.isFinite(o[k]) ? (o[k] as number) : NaN);
+  const x = n("x"), y = n("y"), w = n("w"), h = n("h"), width = n("width"), height = n("height");
+  if ([x, y, w, h, width, height].some((k) => Number.isNaN(k))) return null;
+  if (!(w > 0 && h > 0 && width > 0 && height > 0 && x >= 0 && y >= 0)) return null;
+  if (x + w > width + 1 || y + h > height + 1) return null;
+  const W = Math.round(width), H = Math.round(height);
+  const X = Math.min(Math.round(x), W - 1), Y = Math.min(Math.round(y), H - 1);
+  const RW = Math.min(Math.round(w), W - X), RH = Math.min(Math.round(h), H - Y);
+  if (W < 1 || H < 1 || RW < 1 || RH < 1) return null;
+  return { x: X, y: Y, w: RW, h: RH, width: W, height: H };
+}
+
+/** The box as whole percentages (Math.round), clamped to 0..100 with x1 >= x0 + 1 and y1 >= y0 + 1. */
+export function regionPct(r: MaskRect): RegionPct {
+  const pct = (v: number, of: number) => Math.round((100 * v) / of);
+  const x0 = Math.min(99, Math.max(0, pct(r.x, r.width)));
+  const y0 = Math.min(99, Math.max(0, pct(r.y, r.height)));
+  const x1 = Math.min(100, Math.max(x0 + 1, pct(r.x + r.w, r.width)));
+  const y1 = Math.min(100, Math.max(y0 + 1, pct(r.y + r.h, r.height)));
+  return { x0, x1, y0, y1 };
+}
+
+export function regionWhere(p: RegionPct): string {
+  return "the area from " + p.x0 + "% to " + p.x1 + "% across and " + p.y0 + "% to " + p.y1 + "% down the image";
+}
+
+/**
+ * The prompt the region model receives (probe variant A). The instruction is collapsed to one line and loses trailing
+ * full stops / whitespace so the sentence never reads '..'; an empty instruction is an EditError (422).
+ * mask_attached false (no mask in the input plan) drops the Image 2 sentence.
+ */
+export function renderRegionPrompt(opts: { instruction: unknown; rect: MaskRect; mask_attached: boolean }): string {
+  const instr = s(opts.instruction).replace(/\s+/g, " ").trim().replace(/[.\s]+$/, "");
+  if (!instr) throw new EditError("edit_region needs an instruction - say what to change in the area");
+  return REGION_EDIT_HEAD + instr + ". The change happens only in " + regionWhere(regionPct(opts.rect)) + ". " + REGION_EDIT_BODY +
+    (opts.mask_attached ? " " + REGION_EDIT_MASK : "");
+}
+
+/** Kie resolution for the region model: the parent's long side (OpenRouter ignores it and returns 1024 px). */
+export function regionResolution(r: MaskRect): "1K" | "2K" {
+  return Math.max(r.width, r.height) >= 1536 ? "2K" : "1K";
+}
+
+/** The `region` block of the prompt-engine response (WF-3 builds the Kie / OpenRouter Sunburst body from it). */
+export type RegionBlock = {
+  rect: MaskRect; pct: RegionPct; where: string; prompt: string; mask_attached: boolean;
+  kie_model: string; openrouter_model: string; resolution: "1K" | "2K"; aspect_ratio: string; quality: "high";
+};
+
+/**
+ * Everything WF-3 needs for one Fix an area run. mask_attached = the input plan carries the mask (it is then Image 2);
+ * openrouter_model = settings.openrouter_models.region (blank -> the default); aspect_ratio = the parent's.
+ */
+export function buildRegionBlock(opts: {
+  rect: MaskRect; instruction: unknown; plan: InputPath[]; openrouter_model?: unknown; aspect_ratio?: unknown;
+}): RegionBlock {
+  const pct = regionPct(opts.rect);
+  const mask_attached = opts.plan.some((p) => p.role === "mask");
+  return {
+    rect: opts.rect, pct, where: regionWhere(pct),
+    prompt: renderRegionPrompt({ instruction: opts.instruction, rect: opts.rect, mask_attached }),
+    mask_attached,
+    kie_model: REGION_KIE_MODEL,
+    openrouter_model: s(opts.openrouter_model) || REGION_OPENROUTER_DEFAULT,
+    resolution: regionResolution(opts.rect),
+    aspect_ratio: s(opts.aspect_ratio) || "1:1",
+    quality: "high",
+  };
+}
+
+/** generations.model for an edit_region run: the OpenRouter region model on OpenRouter, else Kie's ("auto" starts on Kie). */
+export function regionModel(platform: unknown, region: RegionBlock): string {
+  return platform === "openrouter" ? region.openrouter_model : region.kie_model;
 }
 
 // ---------------------------------------------------------------------------

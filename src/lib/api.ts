@@ -19,11 +19,12 @@ import type {
   GenerationKind,
   PrintTextLine,
   ReferenceRole,
+  RegionRectPx,
   RejectionReason,
   StyleCard,
   StyleDraftRequest,
 } from './types'
-import { isRecord } from './types'
+import { errorMessage, isRecord } from './types'
 
 function rpcError(error: PostgrestError | null, fallback: string): Error {
   if (!error) return new Error(fallback)
@@ -93,6 +94,62 @@ export async function requestEdit(
     await supabase.rpc('request_edit', { p_generation_id: generationId, p_kind: kind, p_payload: clean }),
     'Request edit',
   )
+}
+
+/* ---------- Fix an area: Extend area / Use full regeneration (Edge Function region-composite) ---------- */
+
+export type RegionRecompositeMode = 'extend' | 'full'
+export type { RegionRectPx }
+
+export interface RegionRecompositeResult {
+  ok: true
+  mode: RegionRecompositeMode
+  /** The new child generation (already current on the card). */
+  generation_id: string
+  source_generation_id: string
+  image_path: string
+  metrics: Json
+  generation: Generation
+}
+
+/** The `message` of a region-composite error body (`{ok:false, code, message}`), or null when the body is not readable. */
+async function functionErrorMessage(error: unknown): Promise<string | null> {
+  // FunctionsHttpError carries the raw Response as `context`.
+  const context = typeof error === 'object' && error !== null ? (error as { context?: unknown }).context : undefined
+  if (!(context instanceof Response)) return null
+  try {
+    const body: unknown = await context.clone().json()
+    return isRecord(body) && typeof body.message === 'string' && body.message.trim() ? body.message.trim() : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Re-uses the stored full regeneration of a finished edit_region generation, $0 and no AI:
+ * `extend` recombines it over `rect` (default: the suggested rect region-composite measured),
+ * `full` takes it whole. region-composite uploads the PNG, inserts the child through the
+ * `region_child` RPC (status done, so WF-3 never starts) and makes it the card's current
+ * generation. Needs the card in needs_review; works while the pipeline is paused.
+ */
+export async function recompositeRegion(
+  sourceGenerationId: string,
+  mode: RegionRecompositeMode,
+  rect?: RegionRectPx | null,
+): Promise<RegionRecompositeResult> {
+  const what = mode === 'extend' ? 'Extend area' : 'Use full regeneration'
+  const { data, error } = await supabase.functions.invoke<RegionRecompositeResult>('region-composite', {
+    body: { generation_id: sourceGenerationId, mode, ...(rect ? { rect_override: rect } : {}) },
+  })
+  if (error) {
+    const msg = (await functionErrorMessage(error)) ?? errorMessage(error, 'the area service did not answer')
+    throw new Error(`${what} failed: ${msg}`)
+  }
+  if (data?.ok !== true || !data.generation) {
+    const msg = isRecord(data) && typeof data.message === 'string' && data.message ? data.message : 'the area service returned no generation'
+    throw new Error(`${what} failed: ${msg}`)
+  }
+  return data
 }
 
 /** needs_review → finishing. Creates the fin_jobs row. Both extras default to null server-side. */

@@ -6,10 +6,13 @@ import { useToast } from '../../lib/useToast'
 import { downloadFile } from '../../lib/download'
 import {
   ACTIVE_JOB_STATUSES,
+  COMPOSITE_MODE_LABEL,
   GENERATION_KIND_LABEL,
   REJECTION_REASON_LABEL,
   errorMessage,
   generationPlatformLabel,
+  isCompositeMode,
+  parseRegionMetrics,
   type Generation,
 } from '../../lib/types'
 import { formatDateTime, formatPct, shortId } from './format'
@@ -49,6 +52,9 @@ function ScanOverlay() {
  *
  * When `editable`, the picture itself is the button that opens the text editor: the
  * bottom pill says so at rest (touch has no hover), the frame lights up while editing.
+ *
+ * `altImage` swaps the main picture for another gens path of the same generation (Fix an
+ * area: the untouched full regeneration) with its own chip label; blink and download follow it.
  */
 export function Preview({
   viewed,
@@ -62,6 +68,7 @@ export function Preview({
   emptyAction,
   qcVerdict = null,
   runningGeneration = null,
+  altImage = null,
 }: {
   viewed: Generation | null
   previous: Generation | null
@@ -80,6 +87,8 @@ export function Preview({
   qcVerdict?: QcVerdict | null
   /** An edit child that is queued or running: dims the picture and says so in the chip. */
   runningGeneration?: Generation | null
+  /** Show this gens path of the viewed generation instead of its image (e.g. the full regeneration), chip = `label`. */
+  altImage?: { path: string; label: string } | null
 }) {
   const toast = useToast()
   const [showPrevious, setShowPrevious] = useState(false)
@@ -94,7 +103,9 @@ export function Preview({
     setAuto(false)
   }
 
-  const current = useSignedUrl(GENS_BUCKET, viewed?.image_path)
+  // The displayed picture: the alternative image when one is given, else the generation's own.
+  const displayedPath = viewed?.image_path ? (altImage?.path ?? viewed.image_path) : null
+  const current = useSignedUrl(GENS_BUCKET, displayedPath)
   const prev = useSignedUrl(GENS_BUCKET, previous?.image_path)
   const canBlink = Boolean(viewed?.image_path && previous?.image_path)
 
@@ -114,10 +125,11 @@ export function Preview({
   }
 
   async function download() {
-    if (!viewed?.image_path || downloading) return
+    if (!viewed || !displayedPath || downloading) return
     setDownloading(true)
     try {
-      await downloadFile({ bucket: GENS_BUCKET, path: viewed.image_path, filename: `${fileBase}-${shortId(viewed.id)}.png` })
+      const suffix = altImage ? '-full' : ''
+      await downloadFile({ bucket: GENS_BUCKET, path: displayedPath, filename: `${fileBase}-${shortId(viewed.id)}${suffix}.png` })
     } catch (e) {
       toast.error(errorMessage(e, 'Download failed'))
     } finally {
@@ -132,7 +144,7 @@ export function Preview({
         {current.url ? (
           <img
             src={current.url}
-            alt={`${GENERATION_KIND_LABEL[viewed.kind]} generation`}
+            alt={altImage ? `${altImage.label} of this ${GENERATION_KIND_LABEL[viewed.kind]} generation` : `${GENERATION_KIND_LABEL[viewed.kind]} generation`}
             decoding="async"
             className={`absolute inset-0 h-full w-full object-contain ${showingPrevious ? 'invisible' : ''}`}
           />
@@ -155,7 +167,13 @@ export function Preview({
           </span>
         ) : (
           <span className={`absolute left-2 top-2 ${imageChip}`}>
-            {showingPrevious && previous ? `Previous · ${GENERATION_KIND_LABEL[previous.kind]}` : isCurrent ? 'Current' : GENERATION_KIND_LABEL[viewed.kind]}
+            {showingPrevious && previous
+              ? `Previous · ${GENERATION_KIND_LABEL[previous.kind]}`
+              : altImage
+                ? altImage.label
+                : isCurrent
+                  ? 'Current'
+                  : GENERATION_KIND_LABEL[viewed.kind]}
           </span>
         )}
         {qcVerdict && <Badge className={`absolute right-2 top-2 ${VERDICT_CLASS[qcVerdict]}`}>QC {VERDICT_LABEL[qcVerdict]}</Badge>}
@@ -270,6 +288,24 @@ export function Preview({
   )
 }
 
+/** "Locked outside · shift 0/0 px · colour offset 0.7 · seam 0.85" for a Fix an area generation with region-composite metrics. */
+function areaEditSummary(g: Generation): string | null {
+  if (g.kind !== 'edit_region') return null
+  const m = parseRegionMetrics(g.region_metrics)
+  if (!m) return null
+  const mode = isCompositeMode(g.composite_mode) ? g.composite_mode : m.mode
+  const c = m.colour_offset
+  const offset = Math.max(Math.abs(c.r), Math.abs(c.g), Math.abs(c.b))
+  const parts = [
+    mode ? COMPOSITE_MODE_LABEL[mode] : null,
+    `shift ${m.shift.dx}/${m.shift.dy} px`,
+    `colour offset ${offset.toFixed(1)}`,
+    // The seam is measured on the composite; a full regeneration has none.
+    mode !== 'full' && m.seam_ratio_box !== null ? `seam ${m.seam_ratio_box.toFixed(2)}` : null,
+  ]
+  return parts.filter(Boolean).join(' · ')
+}
+
 /** Key/value facts about one generation (status, platform, model, edit, drift, dates). */
 export function GenerationMeta({ generation: g }: { generation: Generation }) {
   const drift = formatPct(g.drift_pct)
@@ -281,9 +317,13 @@ export function GenerationMeta({ generation: g }: { generation: Generation }) {
   if (g.style_card_version !== null) rows.push(['Style Card', `v${g.style_card_version}`])
   if (g.kind === 'edit_text' && (g.old_text || g.new_text)) rows.push(['Text edit', `“${g.old_text ?? ''}” → “${g.new_text ?? ''}”`])
   if (g.edit_instruction) rows.push(['Instruction', g.edit_instruction])
+  const areaEdit = areaEditSummary(g)
+  if (areaEdit) rows.push(['Area edit', areaEdit])
   if (drift) {
     rows.push([
-      'Drift outside mask',
+      // Fix an area (locked outside) keeps the original beyond the blend ring, so that is where a change counts.
+      // Region edits from before region-composite (no composite_mode) measured drift outside the mask.
+      g.kind === 'edit_region' && g.composite_mode ? 'Changed beyond the blend line' : 'Drift outside mask',
       <span key="d" className={driftHigh ? 'font-medium text-amber-700 dark:text-amber-300' : undefined}>
         {drift}
         {driftHigh ? ` — above ${DRIFT_FLAG_PCT} %, check the untouched areas` : ''}

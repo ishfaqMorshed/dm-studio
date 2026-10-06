@@ -1,4 +1,4 @@
-// DM Studio · Edge Function `prompt-engine` v8
+// DM Studio · Edge Function `prompt-engine` v8.1
 // POST {generation_id}  →  builds magic_prompt_json + rendered_prompt for one generation and PATCHes the row.
 // Contract: docs/generation-spec.md §3 + the Style Card v2 spec (section 3.1). Auth: the caller's x-studio-secret is
 // forwarded to PostgREST and validated by rpc studio_secret_ok (verify_jwt is off). No secret value lives in this
@@ -20,6 +20,15 @@
 // v8 QC art reference (2026-10-02): effective_style also carries reference_path (the refs-bucket path of the art image,
 // the same string input_paths signs) and reference_image_index (its 1-based position in input_paths), null for a Style
 // Card look; WF-2 attaches the signed art image to the vision QC call as the second image. Edits inherit the parent's.
+//
+// v8.1 region lane (2026-10-05): Fix an area (kind edit_region) runs GPT Image 2.5 Sunburst, locked outside - the model
+// regenerates the whole design and the Edge Function region-composite keeps only the change. edit_region needs a valid
+// generations.mask_rect (else 422 "draw the area again"); the magic prompt is still built and stored exactly as before
+// (QC reads its text lines and effective_style), but rendered_prompt = final_prompt = the region prompt (render.ts
+// renderRegionPrompt, probe variant A: instruction + the box in whole percentages + the mask as Image 2), model =
+// openrouter_models.region on OpenRouter else the Kie Sunburst image-to-image model, resolution from the parent size.
+// The response adds `region` {rect, pct, where, prompt, mask_attached, kie_model, openrouter_model, resolution,
+// aspect_ratio, quality} for WF-3 (null for every other kind) and openrouter_models.region. Other kinds are unchanged.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import {
   applyEdit,
@@ -41,6 +50,10 @@ import {
   pickEditRule,
   pickTierRule,
   type ReferenceAnalysis,
+  buildRegionBlock,
+  REGION_OPENROUTER_DEFAULT,
+  type RegionBlock,
+  regionModel,
   renderPrompt,
   renderStyleCard,
   resolveArtReference,
@@ -50,6 +63,7 @@ import {
   styleCardTypography,
   summarizeExemplars,
   type TextLine,
+  validMaskRect,
 } from "./render.ts";
 
 export { renderPrompt } from "./render.ts";
@@ -103,7 +117,7 @@ type Generation = {
   attempt: number; magic_prompt_json: MagicPrompt | null; style_card_id: string | null; style_card_version: number | null;
   style_card_snapshot: StyleCard | null; brief_snapshot: Record<string, unknown> | null; edit_instruction: string | null;
   old_text: string | null; new_text: string | null; mask_path: string | null; image_path: string | null; aspect_ratio: string | null;
-  platform: Platform | null;
+  platform: Platform | null; mask_rect: unknown;
 };
 type Card = {
   id: string; client_id: string; brief_text: string | null; print_text: TextLine[] | null; reference_paths: string[] | null;
@@ -116,21 +130,21 @@ type Client = {
   style_brief: Record<string, unknown> | null; garment_colors: string[] | null;
 };
 type Platform = "kie" | "openrouter" | "auto";
-type OpenRouterModels = { vision?: string; image?: string; edit?: string; text?: string };
+type OpenRouterModels = { vision?: string; image?: string; edit?: string; region?: string; text?: string };
 type Settings = {
   generation_model: string; generation_resolution: string; vision_model: string | null;
   ai_platform: Platform | null; openrouter_models: OpenRouterModels | null;
 };
 const OPENROUTER_DEFAULTS: Required<OpenRouterModels> = {
   vision: "google/gemini-3.1-pro-preview", image: "openai/gpt-image-2.5-sunburst", edit: "google/gemini-2.5-flash-image",
-  text: "anthropic/claude-sonnet-4.6",
+  region: REGION_OPENROUTER_DEFAULT, text: "anthropic/claude-sonnet-4.6",
 };
 type StyleCardRow = { id: string | null; version: number | null; json: StyleCard | null; status?: string | null };
 type Lesson = { client_id: string | null; category: string | null; rule: string };
 type Template = { slug: string; version: number; body: string };
 type LibraryRef = { id: string; path: string };
 
-const GEN_SELECT = "id,card_id,parent_generation_id,kind,attempt,magic_prompt_json,style_card_id,style_card_version,style_card_snapshot,brief_snapshot,edit_instruction,old_text,new_text,mask_path,image_path,aspect_ratio,platform";
+const GEN_SELECT = "id,card_id,parent_generation_id,kind,attempt,magic_prompt_json,style_card_id,style_card_version,style_card_snapshot,brief_snapshot,edit_instruction,old_text,new_text,mask_path,image_path,aspect_ratio,platform,mask_rect";
 
 function stripBucket(path: string, bucket: "refs" | "gens"): string {
   return path.startsWith(bucket + "/") ? path.slice(bucket.length + 1) : path;
@@ -195,6 +209,9 @@ async function handle(req: Request): Promise<Response> {
   // --- loads ---
   const gen = one(await pg<Generation[]>(ctx, "/generations?id=eq." + generationId + "&select=" + GEN_SELECT));
   if (!gen) return json(404, { error: "generation not found: " + generationId });
+  // v8.1 region lane: Fix an area needs its box - the region prompt names it and region-composite keeps only it
+  const regionRect = gen.kind === "edit_region" ? validMaskRect(gen.mask_rect) : null;
+  if (gen.kind === "edit_region" && !regionRect) return json(422, { error: "edit_region needs mask_rect {x,y,w,h,width,height} - draw the area again" });
 
   const [card, settings, templates] = await Promise.all([
     pg<Card[]>(ctx, "/cards?id=eq." + gen.card_id + "&select=id,client_id,brief_text,print_text,reference_paths,reference_roles,reference_analysis,garment_color,placement,avoid_notes,similarity_tier,brief_snapshot,client_submission,source").then(one),
@@ -398,14 +415,21 @@ async function handle(req: Request): Promise<Response> {
   const platform: Platform = gen.platform ?? settings.ai_platform ?? "kie";
   const openrouter = { ...OPENROUTER_DEFAULTS, ...(settings.openrouter_models ?? {}) };
 
+  // v8.1 region lane: Fix an area sends GPT Image 2.5 Sunburst the region prompt (probe variant A); the magic prompt
+  // above is still stored for QC. An empty instruction throws EditError (422).
+  const region: RegionBlock | null = kind === "edit_region" && regionRect
+    ? buildRegionBlock({ rect: regionRect, instruction: gen.edit_instruction, plan, openrouter_model: openrouter.region, aspect_ratio: aspect })
+    : null;
+  const prompt = region ? region.prompt : rendered;
+
   // --- persist onto the generation row ---
   const patch: Record<string, unknown> = {
     magic_prompt_json: magic,
-    rendered_prompt: rendered,
-    final_prompt: rendered,
+    rendered_prompt: prompt,
+    final_prompt: prompt,
     aspect_ratio: aspect,
-    resolution,
-    model: platform === "openrouter" ? (isEditKind ? openrouter.edit : openrouter.image) : model,
+    resolution: region ? region.resolution : resolution,
+    model: region ? regionModel(platform, region) : platform === "openrouter" ? (isEditKind ? openrouter.edit : openrouter.image) : model,
     vendor: platform === "openrouter" ? "openrouter" : "kie",
     platform,
     reference_urls: plan,
@@ -426,9 +450,9 @@ async function handle(req: Request): Promise<Response> {
     kind,
     base: baseSource,
     magic_prompt_json: magic,
-    rendered_prompt: rendered,
+    rendered_prompt: prompt,
     aspect_ratio: aspect,
-    resolution,
+    resolution: region ? region.resolution : resolution,
     model,
     vision_model: settings.vision_model || "gemini-3.1-pro",
     platform,
@@ -439,6 +463,7 @@ async function handle(req: Request): Promise<Response> {
     subject: magic.subject ?? null,
     effective_style: magic.effective_style ?? null,
     templates: Object.fromEntries(Object.values(tpl).map((t) => [t.slug, t.version])),
+    region,
   });
 }
 

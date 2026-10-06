@@ -1,0 +1,53 @@
+{
+ "b33727a9": {
+  "crop_origin": [
+   317,
+   191
+  ],
+  "rect_in_crop": {
+   "x": 96,
+   "y": 96,
+   "w": 305,
+   "h": 158
+  },
+  "full_size": [
+   1024,
+   1024
+  ],
+  "instruction": "change the sunglass color to red"
+ },
+ "45eadf6a": {
+  "crop_origin": [
+   353,
+   278
+  ],
+  "rect_in_crop": {
+   "x": 96,
+   "y": 96,
+   "w": 405,
+   "h": 153
+  },
+  "full_size": [
+   1024,
+   1024
+  ],
+  "instruction": "change the flower from rose to sunflower"
+ },
+ "dace73f3": {
+  "crop_origin": [
+   401,
+   412
+  ],
+  "rect_in_crop": {
+   "x": 96,
+   "y": 96,
+   "w": 244,
+   "h": 175
+  },
+  "full_size": [
+   1024,
+   1024
+  ],
+  "instruction": "make the bear to look like a tiger"
+ }
+}

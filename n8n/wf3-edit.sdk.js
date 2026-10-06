@@ -23,6 +23,7 @@ const sampleExecutionId = '48302';
 const sampleParentPath = sampleCardId + '/' + sampleParentId + '.png';
 const sampleMaskPath = sampleCardId + '/' + sampleGenerationId + '-mask.png';
 const sampleImagePath = sampleCardId + '/' + sampleGenerationId + '.png';
+const sampleRawPath = sampleCardId + '/' + sampleGenerationId + '.raw.png';
 const sampleSignedParentPath = '/object/sign/gens/' + sampleParentPath + '?token=redacted';
 const sampleSignedParentUrl = sampleSbUrl + '/storage/v1' + sampleSignedParentPath;
 const sampleSignedMaskPath = '/object/sign/gens/' + sampleMaskPath + '?token=redacted';
@@ -98,9 +99,10 @@ const editNote = sticky(
   '## DM Studio · WF-3 Edit (generations insert kind ≠ generate → /webhook/studio-edit)\n' +
   'Payload {generation_id, card_id, kind} from the pg_net trigger (request_edit inserts the row). The webhook has NO n8n authentication: **Load Config** runs the shared sub-workflow **WF-0 Studio Config** first, then **Secret OK?** compares the request header x-studio-secret with config.studioSecret and drops mismatches into **Rejected** (no-op).\n\n' +
   '**Config convention:** no n8n credentials except Kie (bound by id). Every URL and key is read as `$(\'Load Config\').first().json.<field>` (sbUrl, anonKey, n8nBaseUrl, studioSecret). Supabase REST / RPC / Storage / Edge Function calls send headers apikey = anonKey and x-studio-secret = studioSecret. **Paste locations:** (1) the WF-0 workflow id into the SDK const `configWorkflowId` (vbyjWhK4ZRN9uZUM) before creating this workflow; (2) the WF-5 Poll workflow id into `pollWorkflowId` (3Sr7H74AxZUu6QiW); (3) keys are pasted ONLY in WF-0\'s "Studio Config" Set node, never here. Kie images = credential **GPT Image 2 [DM-Kie]** (w0sDpl2nll4HkF6h), Kie vision = **Gemini 3.1 Pro [DM-Kie]** (0l2nHQUQNnsCAfTR).\n\n' +
-  '**Flow:** Edit Context → Get Generation (+card) → Regenerate? · **regenerate**: POST <n8nBaseUrl>/webhook/studio-generate (WF-2\'s dispatcher, x-studio-secret header; body {generation_id, card_id} is informational only) and stop - claim_generations() hands the queued row to exactly one worker and enforces settings.max_active_generations, so the row is never fired twice by this call and the 5-min sweep. · **edit_text / edit_region**: PATCH working → Edge Function **prompt-engine** (rendered_prompt = the short edit instruction; input_paths = previous_version + optional mask, bucket gens) → sign each path (1 h) → Build Edit Task (Kie createTask model **google/nano-banana-edit**, EXTRACT.md tweak shape: {prompt, image_urls, output_format png}; the mask is appended as the second image_url and the prompt states that only the white region may change) → Create Edit Task → PATCH vendor_job_id → **WF-5 Poll** (recordInfo every 10 s, 10-min cap, inside the 20-min requeue_stale() window) → download resultUrls[0] → upload gens/<card_id>/<generation_id>.png (x-upsert) → PATCH image_path → sign → Get QC Templates (qc_prompt, corrective_suffix) → Build QC Request (edit_text swaps old_text → new_text in the expected lines; qc_prompt v2 tokens EXPECTED_SUBJECT = magic_prompt_json.subject.text else brief_snapshot.subject else cards.client_submission.subject (Get Generation embeds it), PALETTE_RULE from rules.palette_mode, FORBID_LIST numbered with text demands dropped, STYLE_CARD_JSON pruned with the palette_variants entry for the garment side; magic_prompt_json.effective_style (prompt-engine v8, source art_reference or style_card) replaces the Style Card for STYLE_CARD_JSON (plus its source), PALETTE_RULE (its palette_mode; always true, colours not judged, for an art_reference look with no palette) and FORBID_LIST when present and also goes to qc-judge as style_card; the hard-coded palette_ok paragraph only for a template without the token; {{ART_REFERENCE_ATTACHED}} is always no here - an edit is judged against its previous version, so the Art style reference image is never attached and the qc-judge body carries no art_reference_attached, WF-2 alone attaches it) → Vision QC (Kie gemini-3.1-pro, JSON mode, fail-open) → Edge Function **qc-judge** → PATCH done → PATCH cards.current_generation_id (set_current_generation is staff-only; cards_worker_update allows the PATCH) → move_card(needs_review). drift_pct stays null in v1.\n\n' +
+  '**Flow:** Edit Context → Get Generation (+card) → Regenerate? · **regenerate**: POST <n8nBaseUrl>/webhook/studio-generate (WF-2\'s dispatcher, x-studio-secret header; body {generation_id, card_id} is informational only) and stop - claim_generations() hands the queued row to exactly one worker and enforces settings.max_active_generations, so the row is never fired twice by this call and the 5-min sweep. · **edit_text / edit_region**: PATCH working → Edge Function **prompt-engine** (rendered_prompt = the short edit instruction; input_paths = previous_version + optional mask, bucket gens) → sign each path (1 h) → Build Edit Task (edit_text: Kie createTask model **google/nano-banana-edit**, EXTRACT.md tweak shape: {prompt, image_urls, output_format png}; a planned mask is appended as the second image_url and the prompt states that only the white region may change; edit_region: see Fix an area below) → Image Platform? → Create Edit Task → PATCH vendor_job_id → **WF-5 Poll** (recordInfo every 10 s, 10-min cap, inside the 20-min requeue_stale() window) → download resultUrls[0] (OpenRouter lane, or Kie down on auto: Build OpenRouter Image → Mark OpenRouter → OpenRouter Image → Decode) → Region Edit? [false] → upload gens/<card_id>/<generation_id>.png (x-upsert) → PATCH image_path → sign → Get QC Templates (qc_prompt, corrective_suffix) → Build QC Request (edit_text swaps old_text → new_text in the expected lines; qc_prompt v2 tokens EXPECTED_SUBJECT = magic_prompt_json.subject.text else brief_snapshot.subject else cards.client_submission.subject (Get Generation embeds it), PALETTE_RULE from rules.palette_mode, FORBID_LIST numbered with text demands dropped, STYLE_CARD_JSON pruned with the palette_variants entry for the garment side; magic_prompt_json.effective_style (prompt-engine v8, source art_reference or style_card) replaces the Style Card for STYLE_CARD_JSON (plus its source), PALETTE_RULE (its palette_mode; always true, colours not judged, for an art_reference look with no palette) and FORBID_LIST when present and also goes to qc-judge as style_card; the hard-coded palette_ok paragraph only for a template without the token; {{ART_REFERENCE_ATTACHED}} is always no here - an edit is judged against its previous version, so the Art style reference image is never attached and the qc-judge body carries no art_reference_attached, WF-2 alone attaches it) → Region QC Prompt (passes edit_text through untouched) → Vision QC (Kie gemini-3.1-pro, JSON mode, fail-open; or OpenRouter QC) → Edge Function **qc-judge** → PATCH done → PATCH cards.current_generation_id (set_current_generation is staff-only; cards_worker_update allows the PATCH) → move_card(needs_review). drift_pct stays null for edit_text.\n\n' +
+  '**Fix an area (edit_region, 2026-10-05) = GPT Image 2.5 Sunburst, locked outside:** prompt-engine v8.1 returns a `region` block (the probe variant A prompt: the instruction, the area as percentages of mask_rect, the mask named as Image 2). **OpenRouter** (the tested lane; the Fix an area dialog picks it by default) - Build OpenRouter Image sends POST /api/v1/images {model settings.openrouter_models.region = openai/gpt-image-2.5-sunburst, prompt, input_references [design, mask], aspect_ratio, quality high, background opaque, n 1}; OpenRouter ignores size, so a 2048 px parent gets a 1024 px result that region-composite enlarges (region_metrics.resampled up). **Kie** - Build Edit Task sends createTask gpt-image-2-5-sunburst-image-to-image {prompt, input_urls [design, mask], aspect_ratio, resolution 1K / 2K, background opaque}: UNTESTED, same prompt; Save Vendor Job stores the model Build Edit Task chose. The model redraws the WHOLE design, so Region Edit? [true] → **Upload Raw Regen** (the untouched result, gens/<card_id>/<generation_id>.raw.png, x-upsert) → **Save Raw Path** (raw_image_path) → Edge Function **region-composite** {generation_id, mode locked} (x-studio-secret; corrects size, shift and colour offset, keeps the regeneration inside the box, a linear fade over a ring of settings.region_ring_pct % of the width, the parent byte-identical beyond with a hard gate of 0 changed pixels; uploads gens/<card_id>/<generation_id>.png and PATCHes image_path, composite_mode locked, region_metrics (shift, colour, drift, overflow + suggested_rect, seam ratios) and drift_pct 0; its errors reach Fail Message as Region composite: ..., without the OpenRouter prefix) → Save Image Path. **Region QC Prompt** (after Build QC Request, which stays shared with WF-2) appends the REGION EDIT paragraph (the area, the instruction, its colours and objects never a palette / subject / forbid problem, a region key: instruction_done, seam_visible, object_cut_off, text_changed, notes) and attaches the previous version (Sign Input item 0) as the SECOND image; qc-judge v2.3 reads kind, mask_rect, edit_instruction and region_metrics from the row. Extend area and Use full regeneration are app calls to region-composite (no AI, $0, a new child row via rpc region_child) - never this workflow.\n\n' +
   'Any failure → Fail Message → PATCH generation failed + last_error → move_card(failed, message, force). Set WF-6 as this workflow\'s error workflow.',
-  { color: 4, width: 440, height: 1040, position: [-500, 40] }
+  { color: 4, width: 440, height: 1780, position: [-500, 40] }
 );
 
 const editWebhook = trigger({
@@ -196,7 +198,8 @@ const editContext = node({
           { id: 'c2', name: 'cardId', type: 'string', value: expr("{{ $('Edit Webhook').first().json.body?.card_id ?? '' }}") },
           { id: 'c3', name: 'kind', type: 'string', value: expr("{{ $('Edit Webhook').first().json.body?.kind ?? '' }}") },
           { id: 'c4', name: 'executionId', type: 'string', value: expr('{{ String($execution.id) }}') },
-          { id: 'c5', name: 'imagePath', type: 'string', value: expr("{{ ($('Edit Webhook').first().json.body?.card_id ?? '') + '/' + ($('Edit Webhook').first().json.body?.generation_id ?? '') + '.png' }}") }
+          { id: 'c5', name: 'imagePath', type: 'string', value: expr("{{ ($('Edit Webhook').first().json.body?.card_id ?? '') + '/' + ($('Edit Webhook').first().json.body?.generation_id ?? '') + '.png' }}") },
+          { id: 'c6', name: 'rawPath', type: 'string', value: expr("{{ ($('Edit Webhook').first().json.body?.card_id ?? '') + '/' + ($('Edit Webhook').first().json.body?.generation_id ?? '') + '.raw.png' }}") }
         ]
       },
       includeOtherFields: false,
@@ -204,7 +207,7 @@ const editContext = node({
     },
     position: [720, 208]
   },
-  output: [{ generationId: sampleGenerationId, cardId: sampleCardId, kind: 'edit_text', executionId: sampleExecutionId, imagePath: sampleImagePath }]
+  output: [{ generationId: sampleGenerationId, cardId: sampleCardId, kind: 'edit_text', executionId: sampleExecutionId, imagePath: sampleImagePath, rawPath: sampleRawPath }]
 });
 
 const getGeneration = node({
@@ -391,12 +394,12 @@ const buildEditTask = node({
   config: {
     name: 'Build Edit Task',
     parameters: {
-      jsCode: "const cfg = $('Load Config').first().json;\nconst pe = $('Prompt Engine').first().json;\nconst plan = $('List Input Paths').all().map((i) => i.json);\nconst urls = $input.all().map((i) => cfg.sbUrl + '/storage/v1' + String(i.json.signedURL || ''));\nif (urls.length !== plan.length || urls.some((u) => !/token=/.test(u))) throw new Error('could not sign every edit input (' + urls.length + '/' + plan.length + ')');\nlet prompt = String(pe.final_prompt || pe.rendered_prompt || '').trim();\nif (!prompt) throw new Error('prompt-engine returned an empty edit instruction');\nconst hasMask = plan.some((p) => p.role === 'mask');\nif (hasMask) prompt += '\\n\\nThe second image is a black-and-white mask of the first image: change ONLY the white region of the mask; every pixel under the black region must stay exactly identical to the first image.';\nconst body = { model: 'google/nano-banana-edit', input: { prompt: prompt.slice(0, 20000), image_urls: urls, output_format: 'png' } };\nreturn { json: { body, attempt: Number($('Get Generation').first().json.attempt) || 1, has_mask: hasMask, input_roles: plan.map((p) => p.role) } };"
+      jsCode: "const cfg = $('Load Config').first().json;\nconst pe = $('Prompt Engine').first().json;\nconst region = pe.region && typeof pe.region === 'object' ? pe.region : null; // prompt-engine v8.1 region block (Fix an area) - GPT Image 2.5 Sunburst redraws the whole design, region-composite keeps only the area\nconst plan = $('List Input Paths').all().map((i) => i.json);\nconst urls = $input.all().map((i) => cfg.sbUrl + '/storage/v1' + String(i.json.signedURL || ''));\nif (urls.length !== plan.length || urls.some((u) => !/token=/.test(u))) throw new Error('could not sign every edit input (' + urls.length + '/' + plan.length + ')');\nlet prompt = String(pe.final_prompt || pe.rendered_prompt || '').trim();\nif (!prompt) throw new Error('prompt-engine returned an empty edit instruction');\nconst hasMask = plan.some((p) => p.role === 'mask');\nif (hasMask && !region) prompt += '\\n\\nThe second image is a black-and-white mask of the first image: change ONLY the white region of the mask; every pixel under the black region must stay exactly identical to the first image.';\n// region = the Kie Sunburst image-to-image body (UNTESTED lane, same prompt as OpenRouter; the region prompt already names the mask as Image 2); else Nano Banana as before\nconst body = region ? { model: region.kie_model || 'gpt-image-2-5-sunburst-image-to-image', input: { prompt: String(region.prompt || pe.rendered_prompt).trim().slice(0, 20000), input_urls: urls, aspect_ratio: region.aspect_ratio || pe.aspect_ratio || '1:1', resolution: region.resolution || '1K', background: 'opaque' } } : { model: 'google/nano-banana-edit', input: { prompt: prompt.slice(0, 20000), image_urls: urls, output_format: 'png' } };\nreturn { json: { body, attempt: Number($('Get Generation').first().json.attempt) || 1, has_mask: hasMask, input_roles: plan.map((p) => p.role), region: Boolean(region) } };"
     },
     onError: 'continueErrorOutput',
     position: [2400, 304]
   },
-  output: [{ body: sampleEditBody, attempt: 1, has_mask: false, input_roles: ['previous_version'] }]
+  output: [{ body: sampleEditBody, attempt: 1, has_mask: false, input_roles: ['previous_version'], region: false }]
 });
 
 const createEditTask = node({
@@ -469,7 +472,7 @@ const saveVendorJob = node({
       },
       sendBody: true,
       specifyBody: 'json',
-      jsonBody: expr("{{ JSON.stringify({ vendor_job_id: $('Create Edit Task').first().json.data.taskId, vendor: 'kie', model: 'google/nano-banana-edit', status: 'working' }) }}"),
+      jsonBody: expr("{{ JSON.stringify({ vendor_job_id: $('Create Edit Task').first().json.data.taskId, vendor: 'kie', model: $('Build Edit Task').first().json.body.model, status: 'working' }) }}"),
       options: { timeout: 15000 }
     },
     onError: 'continueRegularOutput',
@@ -833,7 +836,7 @@ const failMessage = node({
     name: 'Fail Message',
     parameters: {
       mode: 'runOnceForEachItem',
-      jsCode: "const j = $json || {};\nconst ctx = $('Edit Context').first().json;\nconst text = (v) => (v === undefined || v === null || v === '' ? '' : (typeof v === 'object' ? String(v.message || v.description || JSON.stringify(v)) : String(v)));\nconst vendor = (typeof j.code === 'number' && j.code !== 200) ? ('Kie ' + j.code + ': ' + text(j.msg)) : '';\nlet message = (text(j.error) || vendor || text(j.failMsg) || text(j.message) || text(j.detail) || text(j.hint) || 'edit failed').slice(0, 500);\nconst status = (j.error && typeof j.error === 'object' && (j.error.status || j.error.httpCode)) || '';\nconst inner = message.match(/message\\\\?\":\\\\?\"([^\"\\\\]+)/);\nif (inner) message = ($('OpenRouter Image').isExecuted ? 'OpenRouter: ' : '') + inner[1] + (status ? ' (HTTP ' + status + ')' : '');\nif ((String(status) === '401' || String(status) === '403') && $('OpenRouter Image').isExecuted) message = 'OpenRouter API key missing or invalid - add it in n8n WF-0 Studio Config (OpenRouter Config node)';\nreturn { json: { message, generationId: ctx.generationId, cardId: ctx.cardId } };"
+      jsCode: "const j = $json || {};\nconst ctx = $('Edit Context').first().json;\nconst text = (v) => (v === undefined || v === null || v === '' ? '' : (typeof v === 'object' ? String(v.message || v.description || JSON.stringify(v)) : String(v)));\nconst vendor = (typeof j.code === 'number' && j.code !== 200) ? ('Kie ' + j.code + ': ' + text(j.msg)) : '';\nlet message = (text(j.error) || vendor || text(j.failMsg) || text(j.message) || text(j.detail) || text(j.hint) || 'edit failed').slice(0, 500);\nconst status = (j.error && typeof j.error === 'object' && (j.error.status || j.error.httpCode)) || '';\nconst inner = message.match(/message\\\\?\":\\\\?\"([^\"\\\\]+)/);\nif (inner) message = ($('OpenRouter Image').isExecuted && !/^Region composite/.test(inner[1]) ? 'OpenRouter: ' : '') + inner[1] + (status ? ' (HTTP ' + status + ')' : '');\nif ((String(status) === '401' || String(status) === '403') && $('OpenRouter Image').isExecuted) message = 'OpenRouter API key missing or invalid - add it in n8n WF-0 Studio Config (OpenRouter Config node)';\nreturn { json: { message, generationId: ctx.generationId, cardId: ctx.cardId } };"
     },
     position: [3600, 800]
   },
@@ -947,7 +950,7 @@ const buildOrImage = node({
   config: {
     name: 'Build OpenRouter Image',
     parameters: {
-      jsCode: "const pe = $('Prompt Engine').first().json;\nconst src = ($json.body && $json.body.input) ? $json.body : $('Build Edit Task').first().json.body;\nif (!src || !src.input || !src.input.prompt) throw new Error('no edit request to send to OpenRouter');\nconst models = pe.openrouter_models || {};\nconst refs = (src.input.image_urls || []).map((url) => ({ type: 'image_url', image_url: { url } }));\nconst body = { model: models.edit || 'google/gemini-2.5-flash-image', prompt: String(src.input.prompt).slice(0, 20000), n: 1, aspect_ratio: pe.aspect_ratio || '1:1', resolution: pe.resolution || '2K', output_format: 'png' };\nif (refs.length) body.input_references = refs;\nreturn { json: { body } };"
+      jsCode: "const pe = $('Prompt Engine').first().json;\nconst region = pe.region && typeof pe.region === 'object' ? pe.region : null;\nconst src = ($json.body && $json.body.input) ? $json.body : $('Build Edit Task').first().json.body;\nif (!src || !src.input || !src.input.prompt) throw new Error('no edit request to send to OpenRouter');\nconst models = pe.openrouter_models || {};\nconst urls = src.input.image_urls || src.input.input_urls || [];\nconst refs = urls.map((url) => ({ type: 'image_url', image_url: { url } }));\n// Fix an area = the probe body (GPT Image 2.5 Sunburst, design + mask as input_references, quality high, opaque); OpenRouter ignores size, so the result is 1024 px\nif (region) return { json: { body: { model: region.openrouter_model || models.region || 'openai/gpt-image-2.5-sunburst', prompt: String(region.prompt || src.input.prompt).slice(0, 20000), input_references: refs, aspect_ratio: region.aspect_ratio || pe.aspect_ratio || '1:1', quality: region.quality || 'high', background: 'opaque', n: 1 } } };\nconst body = { model: models.edit || 'google/gemini-2.5-flash-image', prompt: String(src.input.prompt).slice(0, 20000), n: 1, aspect_ratio: pe.aspect_ratio || '1:1', resolution: pe.resolution || '2K', output_format: 'png' };\nif (refs.length) body.input_references = refs;\nreturn { json: { body } };"
     },
     onError: 'continueErrorOutput',
     position: [2760, 112]
@@ -1084,7 +1087,7 @@ const orVisionQc = node({
       },
       sendBody: true,
       specifyBody: 'json',
-      jsonBody: expr("{{ JSON.stringify(Object.assign({}, $('Build QC Request').first().json.body, { model: ($('Prompt Engine').first().json.openrouter_models || {}).vision || 'google/gemini-3.1-pro-preview' })) }}"),
+      jsonBody: expr("{{ JSON.stringify(Object.assign({}, $('Region QC Prompt').first().json.body, { model: ($('Prompt Engine').first().json.openrouter_models || {}).vision || 'google/gemini-3.1-pro-preview' })) }}"),
       options: { timeout: 180000 }
     },
     retryOnFail: true,
@@ -1097,7 +1100,7 @@ const orVisionQc = node({
   output: [{ id: 'gen-or-sample', model: 'google/gemini-3.1-pro-preview', choices: [{ index: 0, message: { role: 'assistant', content: '{}' }, finish_reason: 'stop' }] }]
 });
 
-// ---- Region edits: paste the edited rectangle back onto the untouched parent image (everything outside stays identical) ----
+// ---- Fix an area (edit_region): store the raw Sunburst regeneration, then Edge Function region-composite keeps only the area (parent byte-identical beyond the blend ring) ----
 const regionEdit = ifElse({
   version: 2.2,
   config: {
@@ -1118,87 +1121,112 @@ const regionEdit = ifElse({
   output: [{}]
 });
 
-const downloadOriginal = node({
+const uploadRawRegen = node({
   type: 'n8n-nodes-base.httpRequest',
   version: 4.2,
   config: {
-    name: 'Download Original',
+    name: 'Upload Raw Regen',
     parameters: {
-      method: 'GET',
-      url: expr("{{ $('Load Config').first().json.sbUrl }}/storage/v1{{ $('Sign Input').all()[0].json.signedURL }}"),
-      options: { response: { response: { responseFormat: 'file', outputPropertyName: 'original' } }, timeout: 120000 }
+      method: 'POST',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/storage/v1/object/gens/{{ $('Edit Context').first().json.rawPath }}"),
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'Content-Type', value: 'image/png' },
+          { name: 'x-upsert', value: 'true' }
+        ]
+      },
+      sendBody: true,
+      contentType: 'binaryData',
+      inputDataFieldName: 'data',
+      options: { timeout: 180000 }
     },
     retryOnFail: true,
     maxTries: 2,
     waitBetweenTries: 3000,
     onError: 'continueErrorOutput',
-    position: [3840, 688]
+    position: [3840, 592]
   },
-  output: [{}]
+  output: [{ Key: 'gens/' + sampleRawPath, Id: '5d6e7f80-9a1b-4c2d-8e3f-4a5b6c7d8e9f' }]
 });
 
-const bothImages = merge({
-  version: 3.2,
-  config: { name: 'Both Images', parameters: { mode: 'combine', combineBy: 'combineByPosition', options: {} }, position: [4080, 592] },
-  output: [{}]
-});
-
-const originalSize = node({
-  type: 'n8n-nodes-base.editImage',
-  version: 1,
-  config: { name: 'Original Size', parameters: { operation: 'information', dataPropertyName: 'original' }, onError: 'continueErrorOutput', position: [4320, 592] },
-  output: [{ size: { width: 1024, height: 1024 } }]
-});
-
-const fitEdit = node({
-  type: 'n8n-nodes-base.editImage',
-  version: 1,
+const saveRawPath = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
   config: {
-    name: 'Fit Edit To Original',
-    parameters: { operation: 'resize', dataPropertyName: 'data', width: expr("{{ $('Original Size').first().json.size.width }}"), height: expr("{{ $('Original Size').first().json.size.height }}"), resizeOption: 'ignoreAspectRatio' },
+    name: 'Save Raw Path',
+    parameters: {
+      method: 'PATCH',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/rest/v1/generations?id=eq.{{ $('Edit Context').first().json.generationId }}"),
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'Content-Type', value: 'application/json' },
+          { name: 'Prefer', value: 'return=minimal' }
+        ]
+      },
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: expr("{{ JSON.stringify({ raw_image_path: $('Edit Context').first().json.rawPath }) }}"),
+      options: { timeout: 15000 }
+    },
+    retryOnFail: true,
+    maxTries: 3,
+    waitBetweenTries: 3000,
     onError: 'continueErrorOutput',
-    position: [4560, 592]
+    position: [4080, 592]
   },
   output: [{}]
 });
 
-const cropEdit = node({
-  type: 'n8n-nodes-base.editImage',
-  version: 1,
+const regionComposite = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.2,
   config: {
-    name: 'Crop Edit To Region',
-    parameters: { operation: 'crop', dataPropertyName: 'data', width: expr("{{ Math.max(1, Math.round($('Get Generation').first().json.mask_rect.w * $('Original Size').first().json.size.width / $('Get Generation').first().json.mask_rect.width)) }}"), height: expr("{{ Math.max(1, Math.round($('Get Generation').first().json.mask_rect.h * $('Original Size').first().json.size.height / $('Get Generation').first().json.mask_rect.height)) }}"), positionX: expr("{{ Math.round($('Get Generation').first().json.mask_rect.x * $('Original Size').first().json.size.width / $('Get Generation').first().json.mask_rect.width) }}"), positionY: expr("{{ Math.round($('Get Generation').first().json.mask_rect.y * $('Original Size').first().json.size.height / $('Get Generation').first().json.mask_rect.height) }}") },
+    name: 'Region Composite',
+    parameters: {
+      method: 'POST',
+      url: expr("{{ $('Load Config').first().json.sbUrl }}/functions/v1/region-composite"),
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'apikey', value: expr("{{ $('Load Config').first().json.anonKey }}") },
+          { name: 'x-studio-secret', value: expr("{{ $('Load Config').first().json.studioSecret }}") },
+          { name: 'Content-Type', value: 'application/json' }
+        ]
+      },
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: expr("{{ JSON.stringify({ generation_id: $('Edit Context').first().json.generationId, mode: 'locked' }) }}"),
+      options: { timeout: 150000 }
+    },
+    retryOnFail: true,
+    maxTries: 2,
+    waitBetweenTries: 5000,
     onError: 'continueErrorOutput',
-    position: [4800, 592]
+    position: [4320, 592]
   },
-  output: [{}]
+  output: [{ ok: true, mode: 'locked', generation_id: sampleGenerationId, image_path: sampleImagePath, metrics: { version: 1, mode: 'locked', rect: { x: 413, y: 287, w: 305, h: 158 }, image_size: { w: 1024, h: 1024 }, regen_size: { w: 1024, h: 1024 }, resampled: null, ring_px: 31, shift: { dx: 0, dy: 0, applied: false }, drift_outside_pct_gt8: 23.5, overflow: { detected: false, px: 0, suggested_rect: null }, seam_ratio_box: 0.85, beyond_ring_changed_px: 0 } }]
 });
 
-const compositeRegion = node({
-  type: 'n8n-nodes-base.editImage',
-  version: 1,
-  config: {
-    name: 'Composite Region',
-    parameters: { operation: 'composite', dataPropertyName: 'original', dataPropertyNameComposite: 'data', operator: 'Over', positionX: expr("{{ Math.round($('Get Generation').first().json.mask_rect.x * $('Original Size').first().json.size.width / $('Get Generation').first().json.mask_rect.width) }}"), positionY: expr("{{ Math.round($('Get Generation').first().json.mask_rect.y * $('Original Size').first().json.size.height / $('Get Generation').first().json.mask_rect.height) }}") },
-    onError: 'continueErrorOutput',
-    position: [5040, 592]
-  },
-  output: [{}]
-});
-
-const useComposite = node({
+const regionQcPrompt = node({
   type: 'n8n-nodes-base.code',
   version: 2,
   config: {
-    name: 'Use Composite',
+    name: 'Region QC Prompt',
     parameters: {
-      jsCode: "const it = $input.first();\nif (!it.binary || !it.binary.original) throw new Error('composite produced no image');\nreturn [{ json: Object.assign({}, it.json, { composited: true }), binary: { data: it.binary.original } }];"
+      jsCode: "const ctx = $('Edit Context').first().json, pe = $('Prompt Engine').first().json || {};\nconst region = pe.region && typeof pe.region === 'object' ? pe.region : null;\n// edit_text, and an edit_region without the prompt-engine v8.1 region block, pass through untouched (Build QC Request stays shared with WF-2)\nif (ctx.kind !== 'edit_region' || !region) return $input.all();\nconst qc = $input.first().json, body = JSON.parse(JSON.stringify(qc.body || {}));\nconst content = body.messages && body.messages[0] && Array.isArray(body.messages[0].content) ? body.messages[0].content : null;\nif (!content || !content[0] || typeof content[0].text !== 'string') throw new Error('Build QC Request returned no vision text to extend');\nconst pct = region.pct || {}, instruction = String($('Get Generation').first().json.edit_instruction || '').replace(/\\s+/g, ' ').trim().replace(/\"/g, \"'\");\nconst where = [pct.x0, pct.x1, pct.y0, pct.y1].every((v) => Number.isFinite(v)) ? 'the area from ' + pct.x0 + '% to ' + pct.x1 + '% across and ' + pct.y0 + '% to ' + pct.y1 + '% down the image' : String(region.where || 'the marked area');\n// the previous version (Sign Input item 0 = previous_version, the image the edit started from) goes in as the SECOND image, for comparison only\nconst signed = String(((($('Sign Input').all()[0] || {}).json) || {}).signedURL || ''), prevUrl = /token=/.test(signed) ? $('Load Config').first().json.sbUrl + '/storage/v1' + signed : '';\nconst para = 'REGION EDIT - this design is a targeted edit of its previous version. Only ' + where + ' was asked to change, with this instruction: \"' + instruction + '\". Pixels just around that area may be softly blended. ' + (prevUrl ? 'The SECOND image is the previous version, for comparison only - judge every check above on the FIRST image. ' : '') + 'The colours and objects this instruction asks for are intended - never report them as a palette, subject or forbid problem. Add a key \"region\" to your JSON: {\"instruction_done\":true|false (the requested change is clearly done inside that area),\"seam_visible\":true|false (a visible edge, step, colour jump, halo or ghosted or duplicated shape along the border of that area),\"object_cut_off\":true|false (the new or changed element is sliced, cropped or fades out at the border of that area),\"text_changed\":true|false|null (' + (prevUrl ? 'any lettering differs from the previous version' : 'any lettering looks altered') + '; null when no lettering lies inside or touches that area),\"notes\":\"<= 25 words\"}. This key never changes \"pass\" or the 9 checks.';\ncontent[0].text += '\\n\\n' + para;\nif (prevUrl) content.push({ type: 'image_url', image_url: { url: prevUrl } });\nreturn [{ json: Object.assign({}, qc, { body, region: { pct, instruction, previous_attached: Boolean(prevUrl) } }) }];"
     },
     onError: 'continueErrorOutput',
-    position: [5280, 592]
+    position: [4800, 560]
   },
-  output: [{ composited: true }]
+  output: [{ body: { messages: [{ role: 'user', content: [{ type: 'text', text: 'You are a strict print-on-demand quality inspector ... REGION EDIT - this design is a targeted edit of its previous version ...' }, { type: 'image_url', image_url: { url: sampleSignedGenUrl } }, { type: 'image_url', image_url: { url: sampleSignedParentUrl } }] }], response_format: { type: 'json_object' } }, text_lines: ['FAMILY FOREVER'], expected_text: 'FAMILY FOREVER', expected_subject: '', image_url: sampleSignedGenUrl, template_version: 2, art_reference_attached: false, region: { pct: { x0: 40, x1: 70, y0: 28, y1: 43 }, instruction: 'change the sunglass color to red', previous_attached: true } }]
 });
+
 
 export default workflow('dm-studio-wf3-edit', 'DM Studio · WF-3 Edit')
   .add(editNote)
@@ -1220,22 +1248,17 @@ export default workflow('dm-studio-wf3-edit', 'DM Studio · WF-3 Edit')
   .add(saveVendorJob)
   .to(pollUntilDone.onError(kieImageDown))
   .to(downloadResult.onError(failMessage))
-  .to(regionEdit.onTrue(downloadOriginal.onError(failMessage)).onFalse(uploadToGens.onError(failMessage)))
-  .add(regionEdit)
-  .to(bothImages.input(0))
-  .add(downloadOriginal)
-  .to(bothImages.input(1))
-  .add(bothImages)
-  .to(originalSize.onError(failMessage))
-  .to(fitEdit.onError(failMessage))
-  .to(cropEdit.onError(failMessage))
-  .to(compositeRegion.onError(failMessage))
-  .to(useComposite.onError(failMessage))
-  .to(uploadToGens)
+  .to(regionEdit.onTrue(uploadRawRegen.onError(failMessage)).onFalse(uploadToGens.onError(failMessage)))
+  .add(uploadRawRegen)
+  .to(saveRawPath.onError(failMessage))
+  .to(regionComposite.onError(failMessage))
+  .to(saveImagePath)
+  .add(uploadToGens)
   .to(saveImagePath.onError(failMessage))
   .to(signResult.onError(failMessage))
   .to(getQcTemplates.onError(failMessage))
   .to(buildQcRequest.onError(failMessage))
+  .to(regionQcPrompt.onError(failMessage))
   .to(qcPlatform.onCase(0, visionQc).onCase(1, orVisionQc))
   .add(visionQc)
   .to(kieQcDown.onTrue(orVisionQc).onFalse(qcJudge))

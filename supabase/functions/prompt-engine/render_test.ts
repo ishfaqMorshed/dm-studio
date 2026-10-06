@@ -35,6 +35,19 @@ import {
   PRECEDENCE_LINE_ART,
   type ReferenceAnalysis,
   readReference,
+  buildRegionBlock,
+  type MaskRect,
+  REGION_EDIT_BODY,
+  REGION_EDIT_HEAD,
+  REGION_EDIT_MASK,
+  REGION_KIE_MODEL,
+  REGION_OPENROUTER_DEFAULT,
+  regionModel,
+  regionPct,
+  regionResolution,
+  regionWhere,
+  renderRegionPrompt,
+  validMaskRect,
   renderPrompt,
   renderStyleCard,
   resolveArtReference,
@@ -1075,4 +1088,168 @@ Deno.test("studio_26 migration: guard first, qc_prompt v2 and analysis_prompt v3
   const an3 = an.replace(anchor, added + "\n" + anchor);
   assert(an3.includes("{{SLOT_BLOCKS}}\n" + added + "\nIf all images are the same artwork"), "sentence after SLOT_BLOCKS");
   assert(added.includes("realism") && added.includes("edge_finish") && !/\{\{/.test(added), "asks for realism + edge_finish, no new token");
+});
+
+// ---------------------------------------------------------------------------
+// v8.1 region lane (2026-10-05): Fix an area = GPT Image 2.5 Sunburst, locked outside. The region prompt is the probe's
+// winning variant A (docs/region-edit/probe/wf-probe.sdk.js, Probe Cases), pinned byte for byte below.
+
+const PROBE_DIR = new URL("../../../docs/region-edit/probe/", import.meta.url);
+const probeSdk = await readFile(new URL("wf-probe.sdk.js", PROBE_DIR), "utf8");
+const probeCases = JSON.parse(await readFile(new URL("cases.json", PROBE_DIR), "utf8")) as Record<
+  string,
+  { instruction: string; rect: { x: number; y: number; w: number; h: number }; size: [number, number]; where: string }
+>;
+const probeRect = (cid: string): MaskRect => {
+  const c = probeCases[cid];
+  return { ...c.rect, width: c.size[0], height: c.size[1] };
+};
+/** The literal pieces of the probe prompt, read from the probe's Probe Cases code (the source of the 9 live calls). */
+function probePieces(): { head: string; mid: string; body: string; mask: string } {
+  const base = probeSdk.match(/const base = '([^'\\]*)' \+ s\.instruction \+ '([^'\\]*)' \+ s\.where \+ '([^'\\]*)';/);
+  const a = probeSdk.match(/\['A_mask', base \+ '([^'\\]*)', \[s\.parent, s\.mask\]\]/);
+  if (!base || !a) throw new Error("wf-probe.sdk.js no longer carries the variant A pieces");
+  return { head: base[1], mid: base[2], body: base[3], mask: a[1] };
+}
+
+Deno.test("region prompt golden: renderRegionPrompt equals the probe's variant A prompt byte for byte for the 3 probe cases", () => {
+  const p = probePieces();
+  assertEquals(Object.keys(probeCases).sort(), ["45eadf6a", "b33727a9", "dace73f3"]);
+  for (const cid of Object.keys(probeCases)) {
+    const c = probeCases[cid];
+    assert(probeSdk.includes('\\"instruction\\": \\"' + c.instruction + '\\"'), "the probe sent this instruction: " + c.instruction);
+    assertEquals(regionWhere(regionPct(probeRect(cid))), c.where, cid + " where (cases.json)");
+    const expected = p.head + c.instruction + p.mid + c.where + p.body + p.mask;
+    assertEquals(renderRegionPrompt({ instruction: c.instruction, rect: probeRect(cid), mask_attached: true }), expected, cid + " variant A");
+  }
+  // the constants are the probe's words
+  assertEquals(p.head, REGION_EDIT_HEAD);
+  assertEquals(p.mid, ". The change happens only in ");
+  assertEquals(p.body, ". " + REGION_EDIT_BODY);
+  assertEquals(p.mask, " " + REGION_EDIT_MASK);
+  // the full b33727a9 string, spelled out once so a reader sees what the model receives
+  assertEquals(
+    renderRegionPrompt({ instruction: "change the sunglass color to red", rect: probeRect("b33727a9"), mask_attached: true }),
+    "TARGETED EDIT OF AN EXISTING DESIGN. Image 1 is the finished print design. Change ONLY this: change the sunglass color to red. The change happens only in the area from 40% to 70% across and 28% to 43% down the image. Keep the new element inside that area, at a size that fits it, drawn in the same art style, line weight, texture and colour palette as the rest of the design. EVERYTHING ELSE must stay exactly identical to Image 1 - the same framing and position (no shifting, zooming or cropping), the same composition, every line, texture and colour, all lettering and text, and the flat grey background. Output the complete design at exactly the same framing as Image 1. Image 2 is a black-and-white mask of the same size - the WHITE rectangle marks the only area that may change; everything black must stay identical.",
+  );
+});
+
+Deno.test("regionPct / regionWhere: whole percentages (Math.round) of the probe boxes, clamped, never an empty span", () => {
+  assertEquals(regionPct(probeRect("b33727a9")), { x0: 40, x1: 70, y0: 28, y1: 43 });
+  assertEquals(regionPct(probeRect("45eadf6a")), { x0: 44, x1: 83, y0: 37, y1: 51 });
+  assertEquals(regionPct(probeRect("dace73f3")), { x0: 49, x1: 72, y0: 50, y1: 67 });
+  assertEquals(regionWhere({ x0: 40, x1: 70, y0: 28, y1: 43 }), "the area from 40% to 70% across and 28% to 43% down the image");
+  // a 1 px box keeps a span of at least 1 %; a box at the far corner stays inside 0..100
+  assertEquals(regionPct({ x: 500, y: 500, w: 1, h: 1, width: 1024, height: 1024 }), { x0: 49, x1: 50, y0: 49, y1: 50 });
+  assertEquals(regionPct({ x: 1023, y: 1023, w: 1, h: 1, width: 1024, height: 1024 }), { x0: 99, x1: 100, y0: 99, y1: 100 });
+  assertEquals(regionPct({ x: 0, y: 0, w: 2048, h: 2048, width: 2048, height: 2048 }), { x0: 0, x1: 100, y0: 0, y1: 100 });
+});
+
+Deno.test("regionResolution: the parent's long side - 1024 px is 1K, 2048 px (Kie lane parents) is 2K", () => {
+  assertEquals(regionResolution(probeRect("b33727a9")), "1K");
+  assertEquals(regionResolution({ x: 0, y: 0, w: 10, h: 10, width: 2048, height: 2048 }), "2K");
+  assertEquals(regionResolution({ x: 0, y: 0, w: 10, h: 10, width: 1536, height: 1024 }), "2K");
+  assertEquals(regionResolution({ x: 0, y: 0, w: 10, h: 10, width: 1535, height: 1535 }), "1K");
+});
+
+Deno.test("validMaskRect: rejects missing, malformed, negative and zero-size rects; rounds and tolerates 1 px of rounding", () => {
+  const ok = { x: 413, y: 287, w: 305, h: 158, width: 1024, height: 1024 };
+  assertEquals(validMaskRect(ok), ok);
+  for (const bad of [undefined, null, "", 42, [], {}, { x: 1, y: 1, w: 10, h: 10 }, { ...ok, x: -1 }, { ...ok, y: -0.5 }, { ...ok, w: 0 }, { ...ok, h: -3 },
+    { ...ok, width: 0 }, { ...ok, height: 0 }, { ...ok, x: "413" }, { ...ok, w: Number.NaN }, { ...ok, h: Infinity }, { ...ok, x: 1000, w: 100 },
+    { ...ok, y: 900, h: 200 }, { ...ok, w: 0.2 }]) {
+    assertEquals(validMaskRect(bad), null, "rejects " + JSON.stringify(bad));
+  }
+  // 1 px past the edge (rounding in the app) is clipped, 2 px is refused
+  assertEquals(validMaskRect({ x: 1, y: 0, w: 1024, h: 1024, width: 1024, height: 1024 }), { x: 1, y: 0, w: 1023, h: 1024, width: 1024, height: 1024 });
+  assertEquals(validMaskRect({ x: 2, y: 0, w: 1024, h: 10, width: 1024, height: 1024 }), null);
+  // fractions are rounded to whole pixels
+  assertEquals(validMaskRect({ x: 412.6, y: 287.4, w: 304.5, h: 158.2, width: 1024, height: 1024 }), { x: 413, y: 287, w: 305, h: 158, width: 1024, height: 1024 });
+  // extra keys are dropped
+  assertEquals(validMaskRect({ ...ok, note: "x" }), ok);
+});
+
+Deno.test("renderRegionPrompt: no mask -> no Image 2 sentence; trailing full stops and whitespace never yield '..'; empty -> EditError", () => {
+  const rect = probeRect("dace73f3");
+  const noMask = renderRegionPrompt({ instruction: "make the bear to look like a tiger", rect, mask_attached: false });
+  assert(noMask.endsWith(REGION_EDIT_BODY), "ends with the body");
+  assert(!noMask.includes("Image 2") && !noMask.includes(REGION_EDIT_MASK), "no Image 2 sentence");
+  const want = REGION_EDIT_HEAD + "make the bear to look like a tiger. The change happens only in the area from 49% to 72% across and 50% to 67% down the image. " + REGION_EDIT_BODY;
+  assertEquals(noMask, want);
+  for (const instr of ["make the bear to look like a tiger.", "make the bear to look like a tiger...", "  make the bear\n to look   like a tiger . \n", "make the bear to look like a tiger. . "]) {
+    const out = renderRegionPrompt({ instruction: instr, rect, mask_attached: false });
+    assertEquals(out, want, "normalised: " + JSON.stringify(instr));
+    assert(!out.includes(".."), "no '..' for " + JSON.stringify(instr));
+  }
+  // a full stop inside the instruction is kept; only the trailing ones go
+  assert(renderRegionPrompt({ instruction: "add a star. make it gold.", rect, mask_attached: true }).includes("Change ONLY this: add a star. make it gold. The change"), "inner full stop kept");
+  for (const empty of ["", "   ", "...", " . ", null, undefined]) {
+    let thrown: unknown = null;
+    try { renderRegionPrompt({ instruction: empty, rect, mask_attached: true }); } catch (e) { thrown = e; }
+    assert(thrown instanceof EditError, "EditError for " + JSON.stringify(empty));
+  }
+});
+
+Deno.test("region block + model selection: OpenRouter -> openrouter_models.region, Kie / auto -> the Kie Sunburst model; the block WF-3 reads", () => {
+  const rect = probeRect("b33727a9");
+  const plan: InputPath[] = [{ bucket: "gens", path: "card/parent.png", role: "previous_version" }, { bucket: "gens", path: "card/mask.png", role: "mask" }];
+  const block = buildRegionBlock({ rect, instruction: "change the sunglass color to red", plan, openrouter_model: "openai/gpt-image-2.5-sunburst", aspect_ratio: "1:1" });
+  assertEquals(Object.keys(block), ["rect", "pct", "where", "prompt", "mask_attached", "kie_model", "openrouter_model", "resolution", "aspect_ratio", "quality"], "key order of the contract");
+  assertEquals(block.rect, { x: 413, y: 287, w: 305, h: 158, width: 1024, height: 1024 });
+  assertEquals(block.pct, { x0: 40, x1: 70, y0: 28, y1: 43 });
+  assertEquals(block.where, "the area from 40% to 70% across and 28% to 43% down the image");
+  assertEquals(block.prompt, renderRegionPrompt({ instruction: "change the sunglass color to red", rect, mask_attached: true }));
+  assertEquals([block.mask_attached, block.kie_model, block.openrouter_model, block.resolution, block.aspect_ratio, block.quality],
+    [true, "gpt-image-2-5-sunburst-image-to-image", "openai/gpt-image-2.5-sunburst", "1K", "1:1", "high"]);
+  assertEquals(REGION_KIE_MODEL, "gpt-image-2-5-sunburst-image-to-image");
+  assertEquals(REGION_OPENROUTER_DEFAULT, "openai/gpt-image-2.5-sunburst");
+  // model per platform
+  assertEquals(regionModel("openrouter", block), "openai/gpt-image-2.5-sunburst");
+  assertEquals(regionModel("kie", block), REGION_KIE_MODEL);
+  assertEquals(regionModel("auto", block), REGION_KIE_MODEL, "auto starts on Kie");
+  assertEquals(regionModel(null, block), REGION_KIE_MODEL);
+  // the settings value wins; a blank one falls back to the default
+  const custom = buildRegionBlock({ rect, instruction: "x", plan, openrouter_model: "openai/gpt-image-2.5-sunburst-preview" });
+  assertEquals(regionModel("openrouter", custom), "openai/gpt-image-2.5-sunburst-preview");
+  assertEquals(buildRegionBlock({ rect, instruction: "x", plan, openrouter_model: "  " }).openrouter_model, REGION_OPENROUTER_DEFAULT);
+  assertEquals(buildRegionBlock({ rect, instruction: "x", plan }).aspect_ratio, "1:1", "no aspect -> 1:1");
+  assertEquals(buildRegionBlock({ rect, instruction: "x", plan, aspect_ratio: "4:5" }).aspect_ratio, "4:5", "the parent's aspect");
+  // no mask in the plan: mask_attached false and no Image 2 sentence
+  const bare = buildRegionBlock({ rect, instruction: "x", plan: plan.slice(0, 1) });
+  assertEquals(bare.mask_attached, false);
+  assert(!bare.prompt.includes("Image 2"), "no Image 2 without a mask");
+  // a 2048 px parent (Kie lane) asks Kie for 2K
+  assertEquals(buildRegionBlock({ rect: { x: 0, y: 0, w: 100, h: 100, width: 2048, height: 2048 }, instruction: "x", plan }).resolution, "2K");
+});
+
+Deno.test("prompt-engine index.ts v8.1 wiring: mask_rect selected, 422 without a box, region prompt PATCHed and returned, region key in the response", async () => {
+  const src = await readFile(new URL("./index.ts", import.meta.url), "utf8");
+  const sel = src.match(/const GEN_SELECT = "([^"]+)";/);
+  assert(sel && sel[1].split(",").includes("mask_rect"), "GEN_SELECT carries mask_rect");
+  assertStringIncludesSrc(src, 'return json(422, { error: "edit_region needs mask_rect {x,y,w,h,width,height} - draw the area again" });');
+  assertStringIncludesSrc(src, "rendered_prompt: prompt,\n    final_prompt: prompt,");
+  assertStringIncludesSrc(src, "model: region ? regionModel(platform, region) :");
+  assertStringIncludesSrc(src, "resolution: region ? region.resolution : resolution,");
+  assertStringIncludesSrc(src, "    region,\n  });");
+  assertStringIncludesSrc(src, "region: REGION_OPENROUTER_DEFAULT");
+});
+function assertStringIncludesSrc(hay: string, needle: string): void {
+  if (!hay.includes(needle)) throw new Error("index.ts lacks " + JSON.stringify(needle));
+}
+
+Deno.test("studio_29 migration: openrouter_models gains region by merge (no key dropped), region_ring_pct 1..10 default 3, region_child guarded", async () => {
+  const mig = await readFile(new URL("../../migrations/20261005_studio_29_region_locked_outside.sql", import.meta.url), "utf8");
+  const def = mig.match(/alter column openrouter_models set default\s+'([^']+)'::jsonb;/);
+  assert(def, "new column default");
+  const models = JSON.parse(def![1]) as Record<string, string>;
+  assertEquals(Object.keys(models).sort(), ["edit", "image", "region", "text", "vision"], "every existing key kept in the default");
+  assertEquals(models.region, REGION_OPENROUTER_DEFAULT);
+  assert(/set openrouter_models = openrouter_models \|\| '\{"region": "openai\/gpt-image-2\.5-sunburst"\}'::jsonb\s+where not \(openrouter_models \? 'region'\);/.test(mig), "existing rows: merge, only when the key is absent");
+  assert(/add column if not exists region_ring_pct numeric not null default 3;/.test(mig), "region_ring_pct default 3");
+  assert(/check \(region_ring_pct >= 1 and region_ring_pct <= 10\)/.test(mig), "1..10");
+  for (const c of ["raw_image_path text", "region_metrics jsonb", "composite_mode text"]) assert(mig.includes("add column if not exists " + c), c);
+  assert(/composite_mode in \('locked', 'extend', 'full'\)/.test(mig), "composite_mode check");
+  assert(/security definer/.test(mig) && /if not \(public\.is_staff\(\) or public\.studio_secret_ok\(\)\) then raise exception 'not allowed'/.test(mig), "region_child guard");
+  assert(/'edit_region', 'done', 1,/.test(mig), "the child is inserted done (no WF-3 trigger)");
+  assert(!/insert into supabase_migrations/i.test(mig) && !/drop column/i.test(mig), "no bookkeeping insert, nothing dropped");
 });

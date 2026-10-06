@@ -1,6 +1,6 @@
 # Fix an area with GPT Image 2.5 — proposal (not implemented)
 
-Status: PROPOSAL, 2026-10-05. Research run `wf_164c4fb5-93c` (official docs fetched 2026-10-05, 4 real edits measured). Nothing built.
+Status: DECIDED 2026-10-05 (user): Fix an area = GPT Image 2.5 Sunburst on OpenRouter, locked outside (no OpenAI key, no masked edit); built per the architect plan: region-composite, studio_29, prompt-engine region lane, qc-judge v2.3, WF-3 region lane
 
 ## 1. What is wrong today (measured on 4 real region edits)
 

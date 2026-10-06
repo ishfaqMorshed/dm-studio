@@ -257,6 +257,12 @@ const NOTE_KEYS = [
 const INDEX_KEYS = ['id', 'n', 'number', 'index', 'point_number', 'point', '#'] as const
 const SCORE_KEYS = ['score', 'confidence'] as const
 
+/**
+ * qc-judge v2.3 area-edit checks that only warn: a `pass: false` never fails the verdict (a seam or a
+ * cut-off element is for the designer to judge, and Extend area fixes the second at no cost).
+ */
+const WARN_ONLY_CHECK_IDS = new Set(['region_no_seam', 'region_not_cut_off'])
+
 const PASS_WORDS = new Set(['pass', 'passed', 'ok', 'true', 'yes', 'good', 'success', 'succeeded', 'clean', 'fine', 'accept'])
 const FAIL_WORDS = new Set(['fail', 'failed', 'false', 'no', 'bad', 'error', 'failure', 'reject', 'rejected', 'violated'])
 const WARN_WORDS = new Set(['warn', 'warning', 'caution', 'flag', 'flagged', 'borderline', 'partial', 'minor', 'review'])
@@ -316,6 +322,7 @@ function checkFromValue(key: string, v: Json | undefined): QcCheck | null {
         break
       }
     }
+    if (verdict === 'fail' && typeof v.id === 'string' && WARN_ONLY_CHECK_IDS.has(v.id)) verdict = 'warn'
     const label = pickString(v, LABEL_KEYS)
     const note = pickString(v, NOTE_KEYS)
     const score = pickNumber(v, SCORE_KEYS)
@@ -468,8 +475,9 @@ export function parseQcReport(input: Json | null | undefined): QcReport {
     }
   }
 
-  // Rendered by its own strip (parseStyleMatch), never as a bare key/value tree.
+  // Rendered by their own strips (parseStyleMatch, parseQcRegion), never as a bare key/value tree.
   if ('style_match' in rec) used.add('style_match')
+  if ('region' in rec) used.add('region')
 
   for (const [k, v] of recordEntries(rec)) {
     if (used.has(k)) continue
@@ -515,4 +523,38 @@ export function qcTextOk(input: Json | null | undefined): boolean | null {
 export function qcExpectedText(input: Json | null | undefined): string[] {
   const r = parseEmbeddedJson(input)
   return isRecord(r) ? stringList(r.expected_text) : []
+}
+
+/* ---------- Area edit verdict (qc-judge v2.3, edit_region only) ---------- */
+
+/**
+ * `qc_report.region`: what the judge saw at the edited area (`{instruction_done, seam_visible,
+ * object_cut_off, text_changed, notes}`) plus `overflow_measured` (region-composite measured the new
+ * element running past the box). Each flag is null when the judge did not report it.
+ */
+export interface QcRegion {
+  instruction_done: boolean | null
+  seam_visible: boolean | null
+  object_cut_off: boolean | null
+  /** null also when no lettering lies inside or touches the area. */
+  text_changed: boolean | null
+  notes: string | null
+  overflow_measured: boolean
+}
+
+/** `qc_report.region`, or null for every report without one (other kinds, and reports before qc-judge v2.3). */
+export function parseQcRegion(input: Json | null | undefined): QcRegion | null {
+  const r = parseEmbeddedJson(input)
+  if (!isRecord(r)) return null
+  const g = parseEmbeddedJson(r.region)
+  if (!isRecord(g)) return null
+  const flag = (v: Json | undefined) => (typeof v === 'boolean' ? v : null)
+  return {
+    instruction_done: flag(g.instruction_done),
+    seam_visible: flag(g.seam_visible),
+    object_cut_off: flag(g.object_cut_off),
+    text_changed: flag(g.text_changed),
+    notes: typeof g.notes === 'string' && g.notes.trim() ? g.notes.trim() : null,
+    overflow_measured: g.overflow_measured === true,
+  }
 }

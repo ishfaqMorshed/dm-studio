@@ -2,8 +2,9 @@
 // No jsr imports on purpose (local assert helpers, like render_test.ts) so the file runs under node --experimental-strip-types.
 import { readFile } from 'node:fs/promises';
 import {
-  ART_MATCH_KEYS, ART_NOT_REPORTED, ART_UNREADABLE, artCorrection, artStyleCheck, buildStyleMatch, fromArtReference, normaliseQc, parseArtMatch,
-  pickStyleJson, STYLE_FIELDS, subjectCorrection, UNREAD_MEDIUM_NOTE, UNREAD_PALETTE_NOTE, unreadArtLook,
+  ART_MATCH_KEYS, ART_NOT_REPORTED, ART_UNREADABLE, artCorrection, artStyleCheck, buildStyleMatch, fromArtReference, mentionedInInstruction, normaliseQc,
+  parseArtMatch, parseRegionVerdict, pickStyleJson, REGION_CHECKS, REGION_NO_TEXT_NOTE, REGION_NOT_REPORTED, REGION_PALETTE_NOTE, regionContextOf,
+  STYLE_FIELDS, subjectCorrection, UNREAD_MEDIUM_NOTE, UNREAD_PALETTE_NOTE, unreadArtLook,
 } from './qc.ts';
 import { CHICKEN_FORBID, FIXTURES } from './qc_fixtures.ts';
 
@@ -451,4 +452,260 @@ Deno.test('studio_28 migration: guard first, qc_prompt v2 gets the ART STYLE REF
   for (const x of mig.matchAll(/body like '%([^%]+)%'/g)) assert(v2.includes(x[1].replace(/''/g, "'")), 'self-check pattern present: ' + x[1]);
   for (const x of mig.matchAll(/body not like '%([^%]+)%'/g)) assert(!v2.includes(x[1].replace(/''/g, "'")), 'self-check pattern absent: ' + x[1]);
   assert(v2.endsWith('omit "art_match".'), 'ends with the no branch (the anchored LIKE)');
+});
+
+// ---------------------------------------------------------------------------
+// v2.3 (2026-10-05): Fix an area = GPT Image 2.5 Sunburst, locked outside. An edit_region with a mask_rect is judged
+// region-aware: WF-3 adds the REGION EDIT paragraph (and the previous version as the SECOND image) and the judge returns a
+// "region" key; qc-judge appends 4 region checks, exempts the colours and objects the instruction names, never retries.
+
+const regionRect = { x: 413, y: 287, w: 305, h: 158, width: 1024, height: 1024 };
+/** A generations row as index.ts loads it for an edit_region (b33727a9 shape: sunglasses -> red, locked composite, no overflow). */
+const regionGen = (over: Record<string, unknown> = {}) => ({
+  id: 'b33727a9', kind: 'edit_region', mask_rect: regionRect, edit_instruction: 'change the sunglass color to red',
+  region_metrics: { version: 1, mode: 'locked', overflow: { detected: false, px: 0, suggested_rect: null } }, ...over,
+});
+const regionCtx = { ...chickenCtx, region: regionContextOf(regionGen()) };
+const GOOD_REGION = { instruction_done: true, seam_visible: false, object_cut_off: false, text_changed: false, notes: 'sunglasses now red, border clean' };
+/** v2AllGood with the judge's region key (top level, or inside "style" when nested) plus extra style / top-level keys. */
+const withRegion = (region: unknown, style: Record<string, unknown> = {}, extra: Record<string, unknown> = {}, nested = false) => {
+  const v = JSON.parse(FIXTURES.v2AllGood);
+  const top = region === undefined || nested ? {} : { region };
+  const inStyle = region !== undefined && nested ? { region } : {};
+  return JSON.stringify({ ...v, ...extra, ...top, style: { ...v.style, ...style, ...inStyle } });
+};
+const check = (r: ReturnType<typeof normaliseQc>, id: string) => r.qc_report.checks.find((c) => c.id === id);
+const REGION_IDS = ['region_instruction_done', 'region_text_unchanged', 'region_no_seam', 'region_not_cut_off'];
+
+Deno.test('v2.3 region: every region key good -> pass, the 4 region checks true and appended after the core checks, qc_report.region = verdict + overflow_measured', () => {
+  const r = normaliseQc(withRegion(GOOD_REGION), regionCtx);
+  assertEquals([r.qc_report.verdict, r.needs_regen, r.qc_report.score, r.qc_report.corrective_instruction], ['pass', false, 100, null]);
+  assertEquals(r.qc_report.checks.length, 16, '12 checks of v2AllGood + 4 region checks');
+  assertEquals(r.qc_report.checks.slice(12).map((c) => c.id), REGION_IDS, 'region checks come last');
+  assertEquals(REGION_CHECKS.map((c) => c.id), REGION_IDS);
+  assertEquals(REGION_CHECKS.map((c) => c.name), ['Requested change done inside the area', 'Lettering unchanged by the area edit', 'No visible seam at the area border', 'New element not cut off at the area border']);
+  assertEquals(REGION_CHECKS.map((c) => c.warnOnly), [false, false, true, true]);
+  for (const id of REGION_IDS) assertEquals(check(r, id), { id, name: REGION_CHECKS.find((c) => c.id === id)!.name, pass: true, note: '' }, id);
+  assertEquals(r.qc_report.region, { ...GOOD_REGION, overflow_measured: false });
+  assertEquals(r.qc_report.style_match?.score, 100, 'region checks are no style checks');
+  // the judge may nest the key inside "style": same report
+  assertEquals(JSON.stringify(normaliseQc(withRegion(GOOD_REGION, {}, {}, true), regionCtx)), JSON.stringify(r), 'style.region fallback');
+  // string booleans are read like everywhere else
+  const strings = normaliseQc(withRegion({ instruction_done: 'yes', seam_visible: 'no', object_cut_off: 'false', text_changed: 'false', notes: 'ok.' }), regionCtx);
+  assertEquals([strings.qc_report.verdict, strings.qc_report.region?.notes], ['pass', 'ok']);
+  assert(REGION_IDS.every((id) => check(strings, id)?.pass === true), JSON.stringify(strings.qc_report.checks.slice(12)));
+});
+
+Deno.test('v2.3 region: instruction_done false -> verdict fail, never needs_regen (WF-3 has no corrective loop); a core text failure still retries on its own', () => {
+  const r = normaliseQc(withRegion({ ...GOOD_REGION, instruction_done: false, notes: 'sunglasses still black' }), regionCtx);
+  assertEquals([r.qc_report.verdict, r.needs_regen, r.qc_report.corrective_instruction], ['fail', false, null]);
+  assertEquals(check(r, 'region_instruction_done'), { id: 'region_instruction_done', name: 'Requested change done inside the area', pass: false, note: 'the requested change is not visible inside the area' });
+  assertEquals(r.qc_report.score, 100, 'core score untouched');
+  assertEquals(r.qc_report.region?.instruction_done, false);
+  // with a text failure the retry comes from the core check only; the corrective never mentions the area
+  const both = normaliseQc(withRegion({ ...GOOD_REGION, instruction_done: false }, {}, { text_found: 'CHICKEN HAPY HOUR EST. 2026', text_matches: false, issues: ['Spell the text exactly "CHICKEN HAPPY HOUR"'] }), regionCtx);
+  assertEquals([both.qc_report.verdict, both.needs_regen], ['fail', true]);
+  assertStringIncludes(both.qc_report.corrective_instruction!, 'identical: Spell the text exactly "CHICKEN HAPPY HOUR". The ONLY text');
+  assert(!/area|region/i.test(both.qc_report.corrective_instruction!), both.qc_report.corrective_instruction!);
+  // not reported: pass null, verdict untouched
+  const nr = normaliseQc(withRegion({ ...GOOD_REGION, instruction_done: undefined }), regionCtx);
+  assertEquals(check(nr, 'region_instruction_done'), { id: 'region_instruction_done', name: 'Requested change done inside the area', pass: null, note: REGION_NOT_REPORTED });
+  assertEquals(nr.qc_report.verdict, 'pass');
+});
+
+Deno.test('v2.3 region: seam_visible true -> warn only; the judge seeing the element cut off -> warn only; neither retries', () => {
+  const seam = normaliseQc(withRegion({ ...GOOD_REGION, seam_visible: true, notes: 'faint halo along the left edge' }), regionCtx);
+  assertEquals([seam.qc_report.verdict, seam.needs_regen, seam.qc_report.corrective_instruction], ['warn', false, null]);
+  assertEquals(check(seam, 'region_no_seam'), { id: 'region_no_seam', name: 'No visible seam at the area border', pass: false, note: 'a visible edge, step or colour jump along the area border' });
+  assertEquals(seam.qc_report.region?.seam_visible, true);
+  assertEquals(seam.qc_report.style_match?.score, 100);
+  const cut = normaliseQc(withRegion({ ...GOOD_REGION, object_cut_off: true }), regionCtx);
+  assertEquals([cut.qc_report.verdict, cut.needs_regen], ['warn', false]);
+  assertEquals(check(cut, 'region_not_cut_off'), { id: 'region_not_cut_off', name: 'New element not cut off at the area border', pass: false, note: 'the new element looks cut off at the area border' });
+  assertEquals(cut.qc_report.region?.object_cut_off, true);
+  // both warn-only findings together are still a warn, and the pass:false of the judge changes nothing more
+  const both = normaliseQc(withRegion({ ...GOOD_REGION, seam_visible: true, object_cut_off: true }, {}, { pass: false }), regionCtx);
+  assertEquals([both.qc_report.verdict, both.needs_regen], ['warn', false]);
+  // not reported seam / cut-off: pass null
+  const nr = normaliseQc(withRegion({ instruction_done: true, text_changed: false }), regionCtx);
+  assertEquals([check(nr, 'region_no_seam')?.pass, check(nr, 'region_no_seam')?.note, check(nr, 'region_not_cut_off')?.pass, check(nr, 'region_not_cut_off')?.note], [null, REGION_NOT_REPORTED, null, REGION_NOT_REPORTED]);
+  assertEquals(nr.qc_report.verdict, 'pass');
+});
+
+Deno.test('v2.3 region: region-composite measured overflow -> region_not_cut_off false (warn) with the Extend area note, whatever the judge saw', () => {
+  const measured = regionContextOf(regionGen({ region_metrics: { version: 1, mode: 'locked', overflow: { detected: true, px: 612, suggested_rect: { x: 380, y: 287, w: 338, h: 158 } } } }));
+  assertEquals([measured?.overflow_measured, measured?.overflow_px, measured?.composite_mode], [true, 612, 'locked']);
+  const r = normaliseQc(withRegion(GOOD_REGION), { ...chickenCtx, region: measured });
+  assertEquals([r.qc_report.verdict, r.needs_regen], ['warn', false]);
+  assertEquals(check(r, 'region_not_cut_off'), { id: 'region_not_cut_off', name: 'New element not cut off at the area border', pass: false, note: 'the new element runs past your area (measured 612 px) - use Extend area' });
+  assertEquals(r.qc_report.region, { ...GOOD_REGION, overflow_measured: true }, 'the judge object_cut_off false is kept, overflow_measured says why the check failed');
+  // the judge agreeing (object_cut_off true) keeps the measured note (it names the fix)
+  const agree = normaliseQc(withRegion({ ...GOOD_REGION, object_cut_off: true }), { ...chickenCtx, region: measured });
+  assertStringIncludes(check(agree, 'region_not_cut_off')!.note, 'measured 612 px) - use Extend area');
+  // px as a string, detected as anything but true: tolerant
+  assertEquals(regionContextOf(regionGen({ region_metrics: { overflow: { detected: true, px: '48' } } }))?.overflow_px, 48);
+  assertEquals(regionContextOf(regionGen({ region_metrics: { overflow: { detected: 'true', px: 99 } } }))?.overflow_measured, false, 'only the boolean true counts');
+  assertEquals(regionContextOf(regionGen({ region_metrics: null }))?.overflow_measured, false);
+});
+
+Deno.test('v2.3 region: text_changed null -> lettering check skipped ("no lettering touches the area"); absent -> not reported; true -> fail, no retry; false -> pass', () => {
+  const skipped = normaliseQc(withRegion({ ...GOOD_REGION, text_changed: null }), regionCtx);
+  assertEquals(check(skipped, 'region_text_unchanged'), { id: 'region_text_unchanged', name: 'Lettering unchanged by the area edit', pass: null, note: REGION_NO_TEXT_NOTE });
+  assertEquals(REGION_NO_TEXT_NOTE, 'no lettering touches the area');
+  assertEquals([skipped.qc_report.verdict, skipped.qc_report.region?.text_changed], ['pass', null]);
+  // the judge writing the word null
+  assertEquals(check(normaliseQc(withRegion({ ...GOOD_REGION, text_changed: 'null' }), regionCtx), 'region_text_unchanged')?.note, REGION_NO_TEXT_NOTE);
+  // key absent: not reported (the judge did not say)
+  const { text_changed: _t, ...noKey } = GOOD_REGION;
+  assertEquals(check(normaliseQc(withRegion(noKey), regionCtx), 'region_text_unchanged'), { id: 'region_text_unchanged', name: 'Lettering unchanged by the area edit', pass: null, note: REGION_NOT_REPORTED });
+  // lettering changed: fail, never a retry
+  const changed = normaliseQc(withRegion({ ...GOOD_REGION, text_changed: true, notes: 'EST. 2026 lost its full stop' }), regionCtx);
+  assertEquals([changed.qc_report.verdict, changed.needs_regen, changed.qc_report.corrective_instruction], ['fail', false, null]);
+  assertEquals(check(changed, 'region_text_unchanged'), { id: 'region_text_unchanged', name: 'Lettering unchanged by the area edit', pass: false, note: 'lettering changed by the area edit' });
+  assertEquals(check(normaliseQc(withRegion(GOOD_REGION), regionCtx), 'region_text_unchanged')?.pass, true);
+});
+
+Deno.test('v2.3 region: an off-palette colour the instruction asked for is no palette failure - "asked for by the edit", no style_violation', () => {
+  const r = normaliseQc(withRegion(GOOD_REGION, { palette_ok: false, off_palette_colours: [{ name: 'bright red', hex: '#E53935', area: 'small' }] }, { style_violations: ['bright red sunglasses are not in the palette'] }), regionCtx);
+  assertEquals(styleCheck(r, 'palette'), { id: 'palette', field: 'palette', pass: true, note: 'asked for by the edit: bright red' });
+  assertEquals(check(r, 'style_palette'), { id: 'style_palette', name: 'Palette matches Style Card', pass: true, note: 'asked for by the edit: bright red' });
+  assertEquals(r.qc_report.style_violations, [], 'the colour remark about the asked-for colour is dropped');
+  assertEquals([r.qc_report.verdict, r.needs_regen, r.qc_report.style_match?.score], ['pass', false, 100]);
+  // the hex alone ties the colour to the instruction
+  const hex = normaliseQc(withRegion(GOOD_REGION, { palette_ok: false, off_palette_colours: [{ name: 'crimson', hex: '#e53935', area: 'small' }] }), { ...chickenCtx, region: regionContextOf(regionGen({ edit_instruction: 'paint the sunglasses #E53935' })) });
+  assertEquals(styleCheck(hex, 'palette')?.pass, true);
+  assertEquals(styleCheck(hex, 'palette')?.note, 'asked for by the edit: crimson');
+  // a colour the instruction never named is judged as before (warn), and only the unasked colours are in the note
+  const teal = normaliseQc(withRegion(GOOD_REGION, { palette_ok: false, off_palette_colours: [{ name: 'teal', hex: '#2f8f8f', area: 'small' }] }), regionCtx);
+  assertEquals(styleCheck(teal, 'palette'), { id: 'palette', field: 'palette', pass: false, note: 'off-palette: teal #2F8F8F (small)' });
+  assertEquals([teal.qc_report.verdict, teal.needs_regen, check(teal, 'style_palette')?.pass], ['warn', false, false]);
+  assertEquals(teal.qc_report.style_violations, ['off-palette: teal #2F8F8F (small)']);
+  const mixed = normaliseQc(withRegion(GOOD_REGION, { palette_ok: false, off_palette_colours: [{ name: 'bright red', hex: '#E53935', area: 'small' }, { name: 'teal', hex: '#2f8f8f', area: 'small' }] }), regionCtx);
+  assertEquals(styleCheck(mixed, 'palette'), { id: 'palette', field: 'palette', pass: false, note: 'off-palette: teal #2F8F8F (small)' });
+  // the same verdict without the region context fails the palette as in v2.2 (no regression)
+  const plain = normaliseQc(withRegion(GOOD_REGION, { palette_ok: false, off_palette_colours: [{ name: 'bright red', hex: '#E53935', area: 'small' }] }), chickenCtx);
+  assertEquals([styleCheck(plain, 'palette')?.pass, plain.qc_report.verdict], [false, 'warn']);
+  // mentionedInInstruction: whole words of 3+ letters, case-insensitive; function words and generic colour words never count alone
+  assertEquals(mentionedInInstruction('change the sunglass color to red', 'bright red'), true);
+  assertEquals(mentionedInInstruction('CHANGE THE SUNGLASS COLOR TO RED', 'red'), true);
+  assertEquals(mentionedInInstruction('change the sunglass color to red', 'skin colour'), false);
+  assertEquals(mentionedInInstruction('make it reddish', 'red'), false, 'whole word only');
+  assertEquals(mentionedInInstruction('change the sunglass color to red', 'the colour'), false, 'stop words alone never match');
+  assertEquals(mentionedInInstruction('', 'red'), false);
+  assertEquals(mentionedInInstruction('make the bear to look like a tiger', 'a tiger'), true);
+  assertEquals(mentionedInInstruction(null, undefined), false);
+});
+
+Deno.test('v2.3 region: palette_ok false with no colour list -> palette not judged ("the change may bring new colours"), compat check follows, no violation', () => {
+  const r = normaliseQc(withRegion(GOOD_REGION, { palette_ok: false, off_palette_colours: [] }), regionCtx);
+  assertEquals(REGION_PALETTE_NOTE, 'not judged on an area edit - the change may bring new colours');
+  assertEquals(styleCheck(r, 'palette'), { id: 'palette', field: 'palette', pass: null, note: REGION_PALETTE_NOTE });
+  assertEquals(check(r, 'style_palette'), { id: 'style_palette', name: 'Palette matches Style Card', pass: null, note: REGION_PALETTE_NOTE });
+  assertEquals(r.qc_report.style_violations, []);
+  assertEquals([r.qc_report.verdict, r.needs_regen, r.qc_report.style_match?.score], ['pass', false, 100], 'an unjudged check leaves the score');
+  // the v1 tail (palette_ok false at the top level, no colour list) on an area edit: the compat check is not judged either
+  const v1 = normaliseQc('{"text_found":"CHICKEN HAPPY HOUR EST. 2026","text_matches":true,"text_once":true,"extra_text":false,"text_legible":true,"no_halos":true,"background_ok":true,"no_shadows":true,"flat_artwork":true,"edges_clean":true,"issues":[],"pass":true,"palette_ok":false,"region":{"instruction_done":true,"seam_visible":false,"object_cut_off":false,"text_changed":null}}', regionCtx);
+  assertEquals([check(v1, 'style_palette')?.pass, check(v1, 'style_palette')?.note, v1.qc_report.verdict], [null, REGION_PALETTE_NOTE, 'pass']);
+  assertEquals(v1.qc_report.style_violations, []);
+  // a colour remark naming nothing the instruction asked for stays a violation and, with palette_ok true, fails the compat check as in v2.2 (warn) ...
+  const remark = normaliseQc(withRegion(GOOD_REGION, { palette_ok: true }, { style_violations: ['teal accents off the palette'] }), regionCtx);
+  assertEquals(remark.qc_report.style_violations, ['teal accents off the palette']);
+  assertEquals([check(remark, 'style_palette')?.pass, check(remark, 'style_palette')?.note, remark.qc_report.verdict], [false, 'teal accents off the palette', 'warn']);
+  // ... while a remark about the asked-for colour is dropped and the check passes
+  const asked = normaliseQc(withRegion(GOOD_REGION, { palette_ok: true }, { style_violations: ['red sunglasses are off the palette'] }), regionCtx);
+  assertEquals([asked.qc_report.style_violations, check(asked, 'style_palette')?.pass, asked.qc_report.verdict], [[], true, 'pass']);
+  // a colour remark without palette_ok (no style key) on an area edit: not judged - there is no colour list to tell asked from unasked
+  const v1remark = normaliseQc('{"text_found":"CHICKEN HAPPY HOUR EST. 2026","text_matches":true,"text_once":true,"extra_text":false,"text_legible":true,"no_halos":true,"background_ok":true,"no_shadows":true,"flat_artwork":true,"edges_clean":true,"issues":[],"pass":true,"style_violations":["teal accents off the palette"],"region":{"instruction_done":true,"seam_visible":false,"object_cut_off":false,"text_changed":false}}', regionCtx);
+  assertEquals([check(v1remark, 'style_palette')?.pass, check(v1remark, 'style_palette')?.note, v1remark.qc_report.verdict], [null, REGION_PALETTE_NOTE, 'pass']);
+  // the same verdict without the region context: v2.2 warn (no regression)
+  const plain = normaliseQc(withRegion(GOOD_REGION, { palette_ok: false, off_palette_colours: [] }), chickenCtx);
+  assertEquals([styleCheck(plain, 'palette')?.pass, check(plain, 'style_palette')?.pass, plain.qc_report.verdict], [false, false, 'warn']);
+});
+
+Deno.test('v2.3 region: the subject the instruction asks for (bear -> tiger) is no wrong hero - pass null "(asked for by the edit)", never a subject regen on an area edit', () => {
+  const tigerCtx = { ...chickenCtx, expected_subject: 'a bear', region: regionContextOf(regionGen({ id: 'dace73f3', edit_instruction: 'make the bear to look like a tiger' })) };
+  const r = normaliseQc(withRegion(GOOD_REGION, { subject_ok: false, subject_seen: 'a tiger' }), tigerCtx);
+  assertEquals(styleCheck(r, 'subject'), { id: 'subject', field: 'subjects', pass: null, note: 'drawn: a tiger (asked for by the edit)' });
+  assertEquals([r.qc_report.verdict, r.needs_regen, r.qc_report.corrective_instruction, r.qc_report.style_match?.subject_seen], ['pass', false, null, 'a tiger']);
+  assertEquals(r.qc_report.style_match?.score, 100);
+  // a hero the instruction never asked for is still reported, but an area edit never regenerates for it: warn, not fail
+  const chicken = normaliseQc(withRegion(GOOD_REGION, { subject_ok: false, subject_seen: 'a chicken' }), tigerCtx);
+  assertEquals(styleCheck(chicken, 'subject'), { id: 'subject', field: 'subjects', pass: false, note: 'drawn: a chicken' });
+  assertEquals([chicken.qc_report.verdict, chicken.needs_regen, chicken.qc_report.corrective_instruction], ['warn', false, null]);
+  // the same verdict without the region context regenerates as in v2.2 (no regression)
+  const plain = normaliseQc(withRegion(GOOD_REGION, { subject_ok: false, subject_seen: 'a chicken' }), { ...chickenCtx, expected_subject: 'a bear' });
+  assertEquals([plain.qc_report.verdict, plain.needs_regen], ['fail', true]);
+  assertStringIncludes(plain.qc_report.corrective_instruction!, 'Draw a bear as the hero, not a chicken');
+});
+
+// Frozen v2.2 output (qc.ts at the commit before v2.3, run through the Node shim on 2026-10-06) for two fixtures: a
+// v2.3 report without a region context must equal it byte for byte - no "region" key, nothing reordered.
+const SNAP_V22_ALL_GOOD = '{"qc_report":{"version":2,"verdict":"pass","checks":[{"id":"text_matches","name":"Text matches expected exactly","pass":true,"note":""},{"id":"text_once","name":"Text appears exactly once","pass":true,"note":""},{"id":"extra_text","name":"No extra text, watermarks or logos","pass":true,"note":""},{"id":"text_legible","name":"Letters fully formed and legible","pass":true,"note":""},{"id":"no_halos","name":"No white halos or fringes","pass":true,"note":""},{"id":"background_ok","name":"One flat even neutral grey background","pass":true,"note":""},{"id":"no_shadows","name":"No drop, cast or ambient shadows","pass":true,"note":""},{"id":"flat_artwork","name":"Flat artwork, not a mockup","pass":true,"note":""},{"id":"edges_clean","name":"Continuous edges, no stray dots","pass":true,"note":""},{"id":"not_cropped","name":"Artwork not cropped by the frame","pass":true,"note":""},{"id":"style_palette","name":"Palette matches Style Card","pass":true,"note":""},{"id":"text_height","name":"Text large enough to print","pass":true,"note":"min glyph height 9.0% of image"}],"score":100,"style_match":{"score":100,"checks":[{"id":"palette","field":"palette","pass":true,"note":""},{"id":"medium","field":"medium","pass":true,"note":""},{"id":"typography","field":"typography.headline","pass":true,"note":""},{"id":"composition","field":"composition","pass":true,"note":""},{"id":"subject","field":"subjects","pass":true,"note":"drawn: a highland cow"},{"id":"forbid","field":"forbid","pass":true,"note":""}],"subject_seen":"a highland cow","case_seen":"UPPER","art_reference_attached":false,"art_match":null},"needs_regen":false,"corrective_instruction":null,"style_violations":[],"text_ok":true,"text_found":"CHICKEN HAPPY HOUR EST. 2026","expected_text":["CHICKEN HAPPY HOUR","EST. 2026"],"min_text_height_frac":0.09,"issues":[],"parse_error":null,"attempt":1},"needs_regen":false,"text_elements":[{"text":"CHICKEN HAPPY HOUR EST. 2026","expected":["CHICKEN HAPPY HOUR","EST. 2026"],"matches":true,"min_height_frac":0.09}]}';
+const SNAP_V22_LIVE_006B5BA1 = '{"qc_report":{"version":2,"verdict":"pass","checks":[{"id":"text_matches","name":"Text matches expected exactly","pass":true,"note":""},{"id":"text_once","name":"Text appears exactly once","pass":true,"note":""},{"id":"extra_text","name":"No extra text, watermarks or logos","pass":true,"note":""},{"id":"text_legible","name":"Letters fully formed and legible","pass":true,"note":""},{"id":"no_halos","name":"No white halos or fringes","pass":true,"note":""},{"id":"background_ok","name":"One flat even neutral grey background","pass":true,"note":""},{"id":"no_shadows","name":"No drop, cast or ambient shadows","pass":true,"note":""},{"id":"flat_artwork","name":"Flat artwork, not a mockup","pass":true,"note":""},{"id":"edges_clean","name":"Continuous edges, no stray dots","pass":true,"note":""},{"id":"style_palette","name":"Palette matches Style Card","pass":true,"note":""},{"id":"text_height","name":"Text large enough to print","pass":true,"note":"not reported"}],"score":100,"style_match":{"score":null,"checks":[{"id":"palette","field":"palette","pass":null,"note":"not reported"},{"id":"medium","field":"medium","pass":null,"note":"not reported"},{"id":"typography","field":"typography.headline","pass":null,"note":"not reported"},{"id":"composition","field":"composition","pass":null,"note":"not reported"},{"id":"subject","field":"subjects","pass":null,"note":"no subject given"},{"id":"forbid","field":"forbid","pass":null,"note":"not reported"}],"subject_seen":"","case_seen":"","art_reference_attached":false,"art_match":null},"needs_regen":false,"corrective_instruction":null,"style_violations":["Omitting the bottom center social media handle"],"text_ok":true,"text_found":"CHICKEN HAPPY HOUR EST. 2026","expected_text":["CHICKEN HAPPY HOUR","EST. 2026"],"min_text_height_frac":null,"issues":[],"parse_error":null,"attempt":1},"needs_regen":false,"text_elements":[{"text":"CHICKEN HAPPY HOUR EST. 2026","expected":["CHICKEN HAPPY HOUR","EST. 2026"],"matches":true,"min_height_frac":null}]}';
+
+Deno.test('v2.3 region: without a region context the report is byte-identical to v2.2 (frozen snapshots, no "region" key); a stray region key is ignored', () => {
+  const allGood = normaliseQc(FIXTURES.v2AllGood, chickenCtx);
+  assertEquals(JSON.stringify(allGood), SNAP_V22_ALL_GOOD, 'v2AllGood / chickenCtx');
+  assert(!('region' in allGood.qc_report), 'no region key');
+  const live = normaliseQc(FIXTURES.live006b5ba1, { ...chickenCtx, expected_subject: '' });
+  assertEquals(JSON.stringify(live), SNAP_V22_LIVE_006B5BA1, 'live006b5ba1');
+  assert(!('region' in live.qc_report));
+  // a context whose region is not an object (edit_text rows: regionContextOf gives null) changes nothing
+  for (const stray of [null, undefined, false, 'edit_region', 42, []]) {
+    assertEquals(JSON.stringify(normaliseQc(FIXTURES.v2AllGood, { ...chickenCtx, region: stray })), SNAP_V22_ALL_GOOD, 'region ctx ' + JSON.stringify(stray));
+  }
+  assertEquals(JSON.stringify(normaliseQc(FIXTURES.v2AllGood, { ...chickenCtx, region: regionContextOf({ kind: 'edit_text', mask_rect: regionRect }) })), SNAP_V22_ALL_GOOD, 'edit_text');
+  // the judge returning a region key on a non-region generation: ignored (no checks, no region key)
+  const strayKey = normaliseQc(withRegion(GOOD_REGION), chickenCtx);
+  assertEquals(JSON.stringify(strayKey), SNAP_V22_ALL_GOOD, 'stray region key ignored');
+  // the fail-open path is unchanged on an area edit: unverified, no region key, never a retry
+  const malformed = normaliseQc(FIXTURES.malformed, regionCtx);
+  assertEquals(JSON.stringify(malformed), JSON.stringify(normaliseQc(FIXTURES.malformed, chickenCtx)));
+  assertEquals([malformed.qc_report.verdict, malformed.needs_regen, 'region' in malformed.qc_report], ['unverified', false, false]);
+});
+
+Deno.test('v2.3 regionContextOf: null for edit_text, for an edit_region without a mask_rect and for a non-object mask_rect; the fields qc-judge reads', () => {
+  assertEquals(regionContextOf(regionGen()), { instruction: 'change the sunglass color to red', rect: regionRect, overflow_measured: false, overflow_px: 0, composite_mode: 'locked' });
+  for (const gen of [
+    regionGen({ kind: 'edit_text' }), regionGen({ kind: 'initial' }), regionGen({ kind: 'regen' }), regionGen({ kind: null }),
+    regionGen({ mask_rect: undefined }), regionGen({ mask_rect: null }), regionGen({ mask_rect: '413,287,305,158' }), regionGen({ mask_rect: [413, 287, 305, 158] }),
+    regionGen({ mask_rect: 42 }), regionGen({ mask_rect: {} }), regionGen({ mask_rect: { x: 1, y: 1, w: 0, h: 5 } }), regionGen({ mask_rect: { x: -1, y: 1, w: 5, h: 5 } }),
+    regionGen({ mask_rect: { x: '413', y: 287, w: 305, h: 158 } }), regionGen({ mask_rect: { ...regionRect, width: 0 } }), null, undefined, 'edit_region', [],
+  ]) {
+    assertEquals(regionContextOf(gen), null, 'null for ' + JSON.stringify(gen));
+  }
+  // a rect without width / height (older rows) is still a rect; a null instruction is ''; no metrics -> nothing measured
+  const bare = regionContextOf({ kind: 'edit_region', mask_rect: { x: 10, y: 20, w: 30, h: 40 }, edit_instruction: null });
+  assertEquals(bare, { instruction: '', rect: { x: 10, y: 20, w: 30, h: 40 }, overflow_measured: false, overflow_px: 0, composite_mode: null });
+  assertEquals(regionContextOf(regionGen({ region_metrics: { version: 1, mode: 'extend', overflow: { detected: false, px: 0 } } }))?.composite_mode, 'extend');
+});
+
+Deno.test('v2.3 parseRegionVerdict: tolerant reading, missing / unreadable states, notes one line; an unreadable key -> 4 checks not reported, verdict untouched', () => {
+  assertEquals(parseRegionVerdict(undefined).state, 'missing');
+  assertEquals(parseRegionVerdict(null).state, 'missing');
+  assertEquals(parseRegionVerdict('').state, 'missing');
+  for (const junk of [{ foo: 1 }, 42, true, 'yes', '{"instruction_done": tru', [1], { notes: 'only notes' }]) assertEquals(parseRegionVerdict(junk).state, 'unreadable', 'unreadable ' + JSON.stringify(junk));
+  const str = parseRegionVerdict('{"instruction_done":"yes","seam_visible":"no","object_cut_off":0,"text_changed":null,"notes":"  all\\n good.  "}');
+  assertEquals(str, { region: { instruction_done: true, seam_visible: false, object_cut_off: false, text_changed: null, notes: 'all good' }, state: 'ok', text_null: true });
+  assertEquals(parseRegionVerdict({ text_changed: null }).text_null, true, 'a lone text_changed null is readable');
+  assertEquals(parseRegionVerdict({ instruction_done: true }).text_null, false);
+  assertEquals(parseRegionVerdict({ instruction_done: true, note: 'x'.repeat(300) }).region.notes.length, 240);
+  // on an area edit an unreadable region key reports nothing and changes no verdict
+  const r = normaliseQc(withRegion({ foo: 1 }), regionCtx);
+  for (const id of REGION_IDS) assertEquals([check(r, id)?.pass, check(r, id)?.note], [null, REGION_NOT_REPORTED], id);
+  assertEquals([r.qc_report.verdict, r.needs_regen], ['pass', false]);
+  assertEquals(r.qc_report.region, { instruction_done: null, seam_visible: null, object_cut_off: null, text_changed: null, notes: '', overflow_measured: false });
+  // the key missing altogether: the same, the report still carries region (the generation IS an area edit)
+  const missing = normaliseQc(FIXTURES.v2AllGood, regionCtx);
+  assertEquals(missing.qc_report.checks.length, 16);
+  assertEquals(missing.qc_report.region?.instruction_done, null);
+});
+
+Deno.test('qc-judge index.ts v2.3 wiring: the row is loaded with kind, mask_rect, edit_instruction and region_metrics; regionContextOf feeds normaliseQc; the response adds region', async () => {
+  const src = await readFile(new URL('./index.ts', import.meta.url), 'utf8');
+  assertStringIncludes(src, 'select=id,attempt,kind,mask_rect,edit_instruction,region_metrics,style_card_snapshot,magic_prompt_json,brief_snapshot,cards!generations_card_id_fkey(print_text,client_submission)');
+  assertStringIncludes(src, 'const region = regionContextOf(gen);');
+  assertStringIncludes(src, 'qc_subject_regen, art_reference_attached, qc_art_regen, region });');
+  assertStringIncludes(src, 'region: qc_report.region ?? null,');
+  assert(src.startsWith('// qc-judge v2.3'), 'header names v2.3');
 });

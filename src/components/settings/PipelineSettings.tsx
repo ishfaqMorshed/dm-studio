@@ -30,6 +30,7 @@ interface Draft {
   orVision: string
   orImage: string
   orEdit: string
+  orRegion: string
   orText: string
   qcSubjectRegen: boolean
   qcArtRegen: boolean
@@ -49,6 +50,7 @@ const DRAFT_KEYS: readonly (keyof Draft)[] = [
   'orVision',
   'orImage',
   'orEdit',
+  'orRegion',
   'orText',
   'qcSubjectRegen',
   'qcArtRegen',
@@ -71,6 +73,7 @@ const OPENROUTER_FIELDS = [
   ['orVision', 'vision'],
   ['orImage', 'image'],
   ['orEdit', 'edit'],
+  ['orRegion', 'region'],
   ['orText', 'text'],
 ] as const satisfies ReadonlyArray<readonly [keyof Draft, keyof OpenRouterModels]>
 
@@ -102,6 +105,7 @@ function toDraft(s: Settings): Draft {
     orVision: models.vision,
     orImage: models.image,
     orEdit: models.edit,
+    orRegion: models.region,
     orText: models.text,
     qcSubjectRegen: qcRegenOf(s, 'qc_subject_regen') ?? true,
     qcArtRegen: qcRegenOf(s, 'qc_art_regen') ?? true,
@@ -700,8 +704,8 @@ export function PipelineSettings() {
                 <h3 className="text-sm font-semibold">AI platform</h3>
                 <p className="text-xs text-neutral-500">
                   Where the AI steps run. Intake, Style Card drafts and the nightly lessons always use this default; the card
-                  page preselects it on Approve, Edit text, Edit region and Regenerate, where a designer can pick another
-                  platform for that one run.
+                  page preselects it on Approve, Edit text and Regenerate, where a designer can pick another platform for
+                  that one run. Fix an area preselects OpenRouter, where it is tuned.
                 </p>
               </div>
               <PlatformPicker
@@ -743,14 +747,25 @@ export function PipelineSettings() {
                 </ModelField>
                 <ModelField
                   id="openrouter-edit"
-                  label="Image edits"
+                  label="Edit text"
                   value={view.orEdit}
                   defaultValue={OPENROUTER_MODEL_DEFAULTS.edit}
                   error={errors.orEdit}
                   disabled={saving}
                   onChange={(orEdit) => edit({ orEdit })}
                 >
-                  Edit text and Edit region (Kie runs them on <code className={codeCls}>google/nano-banana-edit</code>).
+                  Changes the lettering in place (Kie runs it on <code className={codeCls}>google/nano-banana-edit</code>).
+                </ModelField>
+                <ModelField
+                  id="openrouter-region"
+                  label="Fix an area"
+                  value={view.orRegion}
+                  defaultValue={OPENROUTER_MODEL_DEFAULTS.region}
+                  error={errors.orRegion}
+                  disabled={saving}
+                  onChange={(orRegion) => edit({ orRegion })}
+                >
+                  GPT Image 2.5 Sunburst; the app keeps only the area.
                 </ModelField>
                 <ModelField
                   id="openrouter-text"

@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type FormEvent, type PointerEvent }
 import { Crop, Eraser, ImageOff } from 'lucide-react'
 import type { AiPlatform } from '../../lib/types'
 import { PlatformPicker } from '../PlatformPicker'
-import { normalizeRect, rectToPixels, rectTooSmall, type FractionRect } from './mask'
+import { expandRectPx, normalizeRect, rectToPixels, rectTooSmall, ringPxFor, type FractionRect } from './mask'
 import { btnPrimary, btnSecondary, btnSmall, checkerboard, inputCls, textareaCls } from './styles'
 import { Dialog, Field, Spinner } from './ui'
 
@@ -22,19 +22,30 @@ interface Size {
  * Draw a rectangle on the current image (pointer drag on a canvas overlay, or type
  * pixel values). The page turns the rectangle into a black/white mask PNG at the
  * image's natural size, uploads it and queues the edit_region generation.
+ *
+ * Fix an area is "locked outside": GPT Image 2.5 Sunburst redraws the whole design and
+ * region-composite keeps only the box, fading into the original over a ring of
+ * `ringPct` % of the width. The ring is drawn as a dashed line around the box; nothing
+ * beyond it changes.
  */
 export function EditRegionDialog({
   imageUrl,
   imageBroken,
+  ringPct,
   defaultPlatform,
+  studioDefault,
   busy,
   onClose,
   onSubmit,
 }: {
   imageUrl: string | null
   imageBroken: boolean
-  /** settings.ai_platform; the picker follows it until the designer chooses. */
+  /** settings.region_ring_pct: the soft-blend ring around the box, % of the image width (default 3). */
+  ringPct: number
+  /** Preselected platform; the picker follows it until the designer chooses (the page passes 'openrouter'). */
   defaultPlatform: AiPlatform
+  /** settings.ai_platform, so the picker can say when the pick differs from the studio default. */
+  studioDefault: AiPlatform
   busy: boolean
   onClose: () => void
   onSubmit: (args: EditRegionSubmit) => void
@@ -61,7 +72,9 @@ export function EditRegionDialog({
     return () => ro.disconnect()
   }, [imageUrl])
 
-  // Paint the dimmed outside + the rectangle outline.
+  const ringPx = natural ? ringPxFor(natural.w, ringPct) : null
+
+  // Paint the dimmed outside, the lighter blend ring, the clear box, the ring's dashed line and the box outline.
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || !display.w || !display.h) return
@@ -73,13 +86,35 @@ export function EditRegionDialog({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, display.w, display.h)
     if (!rect) return
-    ctx.fillStyle = 'rgba(0,0,0,0.45)'
-    ctx.fillRect(0, 0, display.w, display.h)
     const x = rect.x * display.w
     const y = rect.y * display.h
     const w = rect.w * display.w
     const h = rect.h * display.h
+    // The ring in display pixels: ring_px of the natural image, scaled like the picture.
+    const ringDisplay = natural && ringPx ? (ringPx * display.w) / natural.w : 0
+    const ring = expandRectPx({ x, y, w, h }, ringDisplay, display.w, display.h)
+    ctx.fillStyle = 'rgba(0,0,0,0.45)'
+    ctx.fillRect(0, 0, display.w, display.h)
+    ctx.clearRect(ring.x, ring.y, ring.w, ring.h)
+    ctx.fillStyle = 'rgba(0,0,0,0.2)'
+    ctx.fillRect(ring.x, ring.y, ring.w, ring.h)
     ctx.clearRect(x, y, w, h)
+    if (ringDisplay > 0) {
+      // 1 px dashed line where the blend ends: white dashes over black ones offset by half a period, readable on any colour.
+      const rx = ring.x + 0.5
+      const ry = ring.y + 0.5
+      const rw = Math.max(0, ring.w - 1)
+      const rh = Math.max(0, ring.h - 1)
+      ctx.lineWidth = 1
+      ctx.setLineDash([6, 4])
+      ctx.lineDashOffset = 5
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)'
+      ctx.strokeRect(rx, ry, rw, rh)
+      ctx.lineDashOffset = 0
+      ctx.strokeStyle = '#ffffff'
+      ctx.strokeRect(rx, ry, rw, rh)
+      ctx.setLineDash([])
+    }
     ctx.lineWidth = 2
     ctx.strokeStyle = '#ffffff'
     ctx.strokeRect(x, y, w, h)
@@ -88,7 +123,7 @@ export function EditRegionDialog({
     ctx.setLineDash([4, 3])
     ctx.strokeRect(x + 1, y + 1, Math.max(0, w - 2), Math.max(0, h - 2))
     ctx.setLineDash([])
-  }, [rect, display])
+  }, [rect, display, natural, ringPx])
 
   const toFraction = (e: PointerEvent<HTMLCanvasElement>) => {
     const r = e.currentTarget.getBoundingClientRect()
@@ -140,8 +175,8 @@ export function EditRegionDialog({
     <Dialog
       open
       size="xl"
-      title="Edit region"
-      description="Drag a rectangle around the problem, then say what should change inside it. Everything outside stays as it is."
+      title="Fix an area"
+      description="Drag a rectangle around the problem, then say what should change inside it. Everything beyond the dashed line stays exactly as it is."
       onClose={onClose}
       footer={
         <>
@@ -191,9 +226,19 @@ export function EditRegionDialog({
               />
             </div>
           )}
+          {rect && (
+            <p className="mt-1.5 flex items-start gap-1.5 text-xs text-neutral-700 dark:text-neutral-300">
+              <svg aria-hidden="true" viewBox="0 0 18 8" className="mt-1 h-2 w-[18px] shrink-0">
+                <line x1="0" y1="4" x2="18" y2="4" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 3" />
+              </svg>
+              Pixels between your box and this line may be softly blended; nothing beyond this line will change.
+            </p>
+          )}
           <p className="mt-1 text-xs text-neutral-500">
             {natural ? `Image ${natural.w} × ${natural.h} px.` : ''}{' '}
-            {px ? `Region ${px.w} × ${px.h} px at (${px.x}, ${px.y}).` : 'No region yet — drag on the image or type pixel values.'}
+            {px
+              ? `Region ${px.w} × ${px.h} px at (${px.x}, ${px.y}).${ringPx !== null ? ` Blend ring ${ringPx} px.` : ''}`
+              : 'No region yet — drag on the image or type pixel values.'}
           </p>
         </div>
 
@@ -230,12 +275,16 @@ export function EditRegionDialog({
             value={platform}
             onChange={setPickedPlatform}
             disabled={busy}
-            studioDefault={defaultPlatform}
+            studioDefault={studioDefault}
             size="sm"
           />
+          {platform !== 'openrouter' && (
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              Fix an area is tuned on OpenRouter. Kie runs the same request untested.
+            </p>
+          )}
           <p className="text-xs text-neutral-500">
-            The mask is a white rectangle on black at full image size. After the edit, QC measures drift outside the mask and
-            flags anything above 3 %.
+            GPT Image 2.5 redraws the whole design; the app keeps only your area (about $0.07 per fix).
           </p>
           {rect && (
             <button type="button" onClick={() => setRect(null)} className={`${btnSecondary} ${btnSmall} lg:hidden`}>
