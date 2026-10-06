@@ -8,12 +8,19 @@
 // paragraph of the architect plan CONTRACTS F4, the previous version as the SECOND image, pass-through for edit_text), Fail Message
 // (no OpenRouter prefix on Region composite errors), Edit Context rawPath, the three new HTTP nodes, the wiring, the 7 removed nodes,
 // the 20-line rule and quote-free top-level comments. The escaping audit of wf3-edit.sdk.js runs in test-wf2-prompts.js.
+// Since 2026-10-06 Build OpenRouter Image prunes its body to the capability descriptor of the model (OpenRouter validates image parameters per
+// model): the node awaits this.helpers.httpRequest, so it runs as the async function n8n wraps it in (runAsync, this = ctx: {} = static table,
+// caps.ctxFixtures() = the saved live descriptors under fixtures/openrouter-caps); the region body stays byte-identical to the probe, edit_text
+// loses resolution / output_format, and the same jsCode is checked under the BEFORE fixtures (= the hot-fix on the live graph). Round 2: a region
+// parent stored 4:5 maps to 3:4 on GPT Image, and fit (the parent's real pixel size from mask_rect) makes the node throw before the paid call when
+// the ratio sent is more than 1 % off the real shape - region-composite would refuse it (size_mismatch 422, never stretched).
 // Usage: node test-wf3-region.js
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { parseWorkflowCodeToBuilder } = require('@n8n/workflow-sdk');
 const { templateFromSql } = require('./template-from-migrations.js');
+const caps = require('./openrouter-caps.js');
 
 const stripImport = (raw) => raw.split('\n').filter((l) => !/^\s*import\s.*from\s+['"]@n8n\/workflow-sdk['"]/.test(l)).join('\n');
 const parse = (raw) => parseWorkflowCodeToBuilder(stripImport(raw)).toJSON();
@@ -41,6 +48,12 @@ function run(code, data, inputItems) {
   const items = inputItems.map((json) => ({ json }));
   const $input = { first: () => items[0], all: () => items };
   return new Function('$', '$input', '$json', code)(mock$(data), $input, inputItems[0]);
+}
+// a Code node that awaits (Build OpenRouter Image): n8n wraps the code in an async function with this = the node context (helpers.httpRequest)
+function runAsync(code, data, inputItems, ctx) {
+  const items = inputItems.map((json) => ({ json }));
+  const $input = { first: () => items[0], all: () => items };
+  return new caps.AsyncFunction('$', '$input', '$json', code).call(ctx, mock$(data), $input, inputItems[0]);
 }
 // an n8n parameter value: "={{ expr }}" (single expression) or "=text {{ expr }} text" (template)
 function evalParam(value, data, $json) {
@@ -110,27 +123,91 @@ const svjT = JSON.parse(evalParam(svj, { 'Create Edit Task': [{ data: { taskId: 
 const svjOld = JSON.parse(evalParam(nodeOf(before, 'Save Vendor Job').parameters.jsonBody, { 'Create Edit Task': [{ data: { taskId: 't1' } }] }));
 check(svjR.model === 'gpt-image-2-5-sunburst-image-to-image' && same(svjT, svjOld) && same(Object.keys(svjR), ['vendor_job_id', 'vendor', 'model', 'status']), 'Save Vendor Job: model = Build Edit Task body.model (Sunburst for a region; edit_text body identical to the live literal google/nano-banana-edit)');
 
-// ---- Build OpenRouter Image ----------------------------------------------------------------------------------------------------
+// ---- Build OpenRouter Image (2026-10-06: the body is pruned to what the model accepts - live descriptor, static table as fallback) --------
+// async checks (the node awaits); they run after the sync sections below, and the summary waits for them
 const borNew = codeOf(after, 'Build OpenRouter Image'), borOld = codeOf(before, 'Build OpenRouter Image');
-const borRun = (code, pe, $json, bet) => run(code, { 'Prompt Engine': [pe], 'Build Edit Task': [bet] }, [$json]).json.body;
+const HOTFIX_FILE = path.resolve(__dirname, '..', 'ops', 'hotfix-2026-10-06-openrouter-params', 'wf3-edit.hotfix.sdk.js');
+const borRun = (code, pe, $json, bet, ctx) => runAsync(code, { 'Prompt Engine': [pe], 'Build Edit Task': [bet] }, [$json], ctx).then((o) => o.json);
+const borOldRun = (pe, $json, bet) => run(borOld, { 'Prompt Engine': [pe], 'Build Edit Task': [bet] }, [$json]).json.body;
+const omit = (o, keys) => Object.fromEntries(Object.entries(o).filter(([k]) => !keys.includes(k)));
 const KEYS = ['model', 'prompt', 'input_references', 'aspect_ratio', 'quality', 'background', 'n'];
-const borR = borRun(borNew, F.pe, betR, betR);
-check(same(Object.keys(borR), KEYS) && borR.model === 'openai/gpt-image-2.5-sunburst' && borR.quality === 'high' && borR.n === 1 && borR.background === 'opaque' && borR.aspect_ratio === '1:1' && borR.input_references.length === 2, 'Build OpenRouter Image region (from Image Platform?): exactly the keys ' + KEYS.join(',') + ', model openai/gpt-image-2.5-sunburst, quality high, n 1, two input_references');
-for (const cid of Object.keys(cases)) {
-  const f = regionFixture(cid);
-  const bet = betRun(betNew, f.pe, f.plan, f.signed);
-  const b = borRun(borNew, f.pe, bet, bet);
-  check(JSON.stringify(b) === JSON.stringify(f.body), 'Build OpenRouter Image region ' + cid + ': the request body is byte-identical (JSON) to the probe body ' + cid + '_A_mask that measured shift 0');
+const TEXT_KEYS = ['model', 'prompt', 'n', 'aspect_ratio', 'input_references'];
+const peT = { ...textPe, openrouter_models: { edit: 'google/gemini-2.5-flash-image' } };
+const betTOr = betRun(betNew, peT, F.plan, F.signed);
+async function openRouterChecks() {
+  const borR = await borRun(borNew, F.pe, betR, betR, {});
+  check(same(Object.keys(borR.body), KEYS) && borR.body.model === 'openai/gpt-image-2.5-sunburst' && borR.body.quality === 'high' && borR.body.n === 1 && borR.body.background === 'opaque' && borR.body.aspect_ratio === '1:1' && borR.body.input_references.length === 2 && same(borR.dropped, []) && same(borR.mapped, []) && same(Object.keys(borR), ['body', 'dropped', 'mapped', 'caps_source']) && borR.caps_source === 'static', 'Build OpenRouter Image region (from Image Platform?): item {body, dropped, mapped, caps_source}, exactly the keys ' + KEYS.join(',') + ', model openai/gpt-image-2.5-sunburst, quality high, n 1, two input_references, nothing dropped or mapped, caps_source static');
+  const borRL = await borRun(borNew, F.pe, betR, betR, caps.ctxFixtures());
+  check(same(borRL.body, borR.body) && same(borRL.dropped, []) && same(borRL.mapped, []) && borRL.caps_source === 'live', 'Build OpenRouter Image region with the live Sunburst descriptor: the same body (every key is supported), nothing dropped or mapped, caps_source live');
+  for (const cid of Object.keys(cases)) {
+    const f = regionFixture(cid);
+    const bet = betRun(betNew, f.pe, f.plan, f.signed);
+    const o = await borRun(borNew, f.pe, bet, bet, {}), ol = await borRun(borNew, f.pe, bet, bet, caps.ctxFixtures());
+    check(JSON.stringify(o.body) === JSON.stringify(f.body) && JSON.stringify(ol.body) === JSON.stringify(f.body) && same(o.mapped, []) && same(ol.mapped, []), 'Build OpenRouter Image region ' + cid + ': the request body is byte-identical (JSON) to the probe body ' + cid + '_A_mask that measured shift 0 (static table and live descriptor), mapped []');
+  }
+  // a parent stored 4:5 (back / full_front / tote): Sunburst lists no 4:5, so the candidate maps to 3:4 - and fit (the parent's real pixel size, mask_rect width x height)
+  // decides whether that shape can composite: region-composite refuses a regeneration more than 1 % off the parent image (size_mismatch 422, never stretched)
+  const pe45 = { ...F.pe, aspect_ratio: '4:5', region: { ...F.region, aspect_ratio: '4:5', rect: { ...F.region.rect, width: 1024, height: 1365 } } };  // Sunburst-made parent: stored 4:5 (the mapped WF-2 request), really 3:4
+  const bor45 = await borRun(borNew, pe45, betR, betR, caps.ctxFixtures()), bor45s = await borRun(borNew, pe45, betR, betR, {});
+  check(same(Object.keys(bor45.body), KEYS) && bor45.body.aspect_ratio === '3:4' && same(bor45.mapped, ['aspect_ratio 4:5 to 3:4']) && same(bor45.dropped, []) && same(bor45s.body, bor45.body) && same(bor45s.mapped, bor45.mapped) && same({ ...bor45.body, aspect_ratio: '1:1' }, borRL.body), 'Build OpenRouter Image region of a Sunburst-made parent (stored 4:5, really 1024x1365 = 3:4): aspect_ratio 4:5 -> 3:4 (nearest listed ratio), mapped [aspect_ratio 4:5 to 3:4], nothing dropped, every other key as in the probe body, no throw (3:4 is within 1 % of the real shape) - live and static');
+  const peKie45 = { ...pe45, region: { ...pe45.region, rect: { ...F.region.rect, width: 1638, height: 2048 } } };  // Kie- or Gemini-made parent: stored 4:5 and really 4:5
+  const MSG45 = 'Fix an area cannot run on this 1638x2048 px design - the image model lists no aspect ratio within 1 percent of that shape (nearest 3 by 4) and the composite step never stretches a regeneration, so none was started';
+  const thrown45 = await Promise.all([borRun(borNew, peKie45, betR, betR, caps.ctxFixtures()).then(() => null, (e) => e.message), borRun(borNew, peKie45, betR, betR, {}).then(() => null, (e) => e.message)]);
+  check(thrown45[0] === MSG45 && thrown45[1] === MSG45 && !/:/.test(MSG45) && Math.abs(0.75 / 0.8 - 1) > 0.01, 'Build OpenRouter Image region of a really 4:5 parent (1638x2048, Kie- or Gemini-made) on GPT Image: 3:4 is 6.25 % off the real shape and region-composite would answer size_mismatch 422 after the paid call, so the node throws the colon-free message before it - live and static');
+  const borKieG = await borRun(borNew, { ...peKie45, region: { ...peKie45.region, openrouter_model: 'google/gemini-2.5-flash-image' } }, betR, betR, caps.ctxFixtures());
+  check(borKieG.body.aspect_ratio === '4:5' && same(borKieG.mapped, []) && borKieG.body.model === 'google/gemini-2.5-flash-image', 'Build OpenRouter Image region of a really 4:5 parent on a region model that lists 4:5 (gemini-2.5-flash-image): 4:5 kept, no throw');
+  const borNoSize = await borRun(borNew, { ...peKie45, region: { ...peKie45.region, rect: { x: 1, y: 1, w: 2, h: 2 } } }, betR, betR, caps.ctxFixtures());
+  check(borNoSize.body.aspect_ratio === '3:4' && same(borNoSize.mapped, ['aspect_ratio 4:5 to 3:4']), 'Build OpenRouter Image region without a real size in mask_rect (no width / height): fit is null, no shape check, the mapped 3:4 is sent (the pre-fit behaviour)');
+  const bor32 = await borRun(borNew, { ...F.pe, aspect_ratio: '3:2', region: { ...F.region, aspect_ratio: '3:2', rect: { ...F.region.rect, width: 2048, height: 1365 } } }, betR, betR, caps.ctxFixtures());
+  check(bor32.body.aspect_ratio === '3:2' && same(bor32.mapped, []) && same(Object.keys(bor32.body), KEYS), 'Build OpenRouter Image region of a mug parent (stored 3:2, really 2048x1365): listed, kept, within 1 %, no throw');
+  const viaDown = [await borRun(borNew, F.pe, { body: betR.body }, betR, {}), await borRun(borNew, F.pe, { code: 500, msg: 'server busy' }, betR, {}), await borRun(borNew, F.pe, { error: { message: 'Kie down' } }, betR, {})];
+  check(viaDown.every((o) => same(o, borR)), 'Build OpenRouter Image region via Kie Image Down? (a Kie body with input_urls, a Task Created? false item, a Create Edit Task error item): the same body');
+  const borCustom = await borRun(borNew, { ...F.pe, openrouter_models: { ...F.pe.openrouter_models, region: 'openai/gpt-image-2.5-custom' }, region: { ...F.region, openrouter_model: undefined } }, betR, betR, {});
+  check(borCustom.body.model === 'openai/gpt-image-2.5-custom', 'Build OpenRouter Image region: settings openrouter_models.region is used when the region block names no model');
+  const borT = await borRun(borNew, peT, betTOr, betTOr, {}), borTOld = borOldRun(peT, betTOr, betTOr);
+  check(same(Object.keys(borTOld), ['model', 'prompt', 'n', 'aspect_ratio', 'resolution', 'output_format', 'input_references']) && borTOld.resolution === '2K' && borTOld.output_format === 'png', 'Build OpenRouter Image edit_text, live (BEFORE) node: Nano Banana model, resolution 2K, output_format png - the body OpenRouter now rejects for GPT Image');
+  check(same(Object.keys(borT.body), TEXT_KEYS) && same(borT.body, omit(borTOld, ['resolution', 'output_format'])) && same(borT.dropped, ['resolution', 'output_format']) && borT.caps_source === 'static' && borT.body.model === 'google/gemini-2.5-flash-image' && borT.body.input_references.length === 2, 'Build OpenRouter Image edit_text (static table): the live body minus resolution / output_format (same values, same order), dropped [resolution, output_format], caps_source static');
+  const borTL = await borRun(borNew, peT, betTOr, betTOr, caps.ctxFixtures());
+  check(same(borTL.body, borT.body) && same(borTL.dropped, ['resolution', 'output_format']) && borTL.caps_source === 'live', 'Build OpenRouter Image edit_text with the live gemini-2.5-flash-image fixture: the same body, caps_source live');
+  const bet4 = { ...betTOr, body: { ...betTOr.body, input: { ...betTOr.body.input, image_urls: [...F.urls, F.urls[0] + '&c', F.urls[0] + '&d'] } } };
+  const borT4 = await borRun(borNew, peT, bet4, bet4, caps.ctxFixtures()), borT4s = await borRun(borNew, peT, bet4, bet4, {});
+  check(borT4.body.input_references.length === 3 && borT4.body.input_references[0].image_url.url === F.urls[0] && borT4.body.input_references[2].image_url.url === F.urls[0] + '&c' && borT4s.body.input_references.length === 4, 'Build OpenRouter Image edit_text, 4 images: input_references trimmed to the first 3 by the live range (max 3); the static table has no ranges');
+  const borG3 = await borRun(borNew, { ...peT, openrouter_models: { edit: 'google/gemini-3-pro-image-preview' } }, betTOr, betTOr, caps.ctxFixtures());
+  check(same(Object.keys(borG3.body), ['model', 'prompt', 'n', 'aspect_ratio', 'resolution', 'input_references']) && borG3.body.resolution === '2K' && same(borG3.dropped, ['output_format']) && borG3.caps_source === 'live', 'Build OpenRouter Image edit_text on google/gemini-3-pro-image-preview: resolution 2K kept, only output_format dropped');
+  const borAuto = await borRun(borNew, { ...peT, aspect_ratio: 'auto' }, betTOr, betTOr, caps.ctxFixtures()), borAutoS = await borRun(borNew, { ...peT, aspect_ratio: 'auto' }, betTOr, betTOr, {});
+  check(!('aspect_ratio' in borAuto.body) && same(borAuto.dropped, ['aspect_ratio', 'resolution', 'output_format']) && same(borAuto.mapped, []) && same(borAutoS.dropped, borAuto.dropped), 'Build OpenRouter Image edit_text: aspect_ratio auto is not in the gemini enum and not a ratio to map - dropped with the live descriptor and with the static ratio list');
+  const borT45 = await borRun(borNew, { ...peT, aspect_ratio: '4:5' }, betTOr, betTOr, caps.ctxFixtures()), borT45s = await borRun(borNew, { ...peT, aspect_ratio: '4:5' }, betTOr, betTOr, {});
+  check(borT45.body.aspect_ratio === '4:5' && same(borT45.mapped, []) && borT45s.body.aspect_ratio === '4:5' && same(borT45s.mapped, []) && same(borT45.dropped, ['resolution', 'output_format']), 'Build OpenRouter Image edit_text of a 4:5 parent on google/gemini-2.5-flash-image: 4:5 is listed, kept, mapped [] - live and static');
+  const borUnk = await borRun(borNew, { ...peT, openrouter_models: { edit: 'acme/pixel-1' } }, betTOr, betTOr, caps.ctxFixtures());
+  check(same(Object.keys(borUnk.body), TEXT_KEYS) && borUnk.caps_source === 'static' && borUnk.body.model === 'acme/pixel-1', 'Build OpenRouter Image edit_text on an unknown model (descriptor GET fails): the common set via the static table');
+  const borBad = await borRun(borNew, peT, betTOr, betTOr, caps.ctxWith(() => { throw new Error('ECONNRESET'); }));
+  const borJunk = await borRun(borNew, peT, betTOr, betTOr, caps.ctxWith({ data: { endpoints: [{ supported_parameters: ['aspect_ratio'] }] } }));
+  const borNoThis = await runAsync(borNew, { 'Prompt Engine': [peT], 'Build Edit Task': [betTOr] }, [betTOr], undefined).then((o) => o.json);
+  check(same(borBad, borT) && same(borJunk, borT) && same(borNoThis, borT), 'Build OpenRouter Image: the helper throwing, answering garbage, or no node context -> the static table, same body, never a node error');
+  let err = null;
+  try { await borRun(borNew, peT, { body: { input: {} } }, { body: { input: {} } }, {}); } catch (e) { err = e; }
+  check(err && err.message === 'no edit request to send to OpenRouter', 'Build OpenRouter Image without a prompt throws the colon-free message no edit request to send to OpenRouter');
+  // the hot-fix on the LIVE graph (no region lane): BEFORE node head (image_urls only, no region branch) + the pruning tail of the main node, byte for byte
+  const hot = parse(fs.readFileSync(HOTFIX_FILE, 'utf8')), hotCode = codeOf(hot, 'Build OpenRouter Image');
+  const beforeHead = borOld.split('\n').slice(0, -1).join('\n');
+  check(borOld.endsWith('\nreturn { json: { body } };') && hotCode === beforeHead + '\n' + caps.pruningTailOf(borNew) && hotCode !== borNew && caps.pruningTailOf(hotCode) === caps.pruningTailOf(borNew) && !/region/.test(hotCode) && hotCode.split('\n').length <= 20, 'hot-fix wf3-edit.hotfix.sdk.js: Build OpenRouter Image jsCode = the BEFORE node minus its return line + the pruning tail of the main node (no region branch - the live graph has no region lane), tail byte-identical, ' + hotCode.split('\n').length + ' lines');
+  const liveOld = borOldRun(textPe, betTOld, betTOld);
+  const hotS = await borRun(hotCode, textPe, betTOld, betTOld, {}), hotL = await borRun(hotCode, textPe, betTOld, betTOld, caps.ctxFixtures());
+  check(same(hotS.body, omit(liveOld, ['resolution', 'output_format'])) && same(Object.keys(hotS.body), TEXT_KEYS) && same(hotS.dropped, ['resolution', 'output_format']) && same(hotS.mapped, []) && hotS.caps_source === 'static' && same(hotL.body, hotS.body) && hotL.caps_source === 'live' && hotS.body.model === 'google/gemini-2.5-flash-image', 'hot-fix under the BEFORE fixtures (live Build Edit Task output, textPe without region or openrouter_models): the live body minus resolution / output_format, mapped [], static and live');
+  const mainS = await borRun(borNew, textPe, betTOld, betTOld, {});
+  check(same(mainS, hotS), 'the main node under the same BEFORE fixtures builds the same item (region absent = its edit branch)');
+  // prompt-engine v8.1 deployed before Step C: pe.region PRESENT, Build Edit Task = the live node (Nano Banana, image_urls [design, mask]) -> the hot-fix still takes the edit path
+  const betRegOld = betRun(betOld, F.pe, F.plan, F.signed);
+  const hotReg = await borRun(hotCode, F.pe, betRegOld, betRegOld, caps.ctxFixtures()), mainReg = await borRun(borNew, F.pe, betRegOld, betRegOld, caps.ctxFixtures());
+  check(betRegOld.body.model === 'google/nano-banana-edit' && same(Object.keys(hotReg.body), TEXT_KEYS) && hotReg.body.model === 'google/gemini-2.5-flash-image' && !('quality' in hotReg.body) && hotReg.body.prompt === betRegOld.body.input.prompt && same(hotReg.body.input_references.map((r) => r.image_url.url), F.urls) && same(hotReg.dropped, ['resolution', 'output_format']) && same(hotReg.mapped, []), 'hot-fix with pe.region PRESENT under the BEFORE Build Edit Task: still the edit path (gemini-2.5-flash-image, the Nano Banana prompt, design + mask as input_references, no quality) - the hot-fix cannot change behaviour on the live graph whatever prompt-engine is deployed');
+  check(mainReg.body.model === 'openai/gpt-image-2.5-sunburst' && mainReg.body.quality === 'high' && mainReg.body.prompt === F.region.prompt, 'the main node under the same inputs takes the region branch (Sunburst, quality high, the region prompt) - that is Step C, not the hot-fix');
+  const hotKie = await borRun(hotCode, peKie45, betRegOld, betRegOld, caps.ctxFixtures());
+  check(!/const fit = /.test(hotCode) && /typeof fit === 'string'/.test(hotCode) && hotKie.body.model === 'google/gemini-2.5-flash-image' && hotKie.body.aspect_ratio === '4:5' && same(hotKie.mapped, []), 'hot-fix with pe.region PRESENT for a really 4:5 Kie parent (mask_rect 1638x2048): the BEFORE head defines no fit, so the shape check of the shared tail is inert - still the edit path, gemini-2.5-flash-image keeps 4:5, nothing thrown (the main node throws before the paid call; that is Step C)');
+  const mark = JSON.parse(evalParam(nodeOf(after, 'Mark OpenRouter').parameters.jsonBody, { 'Build OpenRouter Image': [borR] }));
+  check(mark.model === 'openai/gpt-image-2.5-sunburst' && mark.vendor === 'openrouter', 'Mark OpenRouter (unchanged node): stores model openai/gpt-image-2.5-sunburst for a region (reads body.model of the new item shape)');
+  const orBody = JSON.parse(evalParam(nodeOf(after, 'OpenRouter Image').parameters.jsonBody, { 'Build OpenRouter Image': [bor45], 'Load Config': [cfg] }));
+  check(same(orBody, bor45.body) && orBody.aspect_ratio === '3:4', 'OpenRouter Image (unchanged node): posts exactly body (the mapped 3:4) - dropped, mapped and caps_source stay in the item, never in the request');
 }
-check(same(borRun(borNew, F.pe, { body: betR.body }, betR), borR) && same(borRun(borNew, F.pe, { code: 500, msg: 'server busy' }, betR), borR) && same(borRun(borNew, F.pe, { error: { message: 'Kie down' } }, betR), borR), 'Build OpenRouter Image region via Kie Image Down? (a Kie body with input_urls, a Task Created? false item, a Create Edit Task error item): the same body');
-const borCustom = borRun(borNew, { ...F.pe, openrouter_models: { ...F.pe.openrouter_models, region: 'openai/gpt-image-2.5-custom' }, region: { ...F.region, openrouter_model: undefined } }, betR, betR);
-check(borCustom.model === 'openai/gpt-image-2.5-custom', 'Build OpenRouter Image region: settings openrouter_models.region is used when the region block names no model');
-const betTOr = betRun(betNew, { ...textPe, openrouter_models: { edit: 'google/gemini-2.5-flash-image' } }, F.plan, F.signed);
-const borT = borRun(borNew, { ...textPe, openrouter_models: { edit: 'google/gemini-2.5-flash-image' } }, betTOr, betTOr);
-const borTOld = borRun(borOld, { ...textPe, openrouter_models: { edit: 'google/gemini-2.5-flash-image' } }, betTOr, betTOr);
-check(JSON.stringify(borT) === JSON.stringify(borTOld) && borT.model === 'google/gemini-2.5-flash-image' && borT.resolution === '2K' && borT.input_references.length === 2, 'Build OpenRouter Image edit_text: byte-identical to the live node (Nano Banana model, resolution, output_format png)');
-const mark = JSON.parse(evalParam(nodeOf(after, 'Mark OpenRouter').parameters.jsonBody, { 'Build OpenRouter Image': [{ body: borR }] }));
-check(mark.model === 'openai/gpt-image-2.5-sunburst' && mark.vendor === 'openrouter', 'Mark OpenRouter (unchanged node): stores model openai/gpt-image-2.5-sunburst for a region');
 
 // ---- Region QC Prompt ------------------------------------------------------------------------------------------------------------
 const PARA_TPL = 'REGION EDIT - this design is a targeted edit of its previous version. Only the area from {x0}% to {x1}% across and {y0}% to {y1}% down the image was asked to change, with this instruction: "{instruction}". Pixels just around that area may be softly blended. {prev}The colours and objects this instruction asks for are intended - never report them as a palette, subject or forbid problem. Add a key "region" to your JSON: {"instruction_done":true|false (the requested change is clearly done inside that area),"seam_visible":true|false (a visible edge, step, colour jump, halo or ghosted or duplicated shape along the border of that area),"object_cut_off":true|false (the new or changed element is sliced, cropped or fades out at the border of that area),"text_changed":true|false|null ({lettering}; null when no lettering lies inside or touches that area),"notes":"<= 25 words"}. This key never changes "pass" or the 9 checks.';
@@ -235,7 +312,8 @@ check(topComments.every((l) => !/['"`]/.test(l)), 'top-level comments of wf3-edi
 const throwsIn = (name) => (codeOf(after, name).match(/throw new Error\(([^;]*)\);/g) || []);
 const badThrows = ['Build Edit Task', 'Build OpenRouter Image', 'Region QC Prompt'].flatMap((n) => throwsIn(n).filter((t) => /:/.test(t)).map((t) => n + ' ' + t));
 check(!badThrows.length, 'thrown messages of Build Edit Task, Build OpenRouter Image and Region QC Prompt carry no colon' + (badThrows.length ? ' ' + JSON.stringify(badThrows) : ''));
-for (const n of codeNodes) { let ok = true; try { new Function('$', '$input', '$json', String(n.parameters.jsCode)); } catch (e) { ok = false; } if (!ok) check(false, 'jsCode compiles: ' + n.name); }
+check(!/\\/.test(borNew) && borNew.split('\n').filter((l) => /^\s*\/\//.test(l)).length === 2 && /catch \{/.test(borNew) && /timeout: 5000/.test(borNew) && /const fit = region && region\.rect/.test(borNew) && /typeof fit === 'string'/.test(caps.pruningTailOf(borNew)), 'Build OpenRouter Image: no backslash in the jsCode, two quote-free top-level comments, optional catch binding, 5 s descriptor timeout, the head defines fit from region.rect and the shared tail reads it with typeof');
+for (const n of codeNodes) { let ok = true; try { new caps.AsyncFunction('$', '$input', '$json', String(n.parameters.jsCode)); } catch (e) { ok = false; } if (!ok) check(false, 'jsCode compiles: ' + n.name); }  // async: n8n wraps the code in an async function
 
-console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
-process.exit(failures ? 1 : 0);
+const finish = () => { console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed'); process.exit(failures ? 1 : 0); };
+openRouterChecks().then(finish, (e) => { check(false, 'Build OpenRouter Image checks threw ' + ((e && e.stack) || e)); finish(); });

@@ -15,6 +15,16 @@ Until then the studio runs exactly as before.
 The full, ordered runbook with checks and rollback is `n8n/ops/README.md`. Order (rule R1 — never activate a template before its workflow is
 published):
 
+0a. **Hot-fix first (2026-10-06, independent of everything below; `n8n/ops/README.md` section 0):** OpenRouter now rejects `resolution` /
+   `output_format` for GPT Image, so every OpenRouter generate fails (E2E-022). Apply the bundle `n8n/ops/hotfix-2026-10-06-openrouter-params/`
+   = one `Build OpenRouter Image` node update per workflow.
+   Route A (n8n UI): paste the bundle's `wf2-build-openrouter-image.js` into `Build OpenRouter Image` of WF-2 `KVLDYPaWZZZtOoir` and
+   `wf3-build-openrouter-image.js` into the same node of WF-3 `V83NWHjzDdyiqtNP`, Save, Publish.
+   Route B (MCP): `update_workflow` with the bundle's `wf2.ops.json` then `publish_workflow KVLDYPaWZZZtOoir`; `wf3.ops.json` then `publish_workflow V83NWHjzDdyiqtNP`.
+   Then the USER retries card 2e99c36b (Chicken Happy Hour, a 4:5 back placement); the execution's `Build OpenRouter Image` item lists
+   `dropped: ["resolution","output_format"]`, `mapped: ["aspect_ratio 4:5 to 3:4"]` (GPT Image has no 4:5; the design comes back 3:4) and
+   `caps_source: "live"`.
+   Step C below re-applies the WF-2 node idempotently and adds the region branch to the WF-3 node (the hot-fix node is region-free).
 0. Apply `supabase/migrations/20261005_studio_29b_region_child_no_notify.sql` as one script (SQL editor or execute_sql; its final DO block
    raises unless the trigger gate is visible, so a silent success is the proof) and run the two studio_29b checks of `n8n/ops/README.md`
    section 2 (`pg_get_triggerdef` shows `WHEN (... new.status = 'queued' ...)`). Harmless to the live WF-3: request_edit still fires.
@@ -48,7 +58,10 @@ come back without their typed schema and every call is rejected ("Expected array
 
 ## Paste this into a fresh Claude Code session opened on `/Users/macbookair/projects/dm-studio`
 
-> Deploy Style Card v2 by following `n8n/ops/README.md` exactly: first apply `supabase/migrations/20261005_studio_29b_region_child_no_notify.sql`
+> Deploy Style Card v2 by following `n8n/ops/README.md` exactly. FIRST action (section 0, hot-fix E2E-022): apply
+> `n8n/ops/hotfix-2026-10-06-openrouter-params/wf2.ops.json` with the n8n MCP `update_workflow` on `KVLDYPaWZZZtOoir` then `publish_workflow`,
+> and `wf3.ops.json` on `V83NWHjzDdyiqtNP` then `publish_workflow`; do NOT retry card 2e99c36b or any Chicken Happy Hour card - the user does that
+> retry; report that the hot-fix is live and move on. Then apply `supabase/migrations/20261005_studio_29b_region_child_no_notify.sql`
 > with execute_sql as one script (it self-checks) and run its two checks, then section 2, then Steps A, B and C, including every check and smoke test
 > (spend at most one Analyse ≈ $0.05, one card ≈ $0.10 and one Fix an area ≈ $0.07 on the E2E Test Client `bef63960-2c70-47a3-b727-2c08165b5dae`; never touch the
 > client "Chicken Happy Hour"). Deploy Edge Functions `style-card-check`, `prompt-engine`, `qc-judge`, `region-composite` with the Supabase MCP
@@ -60,6 +73,9 @@ come back without their typed schema and every call is rejected ("Expected array
 
 ## Doing it by hand instead
 
+- Hot-fix first (step 0a): in the n8n UI open WF-2 `KVLDYPaWZZZtOoir` -> node `Build OpenRouter Image` -> replace the JavaScript with the
+  bundle's `n8n/ops/hotfix-2026-10-06-openrouter-params/wf2-build-openrouter-image.js` -> Save -> Publish; same for WF-3 `V83NWHjzDdyiqtNP` with
+  `wf3-build-openrouter-image.js`. Then Retry card 2e99c36b.
 - SQL first: paste `supabase/migrations/20261005_studio_29b_region_child_no_notify.sql` into the Supabase SQL editor and run it whole (it raises
   unless the trigger gate is visible afterwards), then the two checks in `n8n/ops/README.md` section 2.
 - Edge Functions: `supabase login` with the account that owns the **DM a1** organisation, then the four `supabase functions deploy …

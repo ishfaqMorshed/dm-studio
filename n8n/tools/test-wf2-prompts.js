@@ -11,14 +11,20 @@
 // run against qc_prompt v2 + the paragraph 20261002_studio_28_qc_art_reference.sql appends (read from that migration; an embedded
 // copy of the decision wording is only the fallback), the Kie / OpenRouter vision bodies on both QC passes, WF-3 never attaching it,
 // the Decide Regen one-retry cap, the art corrective, and an escaping audit (SDK parse = plain Node evaluation of both files).
+// Since 2026-10-06 it also covers Build OpenRouter Image of WF-2: OpenRouter validates image parameters per model, so the node prunes its body to
+// the capability descriptor of the model (live fixture under fixtures/openrouter-caps via this.helpers.httpRequest, else the static table in the
+// node) and maps an aspect_ratio the model does not list to the nearest listed one (the user's 4:5 back placement -> 3:4 on GPT Image, item
+// mapped [...]); the node awaits, so it runs as the async function n8n wraps it in (runAsync + ctx for this, see openrouter-caps.js).
 // Usage: node test-wf2-prompts.js
 const fs = require('fs');
 const path = require('path');
 const { parseWorkflowCodeToBuilder } = require('@n8n/workflow-sdk');
+const caps = require('./openrouter-caps.js');
 
 const loadNodes = (file) => { const raw = fs.readFileSync(path.resolve(__dirname, '..', file), 'utf8').split('\n').filter((l) => !/^\s*import\s.*from\s+['"]@n8n\/workflow-sdk['"]/.test(l)).join('\n'); return parseWorkflowCodeToBuilder(raw).toJSON().nodes; };
 const wf2Nodes = loadNodes('wf2-generate.sdk.js');
 const wf3Nodes = loadNodes('wf3-edit.sdk.js');
+const wf2Before = loadNodes('ops/before/wf2-generate.sdk.js');
 const jsCodeOf = (nodes, name) => { const n = nodes.find((x) => x.name === name); if (!n) throw new Error('node not found: ' + name); return String(n.parameters.jsCode); };
 const jsCode = (name) => jsCodeOf(wf2Nodes, name);
 
@@ -421,7 +427,7 @@ for (const [file, nodes] of [['wf2-generate.sdk.js', wf2Nodes], ['wf3-edit.sdk.j
   const byName = (name) => native.find((c) => c && c.name === name);
   const codeNodes = nodes.filter((n) => n.type === 'n8n-nodes-base.code');
   const mismatch = codeNodes.filter((n) => !byName(n.name) || String(byName(n.name).parameters.jsCode) !== String(n.parameters.jsCode)).map((n) => n.name);
-  const broken = codeNodes.filter((n) => { try { new Function('$', '$input', '$json', '$execution', String(n.parameters.jsCode)); return false; } catch { return true; } }).map((n) => n.name);
+  const broken = codeNodes.filter((n) => { try { new caps.AsyncFunction('$', '$input', '$json', '$execution', String(n.parameters.jsCode)); return false; } catch { return true; } }).map((n) => n.name);  // async: n8n wraps the code in an async function (top-level await)
   const sticky = native.find((c) => c && c.name === 'sticky'), sdkSticky = nodes.find((n) => n.type === 'n8n-nodes-base.stickyNote');
   const strDiffs = [];
   const walk = (a, b, where) => { if (typeof a === 'string') { if (a !== b && !(typeof b === 'string' && ('=' + b === a || b === '=' + a))) strDiffs.push(where); return; } if (a && typeof a === 'object') for (const k of Object.keys(a)) walk(a[k], b && b[k], where + '.' + k); };
@@ -429,5 +435,88 @@ for (const [file, nodes] of [['wf2-generate.sdk.js', wf2Nodes], ['wf3-edit.sdk.j
   check(!mismatch.length && !broken.length && sticky && sdkSticky && sticky.content === String(sdkSticky.parameters.content || '') && !strDiffs.length, 'Escaping audit ' + file + ': ' + codeNodes.length + ' Code nodes, the sticky and every string parameter equal plain-JS evaluation, every jsCode compiles' + (mismatch.length || broken.length || strDiffs.length ? ' (jsCode mismatch ' + JSON.stringify(mismatch) + ', not compiling ' + JSON.stringify(broken) + ', strings ' + JSON.stringify(strDiffs.slice(0, 5)) + ')' : ''));
 }
 
-console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
-process.exit(failures ? 1 : 0);
+// ---- Build OpenRouter Image (2026-10-06: OpenRouter validates image parameters per model, the body is pruned to what the model accepts) ---
+// The node awaits this.helpers.httpRequest, so it runs as the async function n8n wraps it in, with this = ctx: {} = no helper = the static
+// table, caps.ctxFixtures() answers the descriptor GET from fixtures/openrouter-caps (= live). These checks run after the sync ones above.
+const borCode = jsCode('Build OpenRouter Image'), borBefore = jsCodeOf(wf2Before, 'Build OpenRouter Image');
+const mock$ = (data) => (name) => ({ get isExecuted() { return name in data; }, first: () => { if (!(name in data)) throw new Error('unmocked node ' + name); return { json: data[name][0] }; }, last: () => { if (!(name in data)) throw new Error('unmocked node ' + name); return { json: data[name][data[name].length - 1] }; }, all: () => { if (!(name in data)) throw new Error('unmocked node ' + name); return data[name].map((json) => ({ json })); } });
+const runAsync = (code, nodeData, inputItems, ctx) => new caps.AsyncFunction('$', '$input', '$json', '$execution', code).call(ctx, mock$(nodeData), { first: () => ({ json: inputItems[0] }), all: () => inputItems.map((json) => ({ json })) }, inputItems[0], { resumeUrl: 'https://n8n.example/webhook-waiting/1' });
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const omit = (o, keys) => Object.fromEntries(Object.entries(o).filter(([k]) => !keys.includes(k)));
+const OR_MODELS = { image: 'openai/gpt-image-2.5-sunburst', edit: 'google/gemini-2.5-flash-image', region: 'openai/gpt-image-2.5-sunburst', vision: 'google/gemini-3.1-pro-preview', text: 'anthropic/claude-sonnet-4.6' };
+const peOr = (image) => ({ ...pe, aspect_ratio: '1:1', openrouter_models: { ...OR_MODELS, image } });
+const kieItem = (overrides) => ({ body: { model: 'gpt-image-2-5-sunburst-image-to-image', input: { prompt: 'a bold illustrated bear', input_urls: ['https://sb/a?t=1', 'https://sb/b?t=2'], aspect_ratio: '1:1', resolution: '2K', background: 'opaque', ...(overrides || {}) } } });
+const borRun = (peX, item, ctx, extra) => runAsync(borCode, Object.assign({ 'Prompt Engine': [peX], 'Build Create Task': [item] }, extra || {}), [item], ctx).then((o) => o.json);
+async function openRouterChecks() {
+  const SUN_KEYS = ['model', 'prompt', 'n', 'aspect_ratio', 'background', 'input_references'];
+  const item = kieItem();
+  const old = run(borBefore, { 'Prompt Engine': [peOr(OR_MODELS.image)], 'Build Create Task': [item] }, [item]).json.body;
+  const st = await borRun(peOr(OR_MODELS.image), item, {});
+  check(same(Object.keys(st.body), SUN_KEYS) && same(st.dropped, ['resolution', 'output_format']) && same(st.mapped, []) && same(Object.keys(st), ['body', 'dropped', 'mapped', 'caps_source']) && st.caps_source === 'static' && st.body.model === 'openai/gpt-image-2.5-sunburst' && st.body.n === 1 && st.body.background === 'opaque' && st.body.input_references.length === 2, 'WF-2 Build OpenRouter Image, Sunburst 1:1, no helper (static table): item {body, dropped, mapped, caps_source}, body keys exactly ' + SUN_KEYS.join(',') + ', dropped [resolution, output_format], mapped [], caps_source static');
+  check(same(st.body, omit(old, ['resolution', 'output_format'])) && same(Object.keys(old), ['model', 'prompt', 'n', 'aspect_ratio', 'resolution', 'output_format', 'background', 'input_references']), 'WF-2 Build OpenRouter Image: the kept keys are byte-identical (JSON) to the live (BEFORE) body minus resolution / output_format - same values, same order');
+  const log = [];
+  const lv = await borRun(peOr(OR_MODELS.image), item, caps.ctxFixtures(log));
+  check(same(lv.body, st.body) && same(lv.dropped, ['resolution', 'output_format']) && lv.caps_source === 'live' && log.length === 1 && log[0].method === 'GET' && log[0].url === 'https://openrouter.ai/api/v1/images/models/openai/gpt-image-2.5-sunburst/endpoints' && log[0].json === true && log[0].timeout === 5000, 'WF-2 Build OpenRouter Image, Sunburst, live fixture descriptor: the same body, caps_source live, one GET .../images/models/openai/gpt-image-2.5-sunburst/endpoints (json true, timeout 5000)');
+  const thrown = await borRun(peOr(OR_MODELS.image), item, caps.ctxWith(() => { throw new Error('ECONNRESET'); }));
+  const rejected = await borRun(peOr(OR_MODELS.image), item, caps.ctxWith(() => Promise.reject(new Error('timeout of 5000ms exceeded'))));
+  check(same(thrown, st) && same(rejected, st), 'WF-2 Build OpenRouter Image: the helper throwing or rejecting (network, timeout, 404) -> the static table, same body, never a node error');
+  const garbage = [];
+  for (const g of ['garbage', null, {}, { data: 'x' }, { endpoints: 'x' }, { data: { endpoints: [{ supported_parameters: ['aspect_ratio', 'quality'] }] } }, { endpoints: [{ supported_parameters: {} }, {}] }, [{ aspect_ratio: { type: 'enum' } }]]) garbage.push(await borRun(peOr(OR_MODELS.image), item, caps.ctxWith(g)));
+  check(garbage.every((g) => same(g, st)), 'WF-2 Build OpenRouter Image: a helper answering garbage (string, null, {}, data not an object, endpoints not an array, supported_parameters as an array, empty descriptors) -> the static table, same body');
+  const noThis = await runAsync(borCode, { 'Prompt Engine': [peOr(OR_MODELS.image)], 'Build Create Task': [item] }, [item], undefined).then((o) => o.json);
+  check(same(noThis, st), 'WF-2 Build OpenRouter Image without a node context (this = globalThis, no helpers) -> the static table');
+  const g3 = await borRun(peOr('google/gemini-3-pro-image-preview'), item, caps.ctxFixtures());
+  check(same(Object.keys(g3.body), ['model', 'prompt', 'n', 'aspect_ratio', 'resolution', 'input_references']) && g3.body.resolution === '2K' && same(g3.dropped, ['output_format', 'background']) && g3.caps_source === 'live', 'WF-2 Build OpenRouter Image on google/gemini-3-pro-image-preview (live fixture): resolution 2K kept, output_format + background dropped');
+  const g3s = await borRun(peOr('google/gemini-3-pro-image-preview'), item, {});
+  check(same(g3s.body, g3.body) && g3s.caps_source === 'static', 'WF-2 Build OpenRouter Image on google/gemini-3-pro-image-preview (static table): the same body');
+  const item4 = kieItem({ input_urls: ['https://sb/a?t=1', 'https://sb/b?t=2', 'https://sb/c?t=3', 'https://sb/d?t=4'] });
+  const g25 = await borRun(peOr('google/gemini-2.5-flash-image'), item4, caps.ctxFixtures());
+  check(same(Object.keys(g25.body), ['model', 'prompt', 'n', 'aspect_ratio', 'input_references']) && same(g25.dropped, ['resolution', 'output_format', 'background']) && g25.body.input_references.length === 3 && g25.body.input_references[0].image_url.url === 'https://sb/a?t=1' && g25.body.input_references[2].image_url.url === 'https://sb/c?t=3', 'WF-2 Build OpenRouter Image on google/gemini-2.5-flash-image (live fixture): resolution, output_format, background dropped, input_references trimmed to the first 3 (range max 3)');
+  const unk = await borRun(peOr('acme/pixel-1'), item, caps.ctxFixtures());
+  check(same(Object.keys(unk.body), ['model', 'prompt', 'n', 'aspect_ratio', 'input_references']) && unk.caps_source === 'static' && same(unk.dropped, ['resolution', 'output_format', 'background']) && unk.body.model === 'acme/pixel-1', 'WF-2 Build OpenRouter Image on an unknown model (no fixture = the GET fails): the common set model, prompt, n, aspect_ratio, input_references');
+  const auto = await borRun({ ...peOr('google/gemini-2.5-flash-image'), aspect_ratio: 'auto' }, kieItem({ aspect_ratio: undefined }), caps.ctxFixtures()), autoS = await borRun({ ...peOr('google/gemini-2.5-flash-image'), aspect_ratio: 'auto' }, kieItem({ aspect_ratio: undefined }), {});
+  check(!('aspect_ratio' in auto.body) && auto.dropped.includes('aspect_ratio') && same(auto.mapped, []) && auto.caps_source === 'live' && !('aspect_ratio' in autoS.body) && autoS.dropped.includes('aspect_ratio') && same(autoS.mapped, []), 'WF-2 Build OpenRouter Image: an unparsable aspect_ratio the model does not list (auto on gemini-2.5-flash-image) has nothing to map from and is dropped - live descriptor and static ratio list alike');
+  const autoSun = await borRun({ ...peOr(OR_MODELS.image), aspect_ratio: 'auto' }, kieItem({ aspect_ratio: undefined }), caps.ctxFixtures());
+  check(autoSun.body.aspect_ratio === 'auto' && !autoSun.dropped.includes('aspect_ratio') && same(autoSun.mapped, []), 'WF-2 Build OpenRouter Image: aspect_ratio auto is kept on Sunburst (listed in its enum), mapped []');
+  // the user's failing generation cf89b565 (card 2e99c36b, placement back, placement_aspect 4:5): Sunburst, aspect_ratio 4:5, resolution 2K, output_format png, 3 input references
+  const urls3 = ['https://sb/brief?t=1', 'https://sb/style?t=2', 'https://sb/art?t=3'];
+  const pe45 = { ...peOr(OR_MODELS.image), aspect_ratio: '4:5', resolution: '2K' }, item45 = kieItem({ aspect_ratio: '4:5', resolution: '2K', input_urls: urls3 });
+  const r45 = await borRun(pe45, item45, caps.ctxFixtures()), r45s = await borRun(pe45, item45, {});
+  for (const [label, o, src] of [['live descriptor', r45, 'live'], ['static table', r45s, 'static']]) check(same(Object.keys(o.body), SUN_KEYS) && o.body.aspect_ratio === '3:4' && same(o.dropped, ['resolution', 'output_format']) && same(o.mapped, ['aspect_ratio 4:5 to 3:4']) && o.body.input_references.length === 3 && o.body.input_references[2].image_url.url === urls3[2] && o.caps_source === src, 'WF-2 Build OpenRouter Image, the failed card 2e99c36b case (Sunburst, 4:5, 2K, png, 3 refs) with the ' + label + ': body keys exactly ' + SUN_KEYS.join(',') + ', aspect_ratio 3:4, dropped [resolution, output_format], mapped [aspect_ratio 4:5 to 3:4], caps_source ' + src);
+  check(same(r45.body, r45s.body), 'WF-2 Build OpenRouter Image, the 2e99c36b case: live descriptor and static table build the same body (GPT Image lists no 4:5 in either)');
+  for (const [want, expect] of [['5:4', '4:3'], ['2:1', '16:9'], ['1:2', '9:16'], ['3:2', '3:2'], ['2:3', '2:3'], ['1:1', '1:1'], ['9:16', '9:16'], ['100:1', '21:9'], ['1:100', '9:16']]) {
+    const l = await borRun({ ...peOr(OR_MODELS.image), aspect_ratio: want }, kieItem({ aspect_ratio: want }), caps.ctxFixtures()), s = await borRun({ ...peOr(OR_MODELS.image), aspect_ratio: want }, kieItem({ aspect_ratio: want }), {});
+    const m = want === expect ? [] : ['aspect_ratio ' + want + ' to ' + expect];
+    check(l.body.aspect_ratio === expect && s.body.aspect_ratio === expect && same(l.mapped, m) && same(s.mapped, m) && !l.dropped.includes('aspect_ratio') && !s.dropped.includes('aspect_ratio'), 'WF-2 Build OpenRouter Image on Sunburst: aspect_ratio ' + want + ' -> ' + expect + (m.length ? ' (nearest listed ratio by |ln(w/h) - ln(x/y)|, auto never chosen), mapped ' + JSON.stringify(m) : ' (listed, unchanged, mapped [])') + ' - live and static');
+  }
+  const g45 = await borRun({ ...peOr('google/gemini-2.5-flash-image'), aspect_ratio: '4:5' }, kieItem({ aspect_ratio: '4:5' }), caps.ctxFixtures()), g45s = await borRun({ ...peOr('google/gemini-2.5-flash-image'), aspect_ratio: '4:5' }, kieItem({ aspect_ratio: '4:5' }), {});
+  check(g45.body.aspect_ratio === '4:5' && g45s.body.aspect_ratio === '4:5' && same(g45.mapped, []) && same(g45s.mapped, []), 'WF-2 Build OpenRouter Image on google/gemini-2.5-flash-image: aspect_ratio 4:5 is listed and kept (live and static), mapped []');
+  const g314 = await borRun({ ...peOr('google/gemini-3.1-flash-image-preview'), aspect_ratio: '1:4' }, kieItem({ aspect_ratio: '1:4' }), caps.ctxFixtures()), g314s = await borRun({ ...peOr('google/gemini-3.1-flash-image-preview'), aspect_ratio: '1:4' }, kieItem({ aspect_ratio: '1:4' }), {});
+  check(g314.body.aspect_ratio === '1:4' && same(g314.mapped, []) && g314s.body.aspect_ratio === '9:16' && same(g314s.mapped, ['aspect_ratio 1:4 to 9:16']), 'WF-2 Build OpenRouter Image on google/gemini-3.1-flash-image-preview: 1:4 is listed live and kept; offline the shared gemini-3 list (10 values) maps it to 9:16 - the static table degrades to a sendable ratio, never a 400');
+  const unk45 = await borRun({ ...peOr('acme/pixel-1'), aspect_ratio: '4:5' }, kieItem({ aspect_ratio: '4:5' }), caps.ctxFixtures());
+  check(unk45.body.aspect_ratio === '4:5' && same(unk45.mapped, []) && unk45.caps_source === 'static', 'WF-2 Build OpenRouter Image on an unknown model: the common set has no ratio list, aspect_ratio 4:5 passes through, mapped []');
+  const noRatios = await borRun(pe45, item45, caps.ctxWith({ endpoints: [{ supported_parameters: { aspect_ratio: { type: 'enum', values: ['auto', 'square'] }, n: { type: 'range', min: 1, max: 1 } } }] }));
+  check(!('aspect_ratio' in noRatios.body) && same(noRatios.dropped, ['aspect_ratio', 'resolution', 'output_format', 'background', 'input_references']) && same(noRatios.mapped, []) && noRatios.caps_source === 'live' && same(Object.keys(noRatios.body), ['model', 'prompt', 'n']), 'WF-2 Build OpenRouter Image: a descriptor whose aspect_ratio enum lists nothing of the form a:b (and no input_references) -> nothing to map to, aspect_ratio dropped with the other unsupported keys, never thrown');
+  const zero = await borRun({ ...peOr(OR_MODELS.image), aspect_ratio: '0:5' }, kieItem({ aspect_ratio: '0:5' }), caps.ctxFixtures());
+  check(!('aspect_ratio' in zero.body) && zero.dropped.includes('aspect_ratio') && same(zero.mapped, []), 'WF-2 Build OpenRouter Image: a degenerate ratio (0:5) is unparsable, dropped, never thrown');
+  const kieDown = await borRun(peOr(OR_MODELS.image), { code: 500, msg: 'server busy' }, caps.ctxFixtures(), { 'Build Create Task': [item] });
+  check(same(kieDown, lv), 'WF-2 Build OpenRouter Image via Kie Image Down? (a Kie error item, no corrective pass): the Build Create Task body, same result');
+  const corr = kieItem({ prompt: 'a bold illustrated bear\n\nCORRECTIVE' });
+  const corrOut = await borRun(peOr(OR_MODELS.image), { code: 500, msg: 'server busy' }, caps.ctxFixtures(), { 'Build Create Task': [item], 'Build Corrective Prompt': [kieItem({ prompt: 'first' }), corr] });
+  check(corrOut.body.prompt === 'a bold illustrated bear\n\nCORRECTIVE' && same(corrOut.dropped, ['resolution', 'output_format']), 'WF-2 Build OpenRouter Image on the corrective pass (Build Corrective Prompt executed): its LAST body is used, pruned the same way');
+  let err = null;
+  try { await borRun(peOr(OR_MODELS.image), { body: { input: {} } }, {}, { 'Build Create Task': [{ body: { input: {} } }] }); } catch (e) { err = e; }
+  check(err && err.message === 'no image request to send to OpenRouter' && !/:/.test(err.message), 'WF-2 Build OpenRouter Image without a prompt throws the colon-free message no image request to send to OpenRouter');
+  const markBody = String(wf2Nodes.find((n) => n.name === 'Mark OpenRouter').parameters.jsonBody), mm = markBody.match(/^=\{\{([\s\S]*)\}\}$/);
+  const mark = JSON.parse(new Function('$', 'return (' + mm[1] + ');')(mock$({ 'Build OpenRouter Image': [lv] })));
+  check(mark.model === 'openai/gpt-image-2.5-sunburst' && mark.vendor === 'openrouter' && mark.vendor_job_id === null, 'Mark OpenRouter (unchanged) still reads body.model from the Build OpenRouter Image item');
+  const wf3Bor = jsCodeOf(wf3Nodes, 'Build OpenRouter Image');
+  check(caps.staticTableOf(borCode).text === caps.staticTableOf(wf3Bor).text && caps.pruningTailOf(borCode) === caps.pruningTailOf(wf3Bor), 'WF-2 and WF-3 Build OpenRouter Image carry the same static table text (STATIC + COMMON) and the same pruning tail byte for byte (from the OpenRouter validates comment to the return)');
+  const tbl = caps.staticTableOf(borCode);
+  check(same(caps.staticRatiosFor(tbl, OR_MODELS.image), ['1:1', '3:2', '2:3', '4:3', '3:4', '16:9', '9:16', '21:9', 'auto']) && same(caps.staticRatiosFor(tbl, 'google/gemini-3-pro-image-preview'), ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9']) && same(caps.staticRatiosFor(tbl, 'google/gemini-2.5-flash-image'), caps.staticRatiosFor(tbl, 'google/gemini-3-pro-image-preview')) && caps.staticRatiosFor(tbl, 'acme/pixel-1') === null, 'WF-2 Build OpenRouter Image static table: ratio lists gpt-image = the 9 live values incl. auto, gemini-3 = the 10 common values, gemini-2.5-flash-image = the same 10, COMMON none');
+  const comments = borCode.split('\n').filter((l) => /^\s*\/\//.test(l));
+  check(comments.length === 1 && comments.every((l) => !/['"`]/.test(l)) && (borCode.match(/throw new Error\(([^)]*)\)/g) || []).every((t) => !/:/.test(t)) && borCode.split('\n').length <= 20 && !/\\/.test(borCode) && /catch \{/.test(borCode) && /timeout: 5000/.test(borCode) && !/const fit = |region/.test(borCode) && /typeof fit === 'string'/.test(caps.pruningTailOf(borCode)), 'WF-2 Build OpenRouter Image: one top-level // comment, quote-free; thrown messages colon-free; at most 20 lines (' + borCode.split('\n').length + '); no backslash; optional catch binding; 5 s descriptor timeout; defines no fit (the shared tail reads it with typeof, so its shape check is inert in WF-2 - a 4:5 generate maps to 3:4 and never throws)');
+}
+
+const finish = () => { console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed'); process.exit(failures ? 1 : 0); };
+openRouterChecks().then(finish, (e) => { check(false, 'Build OpenRouter Image checks threw ' + ((e && e.stack) || e)); finish(); });

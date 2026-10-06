@@ -600,7 +600,8 @@ export function PipelineSettings() {
                   </select>
                   <Hint id="generation-resolution-hint" error={errors.generationResolution}>
                     Size Kie renders at. 1K is quick for drafts, 4K takes longer per job; the finisher upscales to print
-                    size either way. Default {GENERATION_DEFAULTS.generation_resolution}.
+                    size either way. On OpenRouter, GPT Image always returns 1024 px (its API has no size for that model) and
+                    Gemini 2.5 Flash Image ignores it; only the Gemini 3 image models honour this value. Default {GENERATION_DEFAULTS.generation_resolution}.
                   </Hint>
                 </div>
                 <div className="text-sm">

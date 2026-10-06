@@ -13,19 +13,38 @@ function placementLabel(p: string | null): string {
 
 const codeCls = 'rounded bg-neutral-100 px-1 text-xs dark:bg-neutral-800'
 
+/** OpenRouter's Images API has no size for GPT Image: those models always return 1024 px, whatever Settings says. */
+const isGptImage = (model: string | null): boolean => !!model && model.startsWith('openai/gpt-image-')
+const GPT_IMAGE_PX_NOTE = 'OpenRouter has no size for GPT Image; the finisher upscales'
+/** Only the Gemini 3 image models take a resolution on OpenRouter; gemini-2.5-flash-image and the rest ignore Settings' value. */
+const honoursResolution = (model: string | null): boolean => !!model && model.startsWith('google/gemini-3')
+
 /** "Will generate with <model> at 2K", for the platform picked in the dialog. */
 function engineLine(platform: AiPlatform, kieModel: string | null, openRouterModel: string | null, resolution: string | null): ReactNode {
   const at = resolution ? ` at ${resolution}` : ''
   const code = (m: string) => <code className={codeCls}>{m}</code>
   if (platform === 'openrouter') {
-    return openRouterModel ? <>Will generate on OpenRouter with {code(openRouterModel)}{at}</> : <>Will generate on OpenRouter{at}</>
+    if (!openRouterModel) return <>Will generate on OpenRouter{at}</>
+    if (isGptImage(openRouterModel)) {
+      return <>Will generate on OpenRouter with {code(openRouterModel)} at 1024 px ({GPT_IMAGE_PX_NOTE})</>
+    }
+    return <>Will generate on OpenRouter with {code(openRouterModel)}{honoursResolution(openRouterModel) ? at : ''}</>
   }
   if (!kieModel) return 'Model not loaded — ask the lead to check Settings'
   if (platform === 'auto') {
+    const fallback = openRouterModel ? (
+      isGptImage(openRouterModel) ? (
+        <>, or {code(openRouterModel)} on OpenRouter at 1024 px if Kie is down ({GPT_IMAGE_PX_NOTE})</>
+      ) : (
+        <>, or {code(openRouterModel)} on OpenRouter if Kie is down</>
+      )
+    ) : (
+      ', or on OpenRouter if Kie is down'
+    )
     return (
       <>
         Will generate with {code(kieModel)}
-        {at} on Kie{openRouterModel ? <>, or {code(openRouterModel)} on OpenRouter if Kie is down</> : ', or on OpenRouter if Kie is down'}
+        {at} on Kie{fallback}
       </>
     )
   }
