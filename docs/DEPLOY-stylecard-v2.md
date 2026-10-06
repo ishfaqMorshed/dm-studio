@@ -39,7 +39,7 @@ published):
 6. Record migrations studio_19–25c, studio_27, studio_29 (`20261005_studio_29_region_locked_outside.sql`) and studio_29b
    (`20261005_studio_29b_region_child_no_notify.sql`) in `supabase_migrations.schema_migrations` (they were applied with execute_sql;
    studio_26 and studio_28 are already recorded).
-7. In n8n UI: WF-8 Brief Parse `Cu7if7YfPpWjNVnL` → Settings → Error workflow = WF-6; node "Kie Parse Brief" credential = "GPT Image 2 [DM-Kie]".
+7. In n8n UI: delete the temporary probe workflow `qTPPe2lbVfKDeQv8` ("DM Studio · PROBE region edit (temporary)", unpublished, manual-start only). WF-8 Brief Parse `Cu7if7YfPpWjNVnL` → Settings → Error workflow = WF-6; node "Kie Parse Brief" credential = "GPT Image 2 [DM-Kie]".
 
 ## Why a fresh Claude Code session
 
