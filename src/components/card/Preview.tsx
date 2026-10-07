@@ -105,8 +105,9 @@ export function Preview({
 
   // The displayed picture: the alternative image when one is given, else the generation's own.
   const displayedPath = viewed?.image_path ? (altImage?.path ?? viewed.image_path) : null
-  const current = useSignedUrl(GENS_BUCKET, displayedPath)
-  const prev = useSignedUrl(GENS_BUCKET, previous?.image_path)
+  // updated_at as the version: a corrective attempt rewrites the same path, the browser must fetch it again.
+  const current = useSignedUrl(GENS_BUCKET, displayedPath, viewed?.updated_at)
+  const prev = useSignedUrl(GENS_BUCKET, previous?.image_path, previous?.updated_at)
   const canBlink = Boolean(viewed?.image_path && previous?.image_path)
 
   useEffect(() => {

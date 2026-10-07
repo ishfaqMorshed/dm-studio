@@ -1,11 +1,14 @@
-// DM Studio · Edge Function `prompt-engine` v8.1
+// DM Studio · Edge Function `prompt-engine` v8.2
+// v8.2 (2026-10-07): references override the locked Style Card at every tier - the WHAT TO MAKE reference's hero is the
+// SUBJECT at tier 1-2 as well (the Style Card subjects only when no subject reference is attached, as the Art style
+// reference already wins the look since 2026-10-01); QC's EXPECTED_SUBJECT follows magic.subject, so it checks the reference.
 // POST {generation_id}  →  builds magic_prompt_json + rendered_prompt for one generation and PATCHes the row.
 // Contract: docs/generation-spec.md §3 + the Style Card v2 spec (section 3.1). Auth: the caller's x-studio-secret is
 // forwarded to PostgREST and validated by rpc studio_secret_ok (verify_jwt is off). No secret value lives in this
 // file: the apikey is the project's publishable key and the studio secret only ever passes through from the header.
 //
 // v8 (2026-09-30): Style Card linted through the shared checkStyleCard fixes and rendered as lines with the row status;
-// SUBJECT resolution (explicit brief subject > WHAT TO MAKE slot at tier >= 3 > Style Card subjects[0] > description);
+// SUBJECT resolution (explicit brief subject > WHAT TO MAKE slot [v8-v8.1: only at tier >= 3; every tier since v8.2] > Style Card subjects[0] > description);
 // roled input plan from cards.reference_roles; client_look prefers the card's representative_images and skips excluded
 // library images; {{niche}} / bare NICHE filled from clients.style_brief.niche; exemplars deduplicated and <= 160 chars;
 // a 422 guard on unresolved template tokens. Request/response contract unchanged (fields only added).
@@ -342,9 +345,11 @@ async function handle(req: Request): Promise<Response> {
     magic.effective_style = inherited
       ? inheritLook(inherited)
       : effectiveStyle({ card: fixedCard, garment_color: garmentColor, art: isEditKind ? null : art, reference_slot: artImage, plan });
-    // the SUBJECT is added when absent (R3); a regenerate also re-resolves one that came from a reference slot, so it
-    // follows the re-read card (a WHAT TO MAKE read made before staff changed the roles is no longer used)
-    if (!magic.subject || (kind === "regenerate" && magic.subject.source === "reference")) {
+    // the SUBJECT is added when absent (R3); a regenerate ALWAYS re-resolves it from the re-read card (v8.2): a tier-1/2
+    // parent built before v8.2 stored the Style Card subject next to a WHAT TO MAKE slot whose hero is now the SUBJECT, and
+    // a WHAT TO MAKE read made before staff changed the roles is no longer used; resolveSubject still puts the explicit
+    // brief subject first, so nothing is lost, and QC's EXPECTED_SUBJECT follows magic.subject
+    if (!magic.subject || kind === "regenerate") {
       magic.subject = resolveSubject({ explicit: explicitSubject, tier, references: magic.reference_reading.references, card_subjects: fixedCard.subjects });
     }
   } else {

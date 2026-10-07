@@ -34,7 +34,7 @@ export function TestRenderResult({
     () => generations.rows.find((g) => g.id === card.current_generation_id) ?? generations.rows[0] ?? null,
     [generations.rows, card.current_generation_id],
   )
-  const image = useSignedUrl(GENS_BUCKET, gen?.image_path)
+  const image = useSignedUrl(GENS_BUCKET, gen?.image_path, gen?.updated_at)
   const verdict = qcVerdict(gen?.qc_report)
   const textFound = qcTextFound(gen?.qc_report)
   const submission = useMemo(() => readTestSubmission(card), [card])

@@ -15,6 +15,16 @@ sections 6 and 7).
 - **studio_30 (new, same day)** - `supabase/migrations/20261007_studio_30_gens_staff_update.sql`, policy `gens_staff_update` (staff may replace
   objects in the `gens` bucket), written and applied. It fixes the "A mask for this generation already exists and could not be replaced (new row
   violates row-level security policy)" error of a second Fix an area on the same version - the bucket had no staff UPDATE policy (E2E-023).
+- **prompt-engine v8.2 (same day, 10:5x UTC) - references override the locked Style Card at every tier (E2E-025)** - deployed as Edge Function
+  version 9 (verify_jwt false) from the esbuild bundle `sh scripts/bundle-prompt-engine.sh` (361 lines, 64 913 bytes, sha256
+  `25581f5ca50046bd6c34cee356c1b4ae178c385ba3119ac85faa869eb729e68c`); the deployed `index.ts` re-read with get_edge_function is byte-identical
+  (same sha256, 64 913 bytes). Probes: unknown generation id with the secret 404 `generation not found`, without the secret 401. Change:
+  `resolveSubject` takes the WHAT TO MAKE slot's hero at EVERY tier (v8-v8.1: tier >= 3 only); the tier <= 2 REFERENCES line says "its hero is
+  the SUBJECT of this design; the rest is concept only - a NEW composition is required" only when the SUBJECT block resolved from that slot
+  (an explicit brief subject, an emptied read or a carried Style Card subject keep the old wording); a regenerate ALWAYS re-resolves the
+  SUBJECT from the re-read card (a tier-1/2 parent built before v8.2 kept the Style Card subject - card 1883c96d's Highland cows); QC's
+  EXPECTED_SUBJECT follows `magic_prompt_json.subject`, so it checks the reference. render_test 54/54. Rollback: redeploy the previous bundle
+  (prompt-engine v8.1, sha256 `3173a777500a0bed892d1ca375c47c9f8cf4de02fdf9b9a25e260b728f5296cd`).
 - **1. Edge Functions** (verify_jwt false): `style-card-check` v1 (deployed as two files `style-card-check/index.ts` + `_shared/style_card_rules.ts`,
   entrypoint `style-card-check/index.ts`; probes: wrong secret 401, positive 200 with the expected validation errors); `region-composite` v1
   (probes 401 / OPTIONS 204 / unknown id 404 `not_found`); `qc-judge` v2 (the deployed `qc.ts` differs from the repo only in that the six À / ɏ

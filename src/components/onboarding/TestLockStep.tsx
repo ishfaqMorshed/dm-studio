@@ -527,7 +527,7 @@ export const TestLockStep = forwardRef<HTMLHeadingElement, Props>(function TestL
 /** 64 px tile of one earlier test render, linking to its card. */
 function TestRenderThumb({ card }: { card: TestCard }) {
   const gen = card.current_generation ?? null
-  const image = useSignedUrl(GENS_BUCKET, gen?.image_path)
+  const image = useSignedUrl(GENS_BUCKET, gen?.image_path, gen?.updated_at)
   const verdict = qcVerdict(gen?.qc_report)
   const running = TEST_ACTIVE_STAGES.includes(card.stage)
   const label = `Test render with v${card.style_card_version ?? '?'} · ${verdict ? `QC ${VERDICT_LABEL[verdict]}` : STAGE_LABEL[card.stage]} · ${formatDateTime(card.created_at)}`

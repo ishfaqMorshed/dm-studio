@@ -157,7 +157,7 @@ function CardView({ cardId }: { cardId: string }) {
     [generations.rows],
   )
   const latestFinJob = finJobs.rows[0] ?? null
-  const currentImage = useSignedUrl(GENS_BUCKET, current?.image_path)
+  const currentImage = useSignedUrl(GENS_BUCKET, current?.image_path, current?.updated_at)
 
   // Magic prompt draft: follows the current generation, adopts server changes while untouched.
   const baseSections = useMemo(() => sectionsFromJson(current?.magic_prompt_json), [current?.magic_prompt_json])

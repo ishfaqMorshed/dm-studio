@@ -108,7 +108,11 @@ function Thumb({ card }: { card: BoardCard }) {
   const genPath = card.current_generation?.image_path ?? null
   const refPath = card.reference_paths?.[0] ?? null
   const showingRef = !genPath && Boolean(refPath)
-  const { url, broken } = useSignedUrl(genPath ? GENS_BUCKET : REFS_BUCKET, genPath ?? refPath)
+  const { url, broken } = useSignedUrl(
+    genPath ? GENS_BUCKET : REFS_BUCKET,
+    genPath ?? refPath,
+    genPath ? card.current_generation?.updated_at : null,
+  )
 
   return (
     <div

@@ -918,7 +918,9 @@ function paletteFromText(text: unknown): PaletteEntry[] {
 }
 
 // ---------------------------------------------------------------------------
-// SUBJECT resolution (spec 3.1): explicit brief subject > WHAT TO MAKE slot (tier >= 3) > Style Card subjects[0] > description
+// SUBJECT resolution (spec 3.1; v8.2 2026-10-07 rule: references override the locked Style Card at EVERY tier):
+// explicit brief subject > WHAT TO MAKE slot's hero (any tier) > Style Card subjects[0] > description.
+// The tier still governs how closely the composition follows that image (tier <= 2 asks for a NEW composition).
 
 export function resolveSubject(opts: {
   explicit?: unknown;
@@ -929,7 +931,7 @@ export function resolveSubject(opts: {
   const pool = list(opts.card_subjects).map(clean).filter(Boolean);
   const explicit = clean(opts.explicit);
   if (explicit) return { text: explicit, source: "brief", pool };
-  if (clampTier(opts.tier) >= 3 && Array.isArray(opts.references)) {
+  if (Array.isArray(opts.references)) {
     const slot = opts.references.find((r) => r.role === "subject" && clean(r.hero.subject));
     if (slot) return { text: clean(slot.hero.subject), source: "reference", pool, slot: slot.slot };
   }
@@ -1216,7 +1218,7 @@ function slotFace(f: { family: string; weight: string; effects: string[] }): str
   return core + (f.effects.length ? " (" + f.effects.join(", ") + ")" : "");
 }
 
-function renderSlotReferences(r: ReferenceReading, tier: number, typographyLocked: boolean, artGoverns: boolean): string {
+function renderSlotReferences(r: ReferenceReading, tier: number, typographyLocked: boolean, artGoverns: boolean, subject: Subject | null = null): string {
   const refs = r.references ?? [];
   const lines = ["REFERENCES - each attached image has ONE job; take nothing else from it:"];
   const kv = (pairs: Array<[string, string]>) => pairs.filter(([, v]) => v).map(([k, v]) => k + ": " + v).join("; ");
@@ -1233,8 +1235,14 @@ function renderSlotReferences(r: ReferenceReading, tier: number, typographyLocke
         ["Layout", ref.layout],
         ["Text zones", ref.text_zones],
       ]);
+      // tier <= 2 (v8.2): this image's hero is THE subject only when resolveSubject took it from this slot - an explicit
+      // brief subject outranks it, and an emptied read (roles changed after the vision pass) or a regenerate that kept a
+      // Style Card subject must not claim a second hero next to the SUBJECT block
+      const heroIsSubject = !!subject && subject.source === "reference" && subject.slot === n;
       lines.push("- Image " + n + ", WHAT TO MAKE " + (tier <= 2
-        ? "(concept only - a NEW composition is required): "
+        ? (heroIsSubject
+          ? "(its hero is the SUBJECT of this design; the rest is concept only - a NEW composition is required): "
+          : "(concept only - a NEW composition is required): ")
         : "(the similarity policy applies to THIS image only): ") + (body || "no reading"));
     } else if (ref.role === "art_style" && artGoverns) {
       present.add("art_style");
@@ -1412,7 +1420,7 @@ export function renderPrompt(magic: MagicPrompt): string {
   {
     const r = magic.reference_reading;
     const perSlot = !isEdit && Array.isArray(r.references) && r.references.length > 0;
-    blocks.push(perSlot ? renderSlotReferences(r, tier, typographyLocked, artGoverns) : renderFlatReference(r, tier, isEdit, artGoverns, es?.reference_slot ?? null));
+    blocks.push(perSlot ? renderSlotReferences(r, tier, typographyLocked, artGoverns, magic.subject ?? null) : renderFlatReference(r, tier, isEdit, artGoverns, es?.reference_slot ?? null));
   }
 
   // 6 similarity tier

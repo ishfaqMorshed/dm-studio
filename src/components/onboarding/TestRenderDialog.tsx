@@ -332,7 +332,7 @@ export function TestRenderDialog({
                 <p className="text-xs text-red-700 dark:text-red-300">No ticked images: the backend will refuse the render.</p>
               )}
               <p className={hintCls}>
-                {refs.length ? `${testRefsRule(refs)} ` : ''}Garment {garment} · front chest · similarity tier 1 (style only, new subject).
+                {refs.length ? `${testRefsRule(refs)} ` : ''}Garment {garment} · front chest · similarity tier 1 (style only, new composition).
               </p>
             </div>
           </>

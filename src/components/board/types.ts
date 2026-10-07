@@ -5,6 +5,8 @@ export interface BoardGeneration {
   id: string
   image_path: string | null
   status: JobStatus
+  /** Version key for the thumbnail URL: a corrective attempt rewrites image_path in place. */
+  updated_at?: string | null
 }
 
 /**

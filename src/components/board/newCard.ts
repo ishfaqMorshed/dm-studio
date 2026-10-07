@@ -8,7 +8,7 @@ export const NEW_CARD_SLOTS = 3
 
 /** Similarity tier labels, same wording as the card page's brief editor. */
 export const TIER_OPTIONS = [
-  { value: '1', label: '1 — style only, new subject' },
+  { value: '1', label: '1 — style only, new composition' },
   { value: '2', label: '2 — loosely inspired' },
   { value: '3', label: '3 — balanced' },
   { value: '4', label: '4 — close to the references' },

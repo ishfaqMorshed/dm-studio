@@ -29,7 +29,7 @@ const GenerationTile = memo(function GenerationTile({
   onView,
   onMakeCurrent,
 }: TileProps) {
-  const { url, broken } = useSignedUrl(GENS_BUCKET, g.image_path)
+  const { url, broken } = useSignedUrl(GENS_BUCKET, g.image_path, g.updated_at)
   const verdict = qcVerdict(g.qc_report)
   const running = ACTIVE_JOB_STATUSES.includes(g.status)
   const platform = generationPlatformLabel(g)

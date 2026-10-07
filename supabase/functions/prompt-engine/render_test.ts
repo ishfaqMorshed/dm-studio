@@ -534,10 +534,26 @@ Deno.test("per-slot references: three distinct Image n labels; SUBJECT source re
   assert(labels[2].startsWith("Image 3: LETTERING - take only the lettering style, weight, case, placement and effects"), labels[2]);
   assert(labels[3].startsWith("Image 4-6: examples of the client's established look"), labels[3]);
   assert(!out.includes("- Not attached:"), "all three roles attached");
-  // tier 1: concept only, and the subject comes from the Style Card, not the reference
+  // tier 1: a NEW composition, but the hero still comes from the reference (v8.2, 2026-10-07: references override the locked Style Card at every tier)
   const t1 = buildMagicPrompt(inputFrom(chickenV2, V2, { tier: 1, roles: ROLED, reference_analysis: slotAnalysis, explicit_subject: "" }));
-  assertEquals(t1.subject?.source, "style_card", "tier 1 never takes the subject from the reference");
-  assert(renderPrompt(t1).includes("- Image 1, WHAT TO MAKE (concept only - a NEW composition is required): Hero: a grizzly bear"), "tier 1 wording");
+  assertEquals(t1.subject?.source, "reference", "tier 1 takes the subject from the WHAT TO MAKE reference");
+  assertEquals(t1.subject?.text, "a grizzly bear");
+  assert(renderPrompt(t1).includes("SUBJECT (the one hero of this design - it comes from here and nowhere else): a grizzly bear"), "tier 1 SUBJECT line names the bear");
+  assert(renderPrompt(t1).includes("- Image 1, WHAT TO MAKE (its hero is the SUBJECT of this design; the rest is concept only - a NEW composition is required): Hero: a grizzly bear"), "tier 1 wording");
+  // without a subject reference the Style Card still names the hero at tier 1
+  const t1NoSubject = buildMagicPrompt(inputFrom(chickenV2, V2, { tier: 1, roles: ["art_style", "typography"], reference_analysis: { ...slotAnalysis, references: slotAnalysis.references!.filter((r) => (r as { role: string }).role !== "subject") }, explicit_subject: "" }));
+  assertEquals(t1NoSubject.subject?.source, "style_card", "no subject slot: the Style Card subjects govern");
+  // tier 1 with an explicit brief subject: the brief wins and the WHAT TO MAKE line must not claim a second hero
+  const t1Brief = buildMagicPrompt(inputFrom(chickenV2, V2, { tier: 1, roles: ROLED, reference_analysis: slotAnalysis, explicit_subject: "a rooster in sunglasses" }));
+  assertEquals([t1Brief.subject?.source, t1Brief.subject?.text], ["brief", "a rooster in sunglasses"]);
+  const t1BriefOut = renderPrompt(t1Brief);
+  assert(t1BriefOut.includes("- Image 1, WHAT TO MAKE (concept only - a NEW composition is required): Hero: a grizzly bear"), "brief subject: old tier 1 wording");
+  assert(!t1BriefOut.includes("its hero is the SUBJECT"), "brief subject: the slot never claims to be the hero");
+  // tier 2 with the subject slot read for another job (roles changed after the vision pass): emptied read, Style Card subject, no hero claim
+  const readAsTypography: ReferenceAnalysis = { ...slotAnalysis, references: slotAnalysis.references!.map((r) => ((r as { slot: number }).slot === 1 ? { ...(r as object), role: "typography" } : r)) };
+  const t2Empty = buildMagicPrompt(inputFrom(chickenV2, V2, { tier: 2, roles: ROLED, reference_analysis: readAsTypography, explicit_subject: "" }));
+  assertEquals(t2Empty.subject?.source, "style_card", "emptied subject read: the Style Card subjects govern");
+  assert(renderPrompt(t2Empty).includes("- Image 1, WHAT TO MAKE (concept only - a NEW composition is required): no reading"), "emptied read: old wording, no hero claim");
   // tier 4: the reference palette governs
   const t4 = renderPrompt(buildMagicPrompt(inputFrom(chickenV2, V2, { tier: 4, roles: ROLED, reference_analysis: slotAnalysis, explicit_subject: "" })));
   assert(t4.includes("Reference palette (governs this re-creation, inside the Style Card family): cream #F2E8D5"), "tier 4 palette wording");
@@ -1232,6 +1248,8 @@ Deno.test("prompt-engine index.ts v8.1 wiring: mask_rect selected, 422 without a
   assertStringIncludesSrc(src, "resolution: region ? region.resolution : resolution,");
   assertStringIncludesSrc(src, "    region,\n  });");
   assertStringIncludesSrc(src, "region: REGION_OPENROUTER_DEFAULT");
+  // v8.2: a regenerate always re-resolves the SUBJECT from the re-read card (a pre-v8.2 tier-1/2 parent kept the Style Card subject)
+  assertStringIncludesSrc(src, 'if (!magic.subject || kind === "regenerate") {');
 });
 function assertStringIncludesSrc(hay: string, needle: string): void {
   if (!hay.includes(needle)) throw new Error("index.ts lacks " + JSON.stringify(needle));

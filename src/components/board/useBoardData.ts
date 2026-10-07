@@ -11,7 +11,7 @@ import type { BoardCard } from './types'
  * The FK hint is required because cards and generations are linked both ways.
  */
 const BOARD_SELECT =
-  '*, client:clients(name), current_generation:generations!cards_current_generation_fk(id, image_path, status)'
+  '*, client:clients(name), current_generation:generations!cards_current_generation_fk(id, image_path, status, updated_at)'
 
 async function fetchBoardCards(clientId: string | null): Promise<BoardCard[]> {
   // Onboarding test renders run the real pipeline but never sit on the board.

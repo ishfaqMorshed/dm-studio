@@ -576,6 +576,8 @@ export interface TestCardGeneration {
   image_path: string | null
   status: Database['public']['Enums']['job_status']
   qc_report: Json | null
+  /** Version key for the image URL: a corrective attempt rewrites image_path in place. */
+  updated_at?: string | null
 }
 
 /** A `style_test` card with its current generation joined (optional: realtime payloads carry the bare row). */
@@ -587,7 +589,7 @@ export interface TestCard extends Card {
 export async function listStyleTestCards(clientId: string, limit = 6): Promise<TestCard[]> {
   const res = await supabase
     .from('cards')
-    .select('*, current_generation:generations!cards_current_generation_fk(id, image_path, status, qc_report)')
+    .select('*, current_generation:generations!cards_current_generation_fk(id, image_path, status, qc_report, updated_at)')
     .eq('client_id', clientId)
     .eq('source', 'style_test')
     .order('created_at', { ascending: false })

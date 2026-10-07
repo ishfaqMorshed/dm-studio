@@ -23,7 +23,7 @@ import type { CardRow } from './useCardData'
 const ROLE_LABEL: Record<PrintTextRole, string> = { headline: 'Headline', sub: 'Sub', tagline: 'Tagline' }
 
 const TIERS = [
-  { value: '1', label: '1 — style only, new subject' },
+  { value: '1', label: '1 — style only, new composition' },
   { value: '2', label: '2 — loosely inspired' },
   { value: '3', label: '3 — balanced' },
   { value: '4', label: '4 — close to the references' },
