@@ -1,6 +1,21 @@
 # n8n ops - Phase 2 runbook (Style Card v2: WF-1b, WF-1, WF-2, WF-3)
 
 Spec: `docs/stylecard-v2-spec.md` section 3 (2.1 WF-1b, 2.2 WF-1, 2.3 WF-2/WF-3) and rule R1 (ship together).
+
+**Deployed 2026-10-07.** Every step below was run in order (section 0 hot-fix, studio_29b, section 2, Steps A, B, C) and every check and
+smoke passed. Smoke ids, all on the E2E Test Client: style_draft_requests 0a8d1982 (Step A, execution 117661), card 9b2b4180 (Step B,
+execution 117684), generations 454939ef (Step C generate, execution 117694) / 51ab7937 (Fix an area, execution 117700) / d60384ca (Use full
+regeneration, $0, no WF-3 execution - the studio_29b gate proven). Live versionIds: section 1, column "live versionId after deployment". The
+BEFORE copies under `before/` are STALE from this day on (warning under the section 1 table). Full live state and results:
+`docs/DEPLOY-stylecard-v2.md` "Deployed 2026-10-07". Verification of every n8n step before publishing: a read-only comparison of the live draft
+(`get_workflow_details`) against the SDK-parsed source - node names, parameters, settings and the edge set identical for WF-1b (37+1, 56),
+WF-1 (28+1, 38), WF-2 (53+1, 75) and WF-3 (45+1, 71); `get_workflow_details` omits credential bindings, so Describe Designs and Profile Style got
+an explicit setNodeCredential (`Gemini 3.1 Pro [DM-Kie]`, 0l2nHQUQNnsCAfTR) before publishing. Same day, outside this folder: migration
+studio_30 (`gens_staff_update` - the gens bucket had no staff UPDATE policy, so a second Fix an area on the same version failed on the mask
+replace; `tests/e2e/BUGS.md` E2E-023) and the `schema_migrations` records for studio_19..25c, 27 and 29. Cosmetic nit from the Step A smoke:
+Parse Sheets reports `sheet_template_version` null while `raw.template_versions.sheet` is 1.
+
+The notes below record the state this runbook was written against.
 State on 2026-09-30: NOTHING in this folder has been applied to n8n. The sources under `n8n/*.sdk.js` are final
 (validator green, tool tests green), the BEFORE copies equal the live workflows (verified today, version ids below),
 and every `*.ops.json` here is the exact `update_workflow` payload that turns the live workflow into the source.
@@ -16,7 +31,14 @@ Edge Function `region-composite` (new, the 4th function) and prompt-engine v8.1 
 Update 2026-10-06 (hot-fix, OpenRouter image parameters): section 0 below. It is independent of Style Card v2 and goes live FIRST; the
 same node change is folded into `wf2.ops.json` / `wf3.ops.json`, so Step C later re-applies it idempotently.
 
-## 0. Hot-fix 2026-10-06 - OpenRouter image parameters (apply first, independent of Style Card v2)
+## 0. Hot-fix 2026-10-06 - OpenRouter image parameters (apply first, independent of Style Card v2) - APPLIED 2026-10-07
+
+**Applied 2026-10-07 at 04:4x UTC:** WF-2 `KVLDYPaWZZZtOoir` published version `a97b0c40-032d-409b-aca1-f71095a4aa7e`, WF-3 `V83NWHjzDdyiqtNP`
+published version `00604cbf-42ce-451f-b119-5687284e5eae`. Smoke on the E2E Test Client: generation a78197cd (execution 117510) done in 27 s, the
+`Build OpenRouter Image` item shows `dropped: ["resolution","output_format"]`, `mapped: []` and `caps_source: "live"` - so
+`this.helpers.httpRequest` works in the Code node on this n8n. Step C (section 5) then replaced both nodes the same day (WF-2 idempotently,
+WF-3 with the region-aware node) - live versions in section 1. Card 2e99c36b (4:5 back, expected `mapped: ["aspect_ratio 4:5 to 3:4"]`) is the
+user's retry, never an automated session's. The text below is the runbook as it was applied.
 
 The error: live WF-2 generation cf89b565 (card 2e99c36b, a 4:5 back placement, 2026-10-06 10:15 UTC) failed with
 `OpenRouter: No provider for openai/gpt-image-2.5-sunburst supports the requested parameter(s): resolution  (HTTP 400)`; the last good
@@ -24,8 +46,8 @@ OpenRouter generate with the same body was 2026-10-01 07:45 UTC. OpenRouter's Un
 (public descriptors `GET https://openrouter.ai/api/v1/images/models/<model>/endpoints`, no key; an absent key = unsupported). Sunburst takes
 `aspect_ratio`, `quality`, `background`, `n`, `input_references`, `output_compression` only - our body also sent `resolution` and
 `output_format` - and its `aspect_ratio` enum (`1:1, 3:2, 2:3, 4:3, 3:4, 16:9, 9:16, 21:9, auto`) has no `4:5`, the ratio the active
-`placement_aspect` template gives full_front, back and tote (every earlier OpenRouter generation was 1:1). Every OpenRouter generate on a GPT Image model fails until this is live (edit_text on `google/gemini-2.5-flash-image` still
-ran today, so the check may be per provider; the fix does not rely on that). Workaround meanwhile: Settings -> AI platform Kie -> Retry.
+`placement_aspect` template gives full_front, back and tote (every earlier OpenRouter generation was 1:1). Every OpenRouter generate on a GPT Image model failed until this went live on 2026-10-07 (edit_text on `google/gemini-2.5-flash-image` still
+ran on 2026-10-06, so the check may be per provider; the fix does not rely on that). Workaround meanwhile was: Settings -> AI platform Kie -> Retry.
 
 The fix is ONE Code node per workflow, `Build OpenRouter Image` (WF-2 `KVLDYPaWZZZtOoir`, WF-3 `V83NWHjzDdyiqtNP`), parameters only: no node
 added, renamed, moved or rewired, no credential, no settings change. The node reads the model's live capability descriptor (5 s timeout,
@@ -79,13 +101,18 @@ picks a model that lists 4:5 - `tests/e2e/BUGS.md` E2E-022. The hot-fix node nev
 
 ## 1. Files
 
-| workflow | live id | live versionId (baseline, verified 2026-09-30) | BEFORE copy (= live) | AFTER source | ops | sticky ops |
-|---|---|---|---|---|---|---|
-| WF-1b Style Draft | `CsohPMosybjBoP8s` | `5ae44133-6c67-4196-a5a6-236f152bf49d` (updated 07:05:28Z) | `before/wf1b-style-draft.live-CsohPMosybjBoP8s.sdk.js` = `git show 2c90fc2:n8n/wf1b-style-draft.sdk.js` | `n8n/wf1b-style-draft.sdk.js` | `wf1b.ops.json` (65 ops; `wf1b.ops.split8.jsonl` = the same 65 in 9 lines of <= 8) | `wf1b.sticky.ops.json` -> live `Sticky Note 8350ba26` |
-| WF-1 Intake | `CrpmkqYiaWBtvto6` | `e5d2cb76-d4e6-4da9-9727-cfc15de759a2` (07:05:25Z) | `before/wf1-intake.sdk.js` = HEAD | `n8n/wf1-intake.sdk.js` | `wf1.ops.json` (22 ops) | `wf1.sticky.ops.json` -> `Sticky Note ae342437` |
-| WF-2 Generate | `KVLDYPaWZZZtOoir` | `53073bc3-253c-4fcf-af39-202e9db63330` (07:05:29Z; re-verified 2026-10-02) | `before/wf2-generate.sdk.js` = `git show 896738b:n8n/wf2-generate.sdk.js` (HEAD as of 2026-09-30; = live) | `n8n/wf2-generate.sdk.js` | `wf2.ops.json` (5 ops since 2026-10-06; was 4) | `wf2.sticky.ops.json` -> `Sticky Note e40f5e01` |
-| WF-3 Edit | `V83NWHjzDdyiqtNP` | `1fbb0856-b853-4458-b181-03d5a7bc0fcd` (07:05:31Z; re-verified 2026-10-02 and 2026-10-05) | `before/wf3-edit.sdk.js` = `git show 2c90fc2:n8n/wf3-edit.sdk.js` (= live) | `n8n/wf3-edit.sdk.js` | `wf3.ops.json` (35 ops: Style Card v2 + region lane) | `wf3.sticky.ops.json` -> `Sticky Note b3ad825a` |
-| Hot-fix 2026-10-06 (section 0) | WF-2 `KVLDYPaWZZZtOoir` + WF-3 `V83NWHjzDdyiqtNP` | same baselines as above | same BEFORE copies | `Build OpenRouter Image` of the two sources | `hotfix-2026-10-06-openrouter-params/wf2.ops.json`, `wf3.ops.json` (1 updateNodeParameters op each; WF-3 = the BEFORE node head + the main pruning tail, region-free) + paste files `wf2-build-openrouter-image.js` / `wf3-build-openrouter-image.js` (AFTER) and `*.before.js` (BEFORE), all generated by `tools/make-hotfix.js` | none (stickies stay for Step C) |
+| workflow | live id | BEFORE versionId (baseline, verified 2026-09-30; rollback target, section 6) | live versionId after deployment (2026-10-07) | BEFORE copy (= live until 2026-10-07; STALE since) | AFTER source | ops | sticky ops |
+|---|---|---|---|---|---|---|---|
+| WF-1b Style Draft | `CsohPMosybjBoP8s` | `5ae44133-6c67-4196-a5a6-236f152bf49d` (updated 07:05:28Z) | `f7413f44-0db0-4a53-aacb-7c88fd63545e` (Step A) | `before/wf1b-style-draft.live-CsohPMosybjBoP8s.sdk.js` = `git show 2c90fc2:n8n/wf1b-style-draft.sdk.js` | `n8n/wf1b-style-draft.sdk.js` | `wf1b.ops.json` (65 ops; `wf1b.ops.split8.jsonl` = the same 65 in 9 lines of <= 8) | `wf1b.sticky.ops.json` -> live `Sticky Note 8350ba26` |
+| WF-1 Intake | `CrpmkqYiaWBtvto6` | `e5d2cb76-d4e6-4da9-9727-cfc15de759a2` (07:05:25Z) | `46d45ec0-bb49-4550-a7c1-a12a8f24530b` (Step B) | `before/wf1-intake.sdk.js` = HEAD | `n8n/wf1-intake.sdk.js` | `wf1.ops.json` (22 ops) | `wf1.sticky.ops.json` -> `Sticky Note ae342437` |
+| WF-2 Generate | `KVLDYPaWZZZtOoir` | `53073bc3-253c-4fcf-af39-202e9db63330` (07:05:29Z; re-verified 2026-10-02) | `ca401e02-06d0-4288-b98f-2b0fe41f4986` (Step C; the hot-fix interim was `a97b0c40-032d-409b-aca1-f71095a4aa7e`) | `before/wf2-generate.sdk.js` = `git show 896738b:n8n/wf2-generate.sdk.js` (HEAD as of 2026-09-30; = live until 2026-10-07) | `n8n/wf2-generate.sdk.js` | `wf2.ops.json` (5 ops since 2026-10-06; was 4) | `wf2.sticky.ops.json` -> `Sticky Note e40f5e01` |
+| WF-3 Edit | `V83NWHjzDdyiqtNP` | `1fbb0856-b853-4458-b181-03d5a7bc0fcd` (07:05:31Z; re-verified 2026-10-02 and 2026-10-05) | `806d197b-c596-4461-8068-1afe23efe036` (Step C; the hot-fix interim was `00604cbf-42ce-451f-b119-5687284e5eae`) | `before/wf3-edit.sdk.js` = `git show 2c90fc2:n8n/wf3-edit.sdk.js` (= live until 2026-10-07) | `n8n/wf3-edit.sdk.js` | `wf3.ops.json` (35 ops: Style Card v2 + region lane) | `wf3.sticky.ops.json` -> `Sticky Note b3ad825a` |
+| Hot-fix 2026-10-06 (section 0) | WF-2 `KVLDYPaWZZZtOoir` + WF-3 `V83NWHjzDdyiqtNP` | same baselines as above | WF-2 `a97b0c40-032d-409b-aca1-f71095a4aa7e`, WF-3 `00604cbf-42ce-451f-b119-5687284e5eae` (2026-10-07 04:4x UTC; superseded by Step C the same day) | same BEFORE copies | `Build OpenRouter Image` of the two sources | `hotfix-2026-10-06-openrouter-params/wf2.ops.json`, `wf3.ops.json` (1 updateNodeParameters op each; WF-3 = the BEFORE node head + the main pruning tail, region-free) + paste files `wf2-build-openrouter-image.js` / `wf3-build-openrouter-image.js` (AFTER) and `*.before.js` (BEFORE), all generated by `tools/make-hotfix.js` | none (stickies stay for Step C) |
+
+**Warning (2026-10-07): the BEFORE copies are STALE.** `before/*.sdk.js` still equal the 2026-09-30 live versions (the baseline column), which
+the live workflows left on 2026-10-07 (the "after deployment" column). Every `*.ops.json` in this folder was computed against those baselines and
+has been applied once - do not apply any of them again. Before generating new ops, export the live versions to fresh BEFORE files (section 7).
+The baselines stay valid only as `restore_workflow_version` targets (section 6).
 
 Op counts (diff-ops order: addNode/setNodeSettings -> updateNodeParameters -> removeConnection -> removeNode -> addConnection):
 
@@ -139,13 +166,13 @@ Duplicates: `wf1b-from-live-CsohPMosybjBoP8s.ops.json` and `wf1b-from-base-baCsa
    select (body like '%ART STYLE REFERENCE ATTACHED: {{ART_REFERENCE_ATTACHED}}.%') as art_paragraph, active, md5(body) from public.prompt_templates where slug = 'qc_prompt' and version = 2;  -- true, false
    select column_name from information_schema.columns where table_name = 'settings' and column_name = 'qc_art_regen';  -- 1 row
    ```
-   And `supabase/migrations/20261005_studio_29_region_locked_outside.sql` applied (Fix an area, locked outside: `generations.raw_image_path` / `region_metrics` / `composite_mode` (+ check locked | extend | full), `settings.region_ring_pct` numeric default 3 (1..10), `openrouter_models.region` = `openai/gpt-image-2.5-sunburst`, security-definer `public.region_child(...)` for Extend area / Use full regeneration). It is applied with execute_sql by the engine step of the 2026-10-05 build, so it is NOT recorded in `supabase_migrations.schema_migrations` (record it with the others, `docs/DEPLOY-stylecard-v2.md` step 6). Without it the new WF-3 fails every Fix an area at `Save Raw Path` (unknown column) - edit_text is unaffected. Check:
+   And `supabase/migrations/20261005_studio_29_region_locked_outside.sql` applied (Fix an area, locked outside: `generations.raw_image_path` / `region_metrics` / `composite_mode` (+ check locked | extend | full), `settings.region_ring_pct` numeric default 3 (1..10), `openrouter_models.region` = `openai/gpt-image-2.5-sunburst`, security-definer `public.region_child(...)` for Extend area / Use full regeneration). It was applied with execute_sql by the engine step of the 2026-10-05 build and recorded on 2026-10-07 as `20261005000029` (`docs/DEPLOY-stylecard-v2.md` step 6). Without it the new WF-3 fails every Fix an area at `Save Raw Path` (unknown column) - edit_text is unaffected. Check:
    ```sql
    select column_name from information_schema.columns where table_schema = 'public' and table_name = 'generations' and column_name in ('raw_image_path','region_metrics','composite_mode');  -- 3 rows
    select region_ring_pct, openrouter_models->>'region' as region, (openrouter_models ? 'edit' and openrouter_models ? 'vision') as keys_kept from public.settings where id = 1;  -- 3, openai/gpt-image-2.5-sunburst, true
    select pg_get_function_identity_arguments('public.region_child'::regproc);  -- p_source_generation_id uuid, p_child_id uuid, p_mode text, p_mask_rect jsonb, p_image_path text, p_region_metrics jsonb, p_drift_pct numeric
    ```
-   And `supabase/migrations/20261005_studio_29b_region_child_no_notify.sql` applied (2026-10-06 review fix; the build did NOT apply it - run it first, in the SQL editor or with execute_sql, as ONE script: its final DO block raises unless the gate is visible, so a silent success means it is in place). It makes the edit trigger's status gate explicit and owned: `generations_notify_edit()` keeps its phase-1 body test (`new.kind <> 'generate' and new.status = 'queued'`) and the trigger is recreated with the same condition as a WHEN clause. Extend area / Use full regeneration insert their child through `rpc region_child` with status `done` ($0, no AI); if the gate were missing, every such click would POST `/webhook/studio-edit` for the child and WF-3 would re-render it (~$0.07), overwrite `<card>/<child>.raw.png` + `.png` and PATCH it back to working. Nothing else changes: request_edit inserts `queued` (fires as before), approve_card inserts kind `generate`, retry_card UPDATEs (an AFTER INSERT trigger never saw it). Check:
+   And `supabase/migrations/20261005_studio_29b_region_child_no_notify.sql` applied (2026-10-06 review fix, applied 2026-10-07 with apply_migration and recorded as `20261007045339`; before that the build had NOT applied it - run it first, in the SQL editor or with execute_sql, as ONE script: its final DO block raises unless the gate is visible, so a silent success means it is in place). It makes the edit trigger's status gate explicit and owned: `generations_notify_edit()` keeps its phase-1 body test (`new.kind <> 'generate' and new.status = 'queued'`) and the trigger is recreated with the same condition as a WHEN clause. Extend area / Use full regeneration insert their child through `rpc region_child` with status `done` ($0, no AI); if the gate were missing, every such click would POST `/webhook/studio-edit` for the child and WF-3 would re-render it (~$0.07), overwrite `<card>/<child>.raw.png` + `.png` and PATCH it back to working. Nothing else changes: request_edit inserts `queued` (fires as before), approve_card inserts kind `generate`, retry_card UPDATEs (an AFTER INSERT trigger never saw it). Check:
    ```sql
    select pg_get_triggerdef(t.oid) from pg_trigger t where t.tgrelid = 'public.generations'::regclass and t.tgname = 'generations_notify_edit' and not t.tgisinternal;
    -- CREATE TRIGGER generations_notify_edit AFTER INSERT ON public.generations FOR EACH ROW WHEN (((new.kind <> 'generate'::...) AND (new.status = 'queued'::...))) EXECUTE FUNCTION public.generations_notify_edit()
@@ -159,7 +186,7 @@ Duplicates: `wf1b-from-live-CsohPMosybjBoP8s.ops.json` and `wf1b-from-base-baCsa
    supabase functions deploy prompt-engine    --project-ref voatrqhfsdfjomyajovi --no-verify-jwt
    supabase functions deploy qc-judge         --project-ref voatrqhfsdfjomyajovi --no-verify-jwt
    ```
-   (or the Supabase MCP `deploy_edge_function`). Probe - `SB=https://voatrqhfsdfjomyajovi.supabase.co`, `ANON=sb_publishable_shDVoGzgpaS2L9OTmzyRGA_JOx52p0I`, `SECRET` = `select value from private.secrets where key = 'studio_secret'`:
+   (or the Supabase MCP `deploy_edge_function`; on 2026-10-07 prompt-engine went through the MCP as ONE minified esbuild bundle from `scripts/bundle-prompt-engine.sh` because its three sources (160 KB) exceed what the call can carry - bytes and sha256 in `docs/DEPLOY-stylecard-v2.md` "Deployed 2026-10-07"; style-card-check went as two files, entrypoint `style-card-check/index.ts`). Probe - `SB=https://voatrqhfsdfjomyajovi.supabase.co`, `ANON=sb_publishable_shDVoGzgpaS2L9OTmzyRGA_JOx52p0I`, `SECRET` = `select value from private.secrets where key = 'studio_secret'`:
    ```sh
    curl -s -o /dev/null -w '%{http_code}\n' -X POST "$SB/functions/v1/style-card-check" -H "apikey: $ANON" -H "x-studio-secret: wrong" -H 'content-type: application/json' -d '{}'
    # expected: not 200 (401/403 - the secret gate)
@@ -180,7 +207,7 @@ Duplicates: `wf1b-from-live-CsohPMosybjBoP8s.ops.json` and `wf1b-from-base-baCsa
    # expected: 404 {"ok":false,"code":"not_found","message":"Region composite: ..."} (a random uuid, no such generation) - deployed, secret accepted. A gateway 404 / 401 without that body means it is not deployed or verify_jwt is on.
    ```
 3. n8n WF-0 Studio Config `vbyjWhK4ZRN9uZUM` has `studioSecret` and `openrouterKey` pasted (the WF-1b repair call is OpenRouter-only).
-4. Confirm the live baselines have not moved: `get_workflow_details('<id>')` -> `versionId` equals the table in section 1 (or `get_workflow_history` shows no version after 2026-09-30T07:05Z). If a workflow drifted, export it to a fresh BEFORE file and regenerate its ops (section 7) before applying anything.
+4. Confirm the live baselines have not moved: `get_workflow_details('<id>')` -> `versionId` equals the table in section 1 (or `get_workflow_history` shows no version after 2026-09-30T07:05Z). If a workflow drifted, export it to a fresh BEFORE file and regenerate its ops (section 7) before applying anything. (Since 2026-10-07 they HAVE moved - the "after deployment" column is the live state; any re-run starts with fresh BEFORE exports.)
 5. Repo checks are green: `node n8n/tools/check.js n8n/wf1b-style-draft.sdk.js n8n/wf1-intake.sdk.js n8n/wf2-generate.sdk.js n8n/wf3-edit.sdk.js` (each `valid: true  ok: true`), `node n8n/tools/test-wf1b-style.js`, `node n8n/tools/test-wf1-analysis.js`, `node n8n/tools/test-wf2-prompts.js`, `node n8n/tools/test-wf3-region.js` (each `all checks passed`), and `npm run test:functions` (prompt-engine, qc-judge, style-card-check, region-composite).
 
 Why the order matters (R1): the template token replacer leaves unknown `{{TOKENS}}` literally. A NEW template with an OLD workflow leaks tokens into a prompt; a NEW workflow with the OLD template is safe (WF-1b skips Pass A and renders style_profiler v2; WF-1 renders analysis_prompt v2; WF-2/3 append the v1 fallback paragraph). So for every step: apply ops -> publish -> activate templates, never the reverse.
@@ -366,5 +393,5 @@ The BEFORE copies come from git: `git show 2c90fc2:n8n/wf1b-style-draft.sdk.js` 
 ## 8. Not covered here
 
 - Frontend Phase 4 (labels, editor normalize fix R2 - ship before opening a v3 draft in the editor), step-4 hand-offs: other owners.
-- `supabase/config.toml` block for style-card-check and the migration itself: backend owner (this session must not edit `supabase/`). The 2026-10-05 build adds `[functions.region-composite] verify_jwt = false` and studio_29 in its own composite / engine steps; the 2026-10-06 review fix adds studio_29b (written, NOT applied - section 2 says how to apply and check it).
-- After the smoke tests: update `docs/STATUS.md` (Ongoing -> Done) and the auto-memory note that names `CsohPMosybjBoP8s` as the live WF-1b (unchanged when updated in place).
+- `supabase/config.toml` block for style-card-check and the migration itself: backend owner (this session must not edit `supabase/`). The 2026-10-05 build adds `[functions.region-composite] verify_jwt = false` and studio_29 in its own composite / engine steps; the 2026-10-06 review fix adds studio_29b (applied 2026-10-07 - section 2 says how to check it); studio_30 (`gens_staff_update`, 2026-10-07) is the backend owner's too.
+- After the smoke tests: update `docs/STATUS.md` (Ongoing -> Done; done 2026-10-07) and the auto-memory note that names `CsohPMosybjBoP8s` as the live WF-1b (unchanged when updated in place).

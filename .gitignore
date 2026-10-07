@@ -27,3 +27,6 @@ dist-ssr
 
 # n8n import files carry API keys — never commit
 n8n/*.json
+
+# Supabase CLI scratch state (created by npx supabase ...)
+supabase/.temp/
