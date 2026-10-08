@@ -30,3 +30,6 @@ n8n/*.json
 
 # Supabase CLI scratch state (created by npx supabase ...)
 supabase/.temp/
+# Vercel CLI link state and the OIDC token it writes
+.vercel
+.env.local

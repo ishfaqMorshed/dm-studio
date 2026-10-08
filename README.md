@@ -72,6 +72,10 @@ docs/reference/            DM Finisher's CompletedPanel, kept as a pattern refer
 
 ## Deploy to Vercel
 
+**Live since 2026-10-08:** https://dm-studio-olive.vercel.app (Vercel project `dm-studio`, scope ishfaqmorshed's projects; GitHub
+`ishfaqMorshed/dm-studio`, private, default branch `master`). Deploy from this folder with `npx vercel deploy --prod --yes` (the CLI is
+linked via `.vercel/`, ignored) or by pushing `master` once the Git connection is made in the Vercel dashboard.
+
 Hosting = GitHub (private repo) + Vercel (static Vite build) + the existing Supabase project `voatrqhfsdfjomyajovi` and n8n; nothing
 in the back end changes when the app is hosted - the browser talks to Supabase directly, n8n and the Edge Functions never see the
 app's URL. Production branch: `master`.
