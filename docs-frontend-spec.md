@@ -14,7 +14,7 @@ Full product SOP (read sections 03–07 and 10): /private/tmp/claude-501/-Users-
 - Stage changes are ONLY possible through RPCs (a trigger blocks direct updates of cards.stage). Designers may update other card fields while stage is not generating/editing/finishing.
 - Storage buckets (private): refs `<client_id>/<card_id>/<n>.<ext>` (anon may upload up to 3 objects after start_brief, no auth header needed beyond apikey; staff read), gens `<card_id>/<generation_id>.png` (staff read + insert, used for masks `<card_id>/<generation_id>-mask.png`), finals `<card_id>/<generation_id>-final.png` (staff read/delete). Staff read images through createSignedUrl (1 h) — reuse/extend src/lib/signedUrls.ts.
 - Realtime publication includes cards, generations, fin_jobs (postgres_changes, RLS applies).
-- Test staff login: studio-test@dmteam.local / StudioTest#2026 (role lead). Test client form token: 0570536095895eb6f05ed21a73a8624d (client "Test Client (phase 1)").
+- Test staff login: studio-test@dmteam.local (role lead; the password is kept out of the repo - the lead has it, and locally it is `DM_E2E_PASSWORD` in the ignored `.env`). Test client form token: 0570536095895eb6f05ed21a73a8624d (client "Test Client (phase 1)").
 - n8n execution link for the lead: https://n8n.srv1202488.hstgr.cloud/workflow/<any>/executions/<n8n_execution_id> — simpler: https://n8n.srv1202488.hstgr.cloud/executions/<id>.
 
 ## Routes and file contract (react-router-dom v7; install it)

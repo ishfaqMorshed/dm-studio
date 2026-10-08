@@ -72,19 +72,36 @@ docs/reference/            DM Finisher's CompletedPanel, kept as a pattern refer
 
 ## Deploy to Vercel
 
-Nothing in this repo is deployed yet; the steps below need the user's GitHub and Vercel logins.
+Hosting = GitHub (private repo) + Vercel (static Vite build) + the existing Supabase project `voatrqhfsdfjomyajovi` and n8n; nothing
+in the back end changes when the app is hosted - the browser talks to Supabase directly, n8n and the Edge Functions never see the
+app's URL. Production branch: `master`.
 
-1. Create an empty GitHub repository (private), then from this folder:
+Before the first push (done 2026-10-08): `npm run build` passes (one 1.07 MB JS chunk, 304 kB gzipped), `git status` clean,
+no tracked file carries a secret (`.env`, `*.local`, `n8n/*.json`, `supabase/.temp/` are ignored; the test password lives only
+in the ignored `.env` as `DM_E2E_PASSWORD`), Node >= 22 pinned in `package.json` engines.
+
+1. Create the private GitHub repository and push (the `gh` CLI is logged in):
    ```bash
-   git remote add origin git@github.com:<org>/dm-studio.git
-   git push -u origin master
+   gh repo create <owner>/dm-studio --private --source . --remote origin --push
    ```
-   `.gitignore` already excludes `.env`, `*.local` and `n8n/*.json`; run `git status` first and confirm nothing secret is staged.
-2. Vercel → *Add New → Project* → import the repo. Framework preset **Vite** (auto-detected from `vercel.json`, which also rewrites every path to `index.html` for the router). Build command `npm run build`, output directory `dist`.
-3. *Project → Settings → Environment Variables*: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (the publishable key, same values as `.env`), for Production and Preview.
-4. Deploy, open the URL, sign in with the staff account and load `/board` and `/brief/<token>` directly to confirm the SPA rewrite.
+   (or `git remote add origin ...` + `git push -u origin master`). Push `e2e-openrouter-platform` too if it is still ahead of master.
+2. Vercel -> *Add New -> Project* -> import the repo. Framework preset **Vite** is auto-detected from `vercel.json`, which also
+   rewrites every path to `index.html` for the router. Build command `npm run build`, output directory `dist`, Node 22.x.
+3. *Project -> Settings -> Environment Variables*, for Production and Preview: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
+   (the `sb_publishable_...` key, same values as the local `.env`; never the service-role key, never `DM_E2E_PASSWORD`).
+4. Deploy, open the URL, sign in with a staff account, then load `/board`, `/card/<id>` and `/brief/<token>` directly (full page
+   load) to confirm the SPA rewrite. The client form link shown on the card page and in the Edit client dialog is built from
+   `window.location.origin`, so it is correct on the deployed domain automatically - send clients the hosted link, not localhost.
+5. Supabase, once the URL is known (dashboard, not in this repo): *Authentication -> URL Configuration -> Site URL* = the Vercel
+   URL (password login does not need redirect URLs; add the origin to *Redirect URLs* only if magic links or password resets are
+   ever enabled); *Authentication -> Attack protection -> Leaked password protection* = on (advisor warning); keep the three
+   storage buckets private (they are). The security advisor's "anon can execute SECURITY DEFINER function" warnings are by
+   design: the public brief form (`resolve_form_token`, `start_brief`, `submit_brief`, `refs_upload_ok`) and the n8n / Edge
+   Function workers (everything guarded by `studio_secret_ok()`) call with the publishable key; every such function checks the
+   form token, the studio secret or `is_staff()` inside (verified 2026-10-08, see `docs/STATUS.md`).
+6. Custom domain (optional): Vercel -> Domains, then update the Supabase Site URL to it.
 
-Password login does not need redirect URLs. If magic links are ever enabled, add the deployed origin under **Authentication → URL Configuration** in Supabase.
+Rollback = Vercel -> Deployments -> promote the previous deployment; the app has no server state.
 
 Current build state: `docs/STATUS.md`. Workflow conventions: `docs/n8n-config-contract.md`. Generation spec and acceptance flow: `docs/generation-spec.md`.
 
